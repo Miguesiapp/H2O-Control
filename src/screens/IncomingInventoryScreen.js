@@ -1,5 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, SafeAreaView } from 'react-native';
+import { 
+  View, Text, StyleSheet, ScrollView, TextInput, 
+  TouchableOpacity, Alert, StatusBar 
+} from 'react-native';
+// IMPORTANTE: Cambio a la librería recomendada
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth } from '../config/firebase';
 import { registerMovement } from '../services/logisticsService';
 import { ChevronLeft, Save, Package } from 'lucide-react-native';
@@ -32,7 +37,7 @@ export default function IncomingInventoryScreen({ route, navigation }) {
     }
 
     try {
-      const batchInternal = generateDateBatch(); // Generamos el lote antes para pasarlo al QR
+      const batchInternal = generateDateBatch(); 
       
       const movementData = {
         itemName: formData.itemName.toUpperCase(),
@@ -47,7 +52,6 @@ export default function IncomingInventoryScreen({ route, navigation }) {
         unit: category === 'Materia Prima' ? 'Kg/Lts' : 'Uds',
       };
 
-      // 1. Guardamos en Firebase mediante el servicio logístico
       await registerMovement(
         auth.currentUser.email,
         `INGRESO_${category.toUpperCase().replace(' ', '_')}`,
@@ -55,7 +59,6 @@ export default function IncomingInventoryScreen({ route, navigation }) {
         movementData
       );
 
-      // 2. PREGUNTA CRÍTICA: ¿Querés el QR ahora?
       Alert.alert(
         "Ingreso Exitoso", 
         `Se registró el lote: ${batchInternal}. ¿Deseas imprimir la etiqueta de trazabilidad QR?`,
@@ -68,7 +71,7 @@ export default function IncomingInventoryScreen({ route, navigation }) {
           { 
             text: "SÍ, GENERAR QR", 
             onPress: () => navigation.navigate('QRGenerator', { 
-              itemData: movementData, // Pasamos toda la info para el QR
+              itemData: movementData, 
               companyName: companyName 
             }) 
           }
@@ -82,9 +85,11 @@ export default function IncomingInventoryScreen({ route, navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <StatusBar barStyle="dark-content" />
+      
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <ChevronLeft color="#2e4a3b" size={28} />
         </TouchableOpacity>
         <View style={{alignItems: 'center'}}>
@@ -94,7 +99,11 @@ export default function IncomingInventoryScreen({ route, navigation }) {
         <Package color="#2e4a3b" size={24} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView 
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={styles.label}>Categoría del Insumo</Text>
         <View style={styles.categoryRow}>
           {['Materia Prima', 'Bidones', 'Cajas', 'Etiquetas'].map(cat => (
@@ -185,12 +194,13 @@ export default function IncomingInventoryScreen({ route, navigation }) {
           <Save color="#fff" size={20} />
           <Text style={styles.saveButtonText}>Confirmar Ingreso a Stock</Text>
         </TouchableOpacity>
+        
+        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-// ... (Los estilos se mantienen iguales)
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f5f7f5' },
   header: { 
@@ -203,6 +213,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, 
     borderBottomColor: '#eee' 
   },
+  backBtn: { padding: 5 },
   headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#2e4a3b' },
   headerSub: { fontSize: 10, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5 },
   container: { padding: 20 },

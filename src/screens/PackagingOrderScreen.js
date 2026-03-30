@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, SafeAreaView, ActivityIndicator } from 'react-native';
+import { 
+  View, Text, StyleSheet, ScrollView, TextInput, 
+  TouchableOpacity, Alert, StatusBar, ActivityIndicator 
+} from 'react-native';
+// IMPORTANTE: Cambio a la librería recomendada
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { registerMovement, deductStock } from '../services/logisticsService';
@@ -68,7 +73,6 @@ export default function PackagingOrderScreen({ route, navigation }) {
       await deductStock(companyName, selectedLot.itemName, totalLitersNeeded, batchId, 'PT');
 
       // 3. RESTAR Insumos (Bidones usados de la Materia Prima)
-      // Nota: Asegúrate de cargar tus bidones como "Bidón 20L", "Bidón 10L", etc.
       await deductStock(companyName, `Bidon ${formData.presentation}L`, Number(formData.unitsProduced), null, 'MP');
 
       Alert.alert("Proceso Finalizado", "Stock actualizado: Granel descontado y Producto Final sumado.");
@@ -79,16 +83,22 @@ export default function PackagingOrderScreen({ route, navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <StatusBar barStyle="dark-content" />
+      
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <ChevronLeft color="#2e4a3b" size={28} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Orden de Envasado</Text>
         <Container color="#2e4a3b" size={24} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView 
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={styles.label}>1. Selección de Lote Aprobado</Text>
         {loading ? (
           <ActivityIndicator size="small" color="#2e4a3b" />
@@ -134,6 +144,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
             keyboardType="numeric"
             value={formData.unitsProduced}
             onChangeText={(txt) => setFormData({...formData, unitsProduced: txt})}
+            placeholderTextColor="#bbb"
           />
         </View>
 
@@ -145,6 +156,8 @@ export default function PackagingOrderScreen({ route, navigation }) {
           <Save color="#fff" size={20} />
           <Text style={styles.saveButtonText}>Confirmar Envasado</Text>
         </TouchableOpacity>
+        
+        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -162,6 +175,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, 
     borderBottomColor: '#eee' 
   },
+  backBtn: { padding: 5 },
   headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#2e4a3b' },
   container: { padding: 20 },
   label: { fontSize: 13, fontWeight: 'bold', color: '#2e4a3b', marginBottom: 10, marginTop: 5 },
@@ -179,8 +193,18 @@ const styles = StyleSheet.create({
   lotChipActive: { backgroundColor: '#2e7d32', borderColor: '#2e7d32' },
   lotText: { fontSize: 11, color: '#666', fontWeight: '600' },
   lotTextActive: { color: '#fff' },
-  card: { backgroundColor: '#fff', padding: 20, borderRadius: 15, elevation: 4, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10 },
-  input: { backgroundColor: '#f9f9f9', padding: 15, borderRadius: 10, borderWidth: 1, borderColor: '#eee', fontSize: 16 },
+  card: { 
+    backgroundColor: '#fff', 
+    padding: 20, 
+    borderRadius: 24, 
+    elevation: 4, 
+    shadowColor: '#000', 
+    shadowOpacity: 0.1, 
+    shadowRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)'
+  },
+  input: { backgroundColor: '#f9f9f9', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: '#eee', fontSize: 16, color: '#333' },
   pickerContainer: { flexDirection: 'row', gap: 8, marginTop: 5, marginBottom: 20 },
   pButton: { flex: 1, paddingVertical: 12, backgroundColor: '#f0f0f0', borderRadius: 8, alignItems: 'center' },
   pButtonActive: { backgroundColor: '#2e4a3b' },

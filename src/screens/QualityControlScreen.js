@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, SafeAreaView, TextInput, ScrollView } from 'react-native';
+import { 
+  View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, 
+  ActivityIndicator, ScrollView, TextInput, StatusBar 
+} from 'react-native';
+// IMPORTANTE: Cambio a la librería recomendada
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { db, auth } from '../config/firebase';
 import { collection, query, where, onSnapshot, updateDoc, doc } from 'firebase/firestore';
 import { ChevronLeft, CheckCircle, XCircle, Beaker, ClipboardCheck } from 'lucide-react-native';
@@ -11,6 +16,7 @@ export default function QualityControlScreen({ navigation }) {
   const [pendingLots, setPendingLots] = useState([]);
   const [analysis, setAnalysis] = useState({ ph: '', density: '', obs: '' });
   const [selectedLot, setSelectedLot] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     // Escuchar lotes a granel (PT) que están en tanque
@@ -18,12 +24,16 @@ export default function QualityControlScreen({ navigation }) {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setPendingLots(data);
+      setLoading(false);
+    }, (error) => {
+      console.error(error);
+      setLoading(false);
     });
     return () => unsubscribe();
   }, []);
 
   const handleAuthorize = async (lot, status) => {
-    const userEmail = auth.currentUser.email.toLowerCase();
+    const userEmail = auth.currentUser?.email?.toLowerCase();
     const isAdmin = userEmail === ADMIN_EMAIL.toLowerCase();
     const isQuality = userEmail === AUTHORIZED_BBS.toLowerCase();
 
@@ -39,7 +49,7 @@ export default function QualityControlScreen({ navigation }) {
 
     try {
       await updateDoc(doc(db, "Inventory", lot.id), {
-        status: status, // Cambiamos 'qualityStatus' por 'status' para que coincida con el filtro de envasado
+        status: status, 
         measuredPh: analysis.ph,
         measuredDensity: analysis.density,
         qualityObs: analysis.obs,
@@ -59,14 +69,15 @@ export default function QualityControlScreen({ navigation }) {
     <TouchableOpacity 
       style={[styles.lotCard, selectedLot?.id === item.id && styles.lotCardSelected]} 
       onPress={() => setSelectedLot(item)}
+      activeOpacity={0.7}
     >
       <View style={styles.lotHeader}>
         <View style={styles.titleRow}>
            <Beaker size={18} color="#2e4a3b" style={{marginRight: 8}} />
            <Text style={styles.lotTitle}>{item.itemName}</Text>
         </View>
-        <View style={[styles.badge, { backgroundColor: item.status === 'APTO' ? '#e8f5e9' : '#fff3e0' }]}>
-          <Text style={[styles.badgeText, { color: item.status === 'APTO' ? '#2e7d32' : '#e65100' }]}>
+        <View style={[styles.badge, { backgroundColor: item.status === 'APTO' ? '#e8f5e9' : item.status === 'RECHAZADO' ? '#ffebee' : '#fff3e0' }]}>
+          <Text style={[styles.badgeText, { color: item.status === 'APTO' ? '#2e7d32' : item.status === 'RECHAZADO' ? '#c62828' : '#e65100' }]}>
             {item.status || 'PENDIENTE'}
           </Text>
         </View>
@@ -76,9 +87,11 @@ export default function QualityControlScreen({ navigation }) {
   );
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <StatusBar barStyle="dark-content" />
+      
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <ChevronLeft color="#2e4a3b" size={28} />
         </TouchableOpacity>
         <View style={{alignItems: 'center'}}>
@@ -90,16 +103,26 @@ export default function QualityControlScreen({ navigation }) {
 
       <View style={{ flex: 1 }}>
         <Text style={styles.sectionTitle}>Lotes en Tanque / Espera</Text>
-        <FlatList 
-          data={pendingLots}
-          keyExtractor={item => item.id}
-          renderItem={renderLot}
-          style={{ maxHeight: '40%' }}
-          contentContainerStyle={{ padding: 20 }}
-        />
+        
+        {loading ? (
+          <ActivityIndicator color="#2e4a3b" style={{ marginTop: 20 }} />
+        ) : (
+          <FlatList 
+            data={pendingLots}
+            keyExtractor={item => item.id}
+            renderItem={renderLot}
+            style={{ maxHeight: '40%' }}
+            contentContainerStyle={{ padding: 20 }}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
 
         {selectedLot ? (
-          <ScrollView style={styles.formContainer}>
+          <ScrollView 
+            style={styles.formContainer}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             <Text style={styles.formTitle}>Análisis Lote: {selectedLot.batchInternal}</Text>
             
             <View style={styles.inputRow}>
@@ -109,6 +132,7 @@ export default function QualityControlScreen({ navigation }) {
                   style={styles.input} 
                   keyboardType="numeric" 
                   placeholder="Ej: 6.5" 
+                  placeholderTextColor="#bbb"
                   value={analysis.ph}
                   onChangeText={(txt) => setAnalysis({...analysis, ph: txt})}
                 />
@@ -119,6 +143,7 @@ export default function QualityControlScreen({ navigation }) {
                   style={styles.input} 
                   keyboardType="numeric" 
                   placeholder="Ej: 1.15"
+                  placeholderTextColor="#bbb"
                   value={analysis.density}
                   onChangeText={(txt) => setAnalysis({...analysis, density: txt})}
                 />
@@ -127,9 +152,10 @@ export default function QualityControlScreen({ navigation }) {
 
             <Text style={styles.label}>OBSERVACIONES TÉCNICAS</Text>
             <TextInput 
-              style={[styles.input, { height: 70, textAlignVertical: 'top' }]} 
+              style={[styles.input, { height: 80, textAlignVertical: 'top' }]} 
               multiline 
               placeholder="Estado visual, impurezas, etc..." 
+              placeholderTextColor="#bbb"
               value={analysis.obs}
               onChangeText={(txt) => setAnalysis({...analysis, obs: txt})}
             />
@@ -151,10 +177,11 @@ export default function QualityControlScreen({ navigation }) {
                 <Text style={styles.btnText}>RECHAZAR</Text>
               </TouchableOpacity>
             </View>
+            <View style={{ height: 40 }} />
           </ScrollView>
         ) : (
           <View style={styles.emptyForm}>
-            <Beaker color="#ddd" size={60} />
+            <Beaker color="#ddd" size={80} />
             <Text style={styles.emptyText}>Selecciona un lote del listado superior</Text>
           </View>
         )}
@@ -173,27 +200,29 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     backgroundColor: '#fff', 
     borderBottomWidth: 1, 
-    borderBottomColor: '#eee' 
+    borderBottomColor: '#eee',
+    elevation: 4
   },
+  backBtn: { padding: 5 },
   headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#2e4a3b' },
   headerSub: { fontSize: 10, color: '#888', textTransform: 'uppercase' },
-  sectionTitle: { fontSize: 13, fontWeight: 'bold', color: '#666', marginLeft: 20, marginTop: 15, textTransform: 'uppercase' },
-  lotCard: { backgroundColor: '#fff', padding: 15, borderRadius: 12, marginBottom: 10, marginHorizontal: 20, elevation: 2 },
-  lotCardSelected: { borderWidth: 2, borderColor: '#2e4a3b' },
+  sectionTitle: { fontSize: 12, fontWeight: '800', color: '#888', marginLeft: 20, marginTop: 15, textTransform: 'uppercase', letterSpacing: 1 },
+  lotCard: { backgroundColor: '#fff', padding: 18, borderRadius: 15, marginBottom: 10, marginHorizontal: 20, elevation: 2, borderWidth: 1, borderColor: '#eee' },
+  lotCardSelected: { borderWidth: 2, borderColor: '#2e4a3b', elevation: 5 },
   lotHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   titleRow: { flexDirection: 'row', alignItems: 'center' },
   lotTitle: { fontSize: 15, fontWeight: 'bold', color: '#333' },
-  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  badgeText: { fontSize: 9, fontWeight: 'bold' },
-  lotSub: { fontSize: 11, color: '#888', marginTop: 5, fontWeight: '600' },
+  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  badgeText: { fontSize: 9, fontWeight: '900' },
+  lotSub: { fontSize: 11, color: '#777', marginTop: 6, fontWeight: '700' },
   formContainer: { flex: 1, backgroundColor: '#fff', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, elevation: 20, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10 },
-  formTitle: { fontSize: 17, fontWeight: 'bold', marginBottom: 20, color: '#2e4a3b' },
-  label: { fontSize: 11, fontWeight: 'bold', color: '#2e4a3b', marginBottom: 5, textTransform: 'uppercase' },
-  input: { backgroundColor: '#f9f9f9', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#eee', marginBottom: 15, color: '#333' },
+  formTitle: { fontSize: 17, fontWeight: '900', marginBottom: 20, color: '#2e4a3b' },
+  label: { fontSize: 11, fontWeight: 'bold', color: '#2e4a3b', marginBottom: 6, textTransform: 'uppercase' },
+  input: { backgroundColor: '#f9f9f9', padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#eee', marginBottom: 15, color: '#333', fontSize: 15 },
   inputRow: { flexDirection: 'row' },
-  btnRow: { flexDirection: 'row', gap: 10, marginTop: 10, marginBottom: 50 },
-  actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 12, gap: 8, elevation: 3 },
-  btnText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
-  emptyForm: { flex: 1, justifyContent: 'center', alignItems: 'center', opacity: 0.5 },
-  emptyText: { marginTop: 10, color: '#999', fontSize: 12, fontWeight: '600' }
+  btnRow: { flexDirection: 'row', gap: 10, marginTop: 15 },
+  actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 15, gap: 8, elevation: 4 },
+  btnText: { color: '#fff', fontWeight: '900', fontSize: 13, letterSpacing: 0.5 },
+  emptyForm: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  emptyText: { marginTop: 15, color: '#bbb', fontSize: 13, fontWeight: '700', textAlign: 'center', paddingHorizontal: 40 }
 });

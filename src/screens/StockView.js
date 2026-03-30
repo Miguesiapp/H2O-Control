@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, SafeAreaView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { 
+  View, Text, StyleSheet, FlatList, TouchableOpacity, 
+  ActivityIndicator, StatusBar 
+} from 'react-native';
+// IMPORTANTE: Cambio a la librería recomendada por Expo
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { ChevronLeft, Search, Package, Calendar, Tag, AlertTriangle } from 'lucide-react-native';
@@ -31,7 +36,7 @@ export default function StockView({ route, navigation }) {
     return () => unsubscribe();
   }, [companyName, stockType]);
 
-  // FUNCIÓN DE INTELIGENCIA: Define el estado del stock
+  // FUNCIÓN DE INTELIGENCIA: Define el estado del stock (Semáforo)
   const getStockLevel = (quantity, minStock = 100) => {
     if (quantity <= 0) return { label: 'SIN STOCK', color: '#d32f2f', bg: '#ffebee' };
     if (quantity <= minStock) return { label: 'REPOSICIÓN URGENTE', color: '#ef6c00', bg: '#fff3e0' };
@@ -39,7 +44,6 @@ export default function StockView({ route, navigation }) {
   };
 
   const renderItem = ({ item }) => {
-    // Si no tienes definido minStock en Firebase, por defecto usamos 100
     const status = getStockLevel(item.quantity, item.minStock || 100);
 
     return (
@@ -79,16 +83,18 @@ export default function StockView({ route, navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <StatusBar barStyle="dark-content" />
+      
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <ChevronLeft color="#2e4a3b" size={28} />
         </TouchableOpacity>
         <View style={{alignItems: 'center'}}>
           <Text style={styles.headerTitle}>{title}</Text>
           <Text style={styles.headerSub}>{companyName}</Text>
         </View>
-        <TouchableOpacity>
+        <TouchableOpacity style={styles.searchBtn}>
           <Search color="#2e4a3b" size={24} />
         </TouchableOpacity>
       </View>
@@ -104,6 +110,7 @@ export default function StockView({ route, navigation }) {
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>No hay stock registrado en esta categoría.</Text>
@@ -116,52 +123,57 @@ export default function StockView({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#f0f2f0' },
+  safe: { flex: 1, backgroundColor: '#F9FBF9' },
   header: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'center', 
     paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingVertical: 15, 
     backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0'
-  },
-  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#2e4a3b' },
-  headerSub: { fontSize: 11, color: '#666', textTransform: 'uppercase', letterSpacing: 1 },
-  list: { padding: 15 },
-  itemCard: { 
-    backgroundColor: '#fff', 
-    padding: 16, 
-    borderRadius: 12, 
-    marginBottom: 12,
-    borderLeftWidth: 6, // El color del semáforo
-    elevation: 3,
+    elevation: 4,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4
   },
+  backBtn: { padding: 5 },
+  searchBtn: { padding: 5 },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#2e4a3b' },
+  headerSub: { fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 1 },
+  list: { padding: 15, paddingBottom: 50 },
+  itemCard: { 
+    backgroundColor: '#fff', 
+    padding: 18, 
+    borderRadius: 20, 
+    marginBottom: 15,
+    borderLeftWidth: 8, 
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)'
+  },
   itemHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
-  itemName: { flex: 1, fontSize: 15, fontWeight: 'bold', marginLeft: 8, color: '#333' },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 5 },
-  statusBadgeText: { fontSize: 9, fontWeight: 'bold' },
-  quantityRow: { flexDirection: 'row', alignItems: 'baseline', marginVertical: 8 },
-  quantityValue: { fontSize: 28, fontWeight: 'bold', color: '#2e4a3b' },
-  quantityUnit: { fontSize: 14, color: '#666', marginLeft: 4, fontWeight: '600' },
+  itemName: { flex: 1, fontSize: 15, fontWeight: '900', marginLeft: 10, color: '#1A2E24' },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 8 },
+  statusBadgeText: { fontSize: 9, fontWeight: '900' },
+  quantityRow: { flexDirection: 'row', alignItems: 'baseline', marginVertical: 10 },
+  quantityValue: { fontSize: 32, fontWeight: '900', color: '#2e4a3b' },
+  quantityUnit: { fontSize: 14, color: '#666', marginLeft: 6, fontWeight: '800', textTransform: 'uppercase' },
   detailsRow: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     borderTopWidth: 1, 
-    borderTopColor: '#f5f5f5', 
-    paddingTop: 10,
-    marginTop: 5
+    borderTopColor: '#F0F0F0', 
+    paddingTop: 12,
+    marginTop: 8
   },
-  detail: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  detailText: { fontSize: 11, color: '#888' },
-  presentationText: { fontSize: 10, color: '#2e7d32', marginTop: 8, fontStyle: 'italic', fontWeight: '600' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loadingText: { marginTop: 10, color: '#2e4a3b', fontWeight: '500' },
-  emptyContainer: { alignItems: 'center', marginTop: 50 },
-  emptyText: { color: '#999', fontSize: 14 }
+  detail: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  detailText: { fontSize: 11, color: '#888', fontWeight: '700' },
+  presentationText: { fontSize: 10, color: '#2e7d32', marginTop: 10, fontStyle: 'italic', fontWeight: '800' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F9FBF9' },
+  loadingText: { marginTop: 15, color: '#2e4a3b', fontWeight: '800', letterSpacing: 1 },
+  emptyContainer: { alignItems: 'center', marginTop: 60, paddingHorizontal: 40 },
+  emptyText: { color: '#bbb', fontSize: 14, textAlign: 'center', fontWeight: '700', fontStyle: 'italic' }
 });

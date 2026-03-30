@@ -9,7 +9,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { db, storage, auth } from '../config/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
-import { UserCheck, UserX, Camera, ShieldCheck, ChevronLeft, UserPlus, RotateCcw, Save } from 'lucide-react-native';
+import { UserCheck, UserX, Camera, ShieldCheck, UserPlus, RotateCcw, Save, Lock } from 'lucide-react-native';
 
 export default function StaffAttendanceScreen({ navigation }) {
   const { width, height } = useWindowDimensions();
@@ -17,18 +17,46 @@ export default function StaffAttendanceScreen({ navigation }) {
   const isPhone = width < 600;
 
   const [permission, requestPermission] = useCameraPermissions();
-  const [type, setType] = useState(null); // 'CHECK IN', 'CHECK OUT', 'REGISTRO'
+  const [type, setType] = useState(null); 
   const [loading, setLoading] = useState(false);
-  const [tempPhoto, setTempPhoto] = useState(null); // Para la vista previa del registro
+  const [tempPhoto, setTempPhoto] = useState(null); 
   const cameraRef = useRef(null);
 
-  const ADMIN_MAILS = ['bduville@h2ocontrol.com.ar', 'jmalvasio@h2ocontrol.com.ar', 'miguesilva.1985@outlook.es'];
-  const canViewReports = ADMIN_MAILS.includes(auth.currentUser?.email?.toLowerCase());
+  // --- LISTA BLANCA DE ACCESO ---
+  const ALLOWED_EMAILS = [
+    'produccion@h2ocontrol.com.ar', 
+    'bduville@h2ocontrol.com.ar', 
+    'miguesilva.1985@outlook.es'
+  ];
+  
+  const userEmail = auth.currentUser?.email?.toLowerCase();
+  const hasAccess = ALLOWED_EMAILS.includes(userEmail);
 
   useEffect(() => {
-    activateKeepAwakeAsync();
+    if (hasAccess) {
+      activateKeepAwakeAsync();
+    }
     return () => deactivateKeepAwake();
-  }, []);
+  }, [hasAccess]);
+
+  // Si el usuario no está autorizado, bloqueamos la pantalla completa
+  if (!hasAccess) {
+    return (
+      <SafeAreaView style={styles.containerLock}>
+        <Lock color="#ff4444" size={80} />
+        <Text style={styles.lockTitle}>Acceso Restringido</Text>
+        <Text style={styles.lockSubtitle}>
+          Esta terminal de fichado solo está habilitada para dispositivos oficiales de la planta.
+        </Text>
+        <TouchableOpacity 
+          style={styles.lockBackBtn} 
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.whiteText}>VOLVER AL MENÚ</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
 
   const handleAction = async (actionType) => {
     if (!permission?.granted) {
@@ -77,7 +105,7 @@ export default function StaffAttendanceScreen({ navigation }) {
         timestamp: serverTimestamp(),
         photoUrl: photoUrl,
         userEmail: auth.currentUser?.email,
-        deviceName: isPhone ? "Celular" : "Tablet_Entrada"
+        deviceName: isPhone ? "Celular_Admin" : "Tablet_Entrada"
       });
 
       Alert.alert("Éxito", "Operación registrada correctamente.");
@@ -90,13 +118,13 @@ export default function StaffAttendanceScreen({ navigation }) {
     }
   };
 
-  // --- VISTA: MENÚ PRINCIPAL ---
+  // --- VISTA: MENÚ PRINCIPAL (Sólo para autorizados) ---
   if (!type) {
     return (
       <SafeAreaView style={styles.container}>
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           <Text style={styles.title}>H2O Control</Text>
-          <Text style={styles.subtitle}>Tótem de Asistencia</Text>
+          <Text style={styles.subtitle}>Terminal de Asistencia</Text>
           
           <View style={[styles.menuGrid, (isPhone && !isLandscape) && styles.menuColumn]}>
             <TouchableOpacity 
@@ -124,22 +152,20 @@ export default function StaffAttendanceScreen({ navigation }) {
             <Text style={styles.registerBtnText}>REGISTRO INICIAL FOTO</Text>
           </TouchableOpacity>
 
-          {canViewReports && (
-            <TouchableOpacity style={styles.adminBtn} onPress={() => navigation.navigate('AttendanceReports')}>
-              <ShieldCheck color="#2e4a3b" size={24} />
-              <Text style={styles.adminBtnText}>CHECK INGRESOS</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity style={styles.adminBtn} onPress={() => navigation.navigate('AttendanceReports')}>
+            <ShieldCheck color="#2e4a3b" size={24} />
+            <Text style={styles.adminBtnText}>VER REPORTES E HISTORIAL</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backLink}>
-            <Text style={{color: '#888', fontWeight: 'bold'}}>← Volver</Text>
+            <Text style={{color: '#888', fontWeight: 'bold'}}>← Volver al Sistema</Text>
           </TouchableOpacity>
         </ScrollView>
       </SafeAreaView>
     );
   }
 
-  // --- VISTA: PREVIEW (SÓLO PARA REGISTRO INICIAL) ---
+  // --- VISTA: PREVIEW REGISTRO ---
   if (tempPhoto) {
     return (
       <View style={styles.container}>
@@ -170,7 +196,7 @@ export default function StaffAttendanceScreen({ navigation }) {
         <View style={[styles.faceGuide, isPhone && { width: 220, height: 300 }]} />
         <View style={styles.controls}>
           <TouchableOpacity style={styles.cancelBtn} onPress={() => setType(null)}>
-            <Text style={{color: '#fff', fontWeight: 'bold'}}>SALIR</Text>
+            <Text style={{color: '#fff', fontWeight: 'bold'}}>CANCELAR</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.captureBtn} onPress={processPhoto} disabled={loading}>
             {loading ? <ActivityIndicator color="#2e4a3b" /> : <Camera color="#2e4a3b" size={32} />}
@@ -184,6 +210,12 @@ export default function StaffAttendanceScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
+  // Estilos para el bloqueo
+  containerLock: { flex: 1, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', padding: 30 },
+  lockTitle: { fontSize: 24, fontWeight: '900', color: '#1a1a1a', marginTop: 20 },
+  lockSubtitle: { fontSize: 16, color: '#666', textAlign: 'center', marginTop: 10, marginBottom: 30 },
+  lockBackBtn: { backgroundColor: '#1a1a1a', paddingVertical: 15, paddingHorizontal: 40, borderRadius: 15 },
+  
   scrollContent: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 },
   title: { fontSize: 34, fontWeight: '900', color: '#1a1a1a' },
   subtitle: { fontSize: 18, color: '#666', marginBottom: 30 },

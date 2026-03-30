@@ -1,5 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, SafeAreaView } from 'react-native';
+import { 
+  View, Text, StyleSheet, ScrollView, TextInput, 
+  TouchableOpacity, Alert, StatusBar 
+} from 'react-native';
+// IMPORTANTE: Cambio a la librería recomendada para evitar el warning
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth } from '../config/firebase';
 import { deductStock, registerMovement } from '../services/logisticsService';
 import { ChevronLeft, Truck, Send } from 'lucide-react-native';
@@ -58,10 +63,12 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <StatusBar barStyle="dark-content" />
+      
       {/* HEADER INSTITUCIONAL */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <ChevronLeft color="#2e4a3b" size={28} />
         </TouchableOpacity>
         <View style={{alignItems: 'center'}}>
@@ -71,7 +78,11 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
         <Truck color="#2e4a3b" size={24} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView 
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.card}>
           <Text style={styles.label}>Producto Terminado (Envasado)</Text>
           <TextInput 
@@ -133,6 +144,8 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
           <Send color="#fff" size={20} />
           <Text style={styles.dispatchButtonText}>Confirmar Despacho</Text>
         </TouchableOpacity>
+
+        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -150,6 +163,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, 
     borderBottomColor: '#eee' 
   },
+  backBtn: { padding: 5 },
   headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#2e4a3b' },
   headerSub: { fontSize: 10, color: '#888', textTransform: 'uppercase' },
   container: { padding: 20 },
@@ -176,7 +190,7 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: 'row' },
   dispatchButton: { 
-    backgroundColor: '#d32f2f', // Rojo para acción de salida
+    backgroundColor: '#d32f2f', 
     flexDirection: 'row', 
     justifyContent: 'center', 
     alignItems: 'center', 

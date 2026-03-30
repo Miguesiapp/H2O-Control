@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, TextInput, 
-  TouchableOpacity, Alert, SafeAreaView 
+  TouchableOpacity, Alert, StatusBar 
 } from 'react-native';
+// IMPORTANTE: Cambio de librería para el SafeAreaView
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ChevronLeft, Save, Plus, Beaker, Trash2 } from 'lucide-react-native';
@@ -16,7 +18,6 @@ export default function AddFormulaScreen({ navigation }) {
   // Función para normalizar y convertir a decimal
   const toDecimal = (val) => {
     if (!val) return 0;
-    // Reemplaza coma por punto y convierte a número
     return parseFloat(String(val).replace(',', '.'));
   };
 
@@ -72,10 +73,13 @@ export default function AddFormulaScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    // Aplicamos edges=['top'] para que el contenido no se pegue a la cámara/notch
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <StatusBar barStyle="dark-content" />
+      
       {/* HEADER TÉCNICO */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <ChevronLeft color="#2e4a3b" size={28} />
         </TouchableOpacity>
         <View style={{ alignItems: 'center' }}>
@@ -85,7 +89,11 @@ export default function AddFormulaScreen({ navigation }) {
         <Beaker color="#2e4a3b" size={24} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <ScrollView 
+        contentContainerStyle={styles.container} 
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.card}>
           <Text style={styles.label}>Producto Técnico</Text>
           <TextInput 
@@ -158,6 +166,9 @@ export default function AddFormulaScreen({ navigation }) {
           <Save color="#fff" size={20} />
           <Text style={styles.saveButtonText}>Guardar en Maestro</Text>
         </TouchableOpacity>
+        
+        {/* Espacio extra para que el teclado no tape el botón de guardar */}
+        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -175,6 +186,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, 
     borderBottomColor: '#eee' 
   },
+  backBtn: { padding: 5 },
   headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#2e4a3b' },
   headerSub: { fontSize: 10, color: '#888', textTransform: 'uppercase' },
   container: { padding: 20 },

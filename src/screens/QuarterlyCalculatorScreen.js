@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, SafeAreaView, ActivityIndicator } from 'react-native';
+import { 
+  View, Text, StyleSheet, ScrollView, TextInput, 
+  TouchableOpacity, Alert, ActivityIndicator, StatusBar 
+} from 'react-native';
+// IMPORTANTE: Cambio a la librería recomendada para evitar warnings
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { ChevronLeft, Calculator, AlertCircle, CheckCircle2, ShoppingCart, Target } from 'lucide-react-native';
@@ -38,10 +43,8 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
       const calculation = [];
 
       for (const ing of selectedFormula.ingredients) {
-        // Cálculo de necesidad teórica basada en la fórmula técnica
         const amountNeeded = (Number(goal) * Number(ing.percentage)) / 100;
 
-        // Consulta de Stock Real en tiempo real
         const q = query(inventoryRef, where("itemName", "==", ing.name), where("stockType", "==", "MP"));
         const stockSnap = await getDocs(q);
         
@@ -74,9 +77,11 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <StatusBar barStyle="dark-content" />
+      
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <ChevronLeft color="#2e4a3b" size={28} />
         </TouchableOpacity>
         <View style={{alignItems: 'center'}}>
@@ -86,7 +91,11 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
         <Target color="#2e4a3b" size={24} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView 
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={styles.label}>1. Seleccionar Producto a Fabricar</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.formulaList}>
           {formulas.map(f => (
@@ -158,6 +167,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
             ))}
           </View>
         )}
+        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -173,70 +183,75 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     backgroundColor: '#fff', 
     borderBottomWidth: 1, 
-    borderBottomColor: '#e0e0e0' 
+    borderBottomColor: '#e0e0e0',
+    elevation: 4
   },
+  backBtn: { padding: 5 },
   headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#2e4a3b' },
   headerSub: { fontSize: 10, color: '#888', textTransform: 'uppercase' },
   container: { padding: 20 },
-  label: { fontSize: 13, fontWeight: 'bold', color: '#2e4a3b', marginBottom: 12, marginTop: 10 },
+  label: { fontSize: 12, fontWeight: '800', color: '#2e4a3b', marginBottom: 12, marginTop: 10, textTransform: 'uppercase', letterSpacing: 1 },
   formulaList: { flexDirection: 'row', marginBottom: 20 },
-  formulaChip: { paddingHorizontal: 15, paddingVertical: 10, backgroundColor: '#fff', borderRadius: 20, marginRight: 10, borderWidth: 1, borderColor: '#ddd' },
-  formulaChipActive: { backgroundColor: '#2e4a3b', borderColor: '#2e4a3b' },
-  formulaChipText: { color: '#666', fontWeight: 'bold', fontSize: 13 },
+  formulaChip: { paddingHorizontal: 18, paddingVertical: 12, backgroundColor: '#fff', borderRadius: 25, marginRight: 12, borderWidth: 1, borderColor: '#ddd', elevation: 2 },
+  formulaChipActive: { backgroundColor: '#2e4a3b', borderColor: '#2e4a3b', elevation: 5 },
+  formulaChipText: { color: '#666', fontWeight: '800', fontSize: 13 },
   formulaChipTextActive: { color: '#fff' },
   input: { 
     backgroundColor: '#fff', 
-    padding: 18, 
-    borderRadius: 15, 
+    padding: 20, 
+    borderRadius: 18, 
     borderWidth: 1, 
     borderColor: '#ddd', 
-    fontSize: 22, 
-    fontWeight: 'bold',
-    color: '#333'
+    fontSize: 24, 
+    fontWeight: '900',
+    color: '#333',
+    elevation: 2
   },
   calcBtn: { 
     backgroundColor: '#2e4a3b', 
     flexDirection: 'row', 
     justifyContent: 'center', 
     alignItems: 'center', 
-    padding: 18, 
-    borderRadius: 15, 
+    padding: 20, 
+    borderRadius: 18, 
     marginTop: 25, 
-    gap: 10,
-    elevation: 4
+    gap: 12,
+    elevation: 6
   },
-  calcBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  calcBtnText: { color: '#fff', fontSize: 16, fontWeight: '900', letterSpacing: 0.5 },
   resultsContainer: { marginTop: 30, paddingBottom: 50 },
-  resultsTitle: { fontSize: 16, fontWeight: 'bold', color: '#444', marginBottom: 15 },
+  resultsTitle: { fontSize: 14, fontWeight: '900', color: '#888', marginBottom: 15, textTransform: 'uppercase', letterSpacing: 1.5 },
   resultCard: { 
     backgroundColor: '#fff', 
-    padding: 16, 
-    borderRadius: 15, 
-    marginBottom: 12, 
+    padding: 18, 
+    borderRadius: 20, 
+    marginBottom: 15, 
     elevation: 3,
     shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 5
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)'
   },
   borderError: { borderLeftWidth: 6, borderLeftColor: '#d32f2f' },
   borderSuccess: { borderLeftWidth: 6, borderLeftColor: '#2e7d32' },
-  resultHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  itemName: { fontSize: 15, fontWeight: 'bold', color: '#333' },
-  dataRow: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#f9f9f9', padding: 10, borderRadius: 10 },
-  dataLabel: { fontSize: 9, color: '#888', textTransform: 'uppercase', fontWeight: 'bold' },
-  dataValue: { fontSize: 14, fontWeight: 'bold', marginTop: 2, color: '#444' },
+  resultHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
+  itemName: { fontSize: 15, fontWeight: '900', color: '#1A2E24' },
+  dataRow: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#F9FBF9', padding: 12, borderRadius: 12 },
+  dataLabel: { fontSize: 8, color: '#888', textTransform: 'uppercase', fontWeight: '900', letterSpacing: 0.5 },
+  dataValue: { fontSize: 14, fontWeight: '800', marginTop: 4, color: '#333' },
   buyWarning: { 
     flexDirection: 'row', 
     alignItems: 'center', 
-    gap: 6, 
-    marginTop: 12, 
-    backgroundColor: '#fff5f5', 
-    padding: 10, 
-    borderRadius: 8,
+    gap: 8, 
+    marginTop: 15, 
+    backgroundColor: '#FFF5F5', 
+    padding: 12, 
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#ffcdd2'
+    borderColor: '#FFCDD2'
   },
-  buyText: { fontSize: 11, color: '#d32f2f', fontWeight: 'bold' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loadingText: { marginTop: 10, color: '#2e4a3b', fontWeight: 'bold' }
+  buyText: { fontSize: 11, color: '#d32f2f', fontWeight: '900' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F9FBF9' },
+  loadingText: { marginTop: 15, color: '#2e4a3b', fontWeight: '900', letterSpacing: 1 }
 });

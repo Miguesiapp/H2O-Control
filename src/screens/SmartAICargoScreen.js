@@ -24,8 +24,11 @@ import {
   Trash2, 
   BrainCircuit, 
   Camera, 
-  ClipboardList // Corregido: ClipboardText no existe en lucide-react-native
+  ClipboardList 
 } from 'lucide-react-native';
+
+// LISTA DE EMPRESAS AUTORIZADAS
+const COMPANIES = ['Agrocube', 'BioAcker', 'Alianza', 'H2O', 'Waterday'];
 
 export default function SmartAICargoScreen({ navigation }) {
   const { width, height } = useWindowDimensions();
@@ -34,9 +37,9 @@ export default function SmartAICargoScreen({ navigation }) {
   const [rawText, setRawText] = useState('');
   const [loading, setLoading] = useState(false);
   const [processedData, setProcessedData] = useState(null);
+  const [selectedCompany, setSelectedCompany] = useState(null); // Para el selector manual
   const [cameraPermission, setCameraPermission] = useState(null);
 
-  // --- SOLICITUD DE PERMISOS ---
   useEffect(() => {
     (async () => {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -44,7 +47,6 @@ export default function SmartAICargoScreen({ navigation }) {
     })();
   }, []);
 
-  // --- PROCESAR TEXTO ---
   const handleAIProcess = async () => {
     if (!rawText.trim()) {
       Alert.alert("Atención", "Pega el detalle antes de continuar.");
@@ -55,6 +57,11 @@ export default function SmartAICargoScreen({ navigation }) {
     try {
       const result = await analyzeLogisticsText(rawText);
       setProcessedData(result);
+      
+      // Si la IA detecta la empresa, la pre-seleccionamos
+      if (result.company && COMPANIES.includes(result.company)) {
+        setSelectedCompany(result.company);
+      }
     } catch (error) {
       Alert.alert("Error de IA", "No se pudo interpretar el texto. Verifica tu conexión.");
     } finally {
@@ -62,12 +69,11 @@ export default function SmartAICargoScreen({ navigation }) {
     }
   };
 
-  // --- FOTO + STORAGE + IA ---
   const handleImagePick = async () => {
     if (!cameraPermission) {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert("Permisos", "Se requiere acceso a la cámara para escanear remitos.");
+        Alert.alert("Permisos", "Se requiere acceso a la cámara.");
         return;
       }
       setCameraPermission(true);
@@ -82,29 +88,31 @@ export default function SmartAICargoScreen({ navigation }) {
 
       if (!result.canceled && result.assets && result.assets[0].base64) {
         setLoading(true);
-        // 1. Guardar respaldo en Firebase Storage
         const fileName = `remitos/REMITO_${Date.now()}.jpg`;
         const storageRef = ref(storage, fileName);
         await uploadString(storageRef, result.assets[0].base64, 'base64');
         const downloadURL = await getDownloadURL(storageRef);
 
-        // 2. Analizar con la IA
         const data = await analyzeLogisticsImage(result.assets[0].base64);
-        
-        // 3. Vincular datos y URL
         setProcessedData({ ...(data || {}), evidenceUrl: downloadURL });
+
+        if (data.company && COMPANIES.includes(data.company)) {
+          setSelectedCompany(data.company);
+        }
       }
     } catch (error) {
-      console.error(error);
       Alert.alert("Error", "La IA no pudo procesar la imagen del remito.");
     } finally {
       setLoading(false);
     }
   };
 
-  // --- INYECCIÓN FINAL A FIRESTORE ---
   const confirmAndUpload = async () => {
     if (!processedData || !processedData.items) return;
+    if (!selectedCompany) {
+      Alert.alert("Atención", "Debes seleccionar una empresa de destino.");
+      return;
+    }
 
     try {
       setLoading(true);
@@ -119,7 +127,8 @@ export default function SmartAICargoScreen({ navigation }) {
       for (const item of processedData.items) {
         const qtyNormalized = parseFloat(String(item.qty || 0).replace(',', '.'));
 
-        await registerMovement(auth.currentUser.email, 'INGRESO_IA_INTELIGENTE', processedData.company || 'General', {
+        // Usamos selectedCompany (manual o IA) para el registro
+        await registerMovement(auth.currentUser.email, 'INGRESO_IA_INTELIGENTE', selectedCompany, {
           itemName: item.name?.toUpperCase() || 'DESCONOCIDO',
           quantity: qtyNormalized,
           stockType: item.type || 'MP', 
@@ -133,14 +142,14 @@ export default function SmartAICargoScreen({ navigation }) {
 
       Alert.alert(
         "Éxito", 
-        "Stock inyectado correctamente. ¿Imprimir etiquetas?",
+        `Stock inyectado en ${selectedCompany}. ¿Imprimir etiquetas?`,
         [
           { text: "Cerrar", onPress: () => navigation.goBack() },
           { 
             text: "IMPRIMIR QR", 
             onPress: () => navigation.navigate('QRGenerator', { 
               itemData: firstItemForQR,
-              companyName: processedData.company 
+              companyName: selectedCompany 
             }) 
           }
         ]
@@ -167,13 +176,29 @@ export default function SmartAICargoScreen({ navigation }) {
 
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         
+        {/* SELECTOR MANUAL DE EMPRESA */}
+        <Text style={styles.sectionLabel}>Empresa de Destino:</Text>
+        <View style={styles.companySelector}>
+          {COMPANIES.map((comp) => (
+            <TouchableOpacity 
+              key={comp} 
+              style={[styles.companyChip, selectedCompany === comp && styles.companyChipActive]}
+              onPress={() => setSelectedCompany(comp)}
+            >
+              <Text style={[styles.companyChipText, selectedCompany === comp && styles.companyChipTextActive]}>
+                {comp}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         <View style={[styles.modeSelector, isLandscape && { justifyContent: 'space-around' }]}>
           <TouchableOpacity style={styles.modeBtn} onPress={handleImagePick} disabled={loading}>
             <Camera color="#2e4a3b" size={32} />
             <Text style={styles.modeBtnText}>Cámara Remito</Text>
           </TouchableOpacity>
           <View style={styles.modeDivider} />
-          <TouchableOpacity style={styles.modeBtn} onPress={() => {setRawText(''); setProcessedData(null);}} disabled={loading}>
+          <TouchableOpacity style={styles.modeBtn} onPress={() => {setRawText(''); setProcessedData(null); setSelectedCompany(null);}} disabled={loading}>
             <ClipboardList color="#2e4a3b" size={32} /> 
             <Text style={styles.modeBtnText}>Limpiar Todo</Text>
           </TouchableOpacity>
@@ -207,7 +232,7 @@ export default function SmartAICargoScreen({ navigation }) {
             <View style={styles.resultHeader}>
               <Text style={styles.resultTitle}>Detección de IA</Text>
               <View style={styles.companyBadge}>
-                <Text style={styles.companyBadgeText}>{processedData?.company || 'Gral'}</Text>
+                <Text style={styles.companyBadgeText}>{selectedCompany || 'Pendiente'}</Text>
               </View>
             </View>
 
@@ -228,7 +253,7 @@ export default function SmartAICargoScreen({ navigation }) {
 
             <TouchableOpacity style={styles.confirmBtn} onPress={confirmAndUpload}>
               <Send color="#fff" size={20} />
-              <Text style={styles.confirmBtnText}>Confirmar e Inyectar</Text>
+              <Text style={styles.confirmBtnText}>Confirmar e Inyectar en {selectedCompany || '...'}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.cancelBtn} onPress={() => setProcessedData(null)}>
@@ -246,65 +271,43 @@ export default function SmartAICargoScreen({ navigation }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f5f7f5' },
   header: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-    backgroundColor: '#2e4a3b', 
-    borderBottomLeftRadius: 25, 
-    borderBottomRightRadius: 25 
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
+    paddingHorizontal: 20, paddingVertical: 18, backgroundColor: '#2e4a3b', 
+    borderBottomLeftRadius: 25, borderBottomRightRadius: 25 
   },
   headerTitle: { fontSize: 20, fontWeight: '900', color: '#fff' },
   headerSub: { fontSize: 10, color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: 1.5 },
   backBtn: { padding: 5 },
   container: { padding: 20 },
+  sectionLabel: { fontSize: 12, fontWeight: '800', color: '#666', marginBottom: 10, marginLeft: 5 },
+  companySelector: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
+  companyChip: { 
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, 
+    backgroundColor: '#fff', borderWidth: 1, borderColor: '#ddd' 
+  },
+  companyChipActive: { backgroundColor: '#2e4a3b', borderColor: '#2e4a3b' },
+  companyChipText: { fontSize: 11, fontWeight: '700', color: '#666' },
+  companyChipTextActive: { color: '#fff' },
   modeSelector: { 
-    flexDirection: 'row', 
-    backgroundColor: '#fff', 
-    borderRadius: 20, 
-    padding: 20, 
-    marginBottom: 20,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    alignItems: 'center'
+    flexDirection: 'row', backgroundColor: '#fff', borderRadius: 20, padding: 20, 
+    marginBottom: 20, elevation: 4, shadowColor: '#000', shadowOpacity: 0.1, 
+    shadowRadius: 10, alignItems: 'center'
   },
   modeBtn: { flex: 1, alignItems: 'center', gap: 6 },
   modeBtnText: { fontSize: 13, fontWeight: '800', color: '#2e4a3b' },
   modeDivider: { width: 1, height: '70%', backgroundColor: '#eee' },
   textArea: { 
-    backgroundColor: '#fff', 
-    padding: 18, 
-    borderRadius: 18, 
-    height: 140, 
-    textAlignVertical: 'top', 
-    fontSize: 16, 
-    borderWidth: 1, 
-    borderColor: '#e0e0e0',
-    color: '#333'
+    backgroundColor: '#fff', padding: 18, borderRadius: 18, height: 140, 
+    textAlignVertical: 'top', fontSize: 16, borderWidth: 1, borderColor: '#e0e0e0', color: '#333'
   },
   processBtn: { 
-    backgroundColor: '#2e4a3b', 
-    flexDirection: 'row', 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    padding: 18, 
-    borderRadius: 18, 
-    marginTop: 15, 
-    gap: 12, 
-    elevation: 5 
+    backgroundColor: '#2e4a3b', flexDirection: 'row', justifyContent: 'center', 
+    alignItems: 'center', padding: 18, borderRadius: 18, marginTop: 15, gap: 12, elevation: 5 
   },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '900' },
   resultCard: { 
-    backgroundColor: '#fff', 
-    padding: 22, 
-    borderRadius: 20, 
-    marginTop: 25, 
-    elevation: 8, 
-    borderTopWidth: 6, 
-    borderTopColor: '#2e7d32' 
+    backgroundColor: '#fff', padding: 22, borderRadius: 20, marginTop: 25, 
+    elevation: 8, borderTopWidth: 6, borderTopColor: '#2e7d32' 
   },
   resultHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   resultTitle: { fontSize: 18, fontWeight: '800', color: '#222' },
@@ -316,14 +319,8 @@ const styles = StyleSheet.create({
   itemMeta: { fontSize: 12, color: '#777', marginTop: 3 },
   itemQty: { fontWeight: '900', color: '#2e4a3b', fontSize: 18 },
   confirmBtn: { 
-    backgroundColor: '#2e7d32', 
-    flexDirection: 'row', 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    padding: 18, 
-    borderRadius: 15, 
-    marginTop: 15, 
-    gap: 10 
+    backgroundColor: '#2e7d32', flexDirection: 'row', justifyContent: 'center', 
+    alignItems: 'center', padding: 18, borderRadius: 15, marginTop: 15, gap: 10 
   },
   confirmBtnText: { color: '#fff', fontWeight: '900', fontSize: 17 },
   cancelBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 18, gap: 6 },

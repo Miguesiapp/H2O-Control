@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, ActivityIndicator, StatusBar } from 'react-native';
+// IMPORTANTE: Cambio de librería para el SafeAreaView
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
-// Corregido: El nombre de la librería es lucide-react-native
 import { ChevronLeft, Plus, Calculator, Beaker, Search, AlertTriangle } from 'lucide-react-native';
 
 export default function FormulationScreen({ navigation }) {
@@ -70,13 +71,16 @@ export default function FormulationScreen({ navigation }) {
   );
 
   return (
-    <SafeAreaView style={styles.safe}>
+    // Usamos edges top y bottom para proteger el notch y la zona de gestos de iOS/Android
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <StatusBar barStyle="dark-content" />
+      
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <ChevronLeft color="#2e4a3b" size={28} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Maestro de Fórmulas</Text>
-        <TouchableOpacity onPress={() => navigation.navigate('QuarterlyCalculator')}>
+        <TouchableOpacity onPress={() => navigation.navigate('QuarterlyCalculator')} style={styles.calcBtn}>
           <Calculator color="#2e4a3b" size={24} />
         </TouchableOpacity>
       </View>
@@ -133,6 +137,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0'
   },
+  backBtn: { padding: 5 },
+  calcBtn: { padding: 5 },
   headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#2e4a3b' },
   searchContainer: { paddingHorizontal: 20, paddingTop: 15 },
   searchBar: { 

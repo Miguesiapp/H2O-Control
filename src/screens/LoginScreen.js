@@ -1,8 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, SafeAreaView, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
-import { auth, db } from '../config/firebase'; // Importamos db
+import { 
+  View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, 
+  StatusBar, KeyboardAvoidingView, Platform, ActivityIndicator 
+} from 'react-native';
+// IMPORTANTE: Cambio a la librería recomendada para evitar el warning de deprecación
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { auth, db } from '../config/firebase'; 
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { getDoc, doc } from 'firebase/firestore'; // Importamos para verificar el perfil
+import { getDoc, doc } from 'firebase/firestore'; 
 import { Droplets, Lock, Mail } from 'lucide-react-native';
 
 export default function LoginScreen({ navigation }) {
@@ -19,22 +24,15 @@ export default function LoginScreen({ navigation }) {
     setLoading(true);
 
     try {
-      // 1. Intento de Login en Auth
       const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
       const user = userCredential.user;
 
-      // 2. Verificación de existencia en Firestore
-      // Esto asegura que el usuario tenga un perfil creado y activo
       const userDoc = await getDoc(doc(db, "Users", user.uid));
 
       if (userDoc.exists()) {
-        const userData = userDoc.data();
-        console.log("Usuario verificado:", userData.name, "Rol:", userData.role);
-        
         setLoading(false);
         navigation.replace('Home');
       } else {
-        // Si el usuario existe en Auth pero no en la DB
         setLoading(false);
         Alert.alert("Error de Perfil", "Tu cuenta no tiene un perfil asociado. Contacta al administrador.");
       }
@@ -52,7 +50,10 @@ export default function LoginScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    // Usamos edges para que el color verde #2e4a3b cubra toda la pantalla (notch incluido)
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom', 'left', 'right']}>
+      <StatusBar barStyle="light-content" />
+      
       <KeyboardAvoidingView 
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.container}
@@ -109,6 +110,7 @@ export default function LoginScreen({ navigation }) {
         <TouchableOpacity 
           onPress={() => navigation.navigate('Register')}
           disabled={loading}
+          style={styles.linkContainer}
         >
           <Text style={styles.linkText}>¿No tienes cuenta? <Text style={styles.linkBold}>Solicitar acceso</Text></Text>
         </TouchableOpacity>
@@ -117,7 +119,6 @@ export default function LoginScreen({ navigation }) {
   );
 }
 
-// ... Los estilos se mantienen igual porque están perfectos
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#2e4a3b' },
   container: { flex: 1, justifyContent: 'center', padding: 25 },
@@ -136,7 +137,7 @@ const styles = StyleSheet.create({
   formCard: { 
     backgroundColor: '#fff', 
     padding: 25, 
-    borderRadius: 20, 
+    borderRadius: 24, 
     elevation: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 5 },
@@ -147,7 +148,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', 
     alignItems: 'center', 
     backgroundColor: '#f5f7f5', 
-    borderRadius: 12, 
+    borderRadius: 15, 
     marginBottom: 15, 
     paddingHorizontal: 15,
     borderWidth: 1,
@@ -158,14 +159,15 @@ const styles = StyleSheet.create({
   button: { 
     backgroundColor: '#2e4a3b', 
     padding: 18, 
-    borderRadius: 12, 
+    borderRadius: 15, 
     alignItems: 'center',
     marginTop: 10,
     elevation: 3,
-    minHeight: 55,
+    minHeight: 58,
     justifyContent: 'center'
   },
   buttonText: { color: 'white', fontWeight: 'bold', fontSize: 14, letterSpacing: 1 },
-  linkText: { textAlign: 'center', marginTop: 30, color: 'rgba(255,255,255,0.7)', fontSize: 14 },
+  linkContainer: { paddingVertical: 20 },
+  linkText: { textAlign: 'center', color: 'rgba(255,255,255,0.7)', fontSize: 14 },
   linkBold: { color: '#fff', fontWeight: 'bold' }
 });

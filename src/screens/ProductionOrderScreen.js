@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, SafeAreaView } from 'react-native';
+import { 
+  View, Text, StyleSheet, ScrollView, TextInput, 
+  TouchableOpacity, Alert, StatusBar 
+} from 'react-native';
+// IMPORTANTE: Cambio a la librería recomendada por Expo
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
-import { doc, collection, writeBatch, serverTimestamp, increment } from 'firebase/firestore';
+import { doc, collection, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { registerMovement } from '../services/logisticsService';
 import { ChevronLeft, Play, Beaker } from 'lucide-react-native';
 
@@ -29,11 +34,6 @@ export default function ProductionOrderScreen({ route, navigation }) {
       const batchId = generateDateBatch();
       const qty = Number(targetQuantity);
       
-      // 1. Iniciamos un proceso de escritura por lotes (Atomic Batch)
-      // Esto asegura que si una parte falla, nada se guarde (integridad de datos)
-      const batch = writeBatch(db);
-
-      // 2. Datos para el nuevo Producto Terminado a Granel (PT)
       const productionData = {
         itemName: productName.toUpperCase(),
         quantity: qty,
@@ -45,8 +45,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
         lastUpdate: serverTimestamp()
       };
 
-      // 3. REGISTRO DE MOVIMIENTO Y ACTUALIZACIÓN DE STOCK
-      // Aquí el sistema registra la producción y prepara el PT para el inventario
+      // REGISTRO DE MOVIMIENTO Y ACTUALIZACIÓN DE STOCK
       await registerMovement(
         auth.currentUser.email,
         'ORDEN_PRODUCCION_INICIO',
@@ -66,9 +65,11 @@ export default function ProductionOrderScreen({ route, navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <StatusBar barStyle="dark-content" />
+      
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <ChevronLeft color="#2e4a3b" size={28} />
         </TouchableOpacity>
         <View style={{alignItems: 'center'}}>
@@ -78,7 +79,11 @@ export default function ProductionOrderScreen({ route, navigation }) {
         <Beaker color="#2e4a3b" size={24} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView 
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.card}>
           <Text style={styles.label}>Producto a Formular</Text>
           <TextInput 
@@ -112,6 +117,9 @@ export default function ProductionOrderScreen({ route, navigation }) {
           <Play color="#fff" size={20} fill="#fff" />
           <Text style={styles.mainButtonText}>Iniciar Formulación</Text>
         </TouchableOpacity>
+        
+        {/* Espacio extra al final del scroll */}
+        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -129,23 +137,26 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, 
     borderBottomColor: '#eee' 
   },
+  backBtn: { padding: 5 },
   headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#2e4a3b' },
   headerSub: { fontSize: 10, color: '#888', textTransform: 'uppercase' },
   container: { padding: 20 },
   card: { 
     backgroundColor: '#fff', 
     padding: 20, 
-    borderRadius: 15, 
+    borderRadius: 20, // Bordes unificados con el estilo premium
     elevation: 4, 
     shadowColor: '#000', 
     shadowOpacity: 0.1, 
-    shadowRadius: 10 
+    shadowRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)'
   },
-  label: { fontSize: 13, fontWeight: 'bold', color: '#2e4a3b', marginBottom: 8, marginTop: 5 },
+  label: { fontSize: 11, fontWeight: 'bold', color: '#2e4a3b', marginBottom: 8, marginTop: 5, textTransform: 'uppercase' },
   input: { 
     backgroundColor: '#f9f9f9', 
     padding: 15, 
-    borderRadius: 10, 
+    borderRadius: 12, 
     borderWidth: 1, 
     borderColor: '#eee', 
     fontSize: 16,
@@ -154,15 +165,15 @@ const styles = StyleSheet.create({
   },
   batchInfo: {
     backgroundColor: '#e8f5e9',
-    padding: 15,
-    borderRadius: 12,
+    padding: 20,
+    borderRadius: 15,
     marginTop: 20,
     borderWidth: 1,
     borderColor: '#c8e6c9'
   },
-  batchTitle: { fontSize: 11, fontWeight: 'bold', color: '#2e7d32', textTransform: 'uppercase' },
-  batchValue: { fontSize: 16, fontWeight: 'bold', color: '#2e4a3b', marginVertical: 5 },
-  infoText: { color: '#666', fontSize: 11, fontStyle: 'italic' },
+  batchTitle: { fontSize: 10, fontWeight: 'bold', color: '#2e7d32', textTransform: 'uppercase', letterSpacing: 1 },
+  batchValue: { fontSize: 18, fontWeight: 'bold', color: '#2e4a3b', marginVertical: 5 },
+  infoText: { color: '#666', fontSize: 11, fontStyle: 'italic', lineHeight: 16 },
   mainButton: { 
     backgroundColor: '#2e4a3b', 
     flexDirection: 'row', 
