@@ -3,7 +3,7 @@
     "name": "H2O-Control-Native",
     "slug": "H2O-Control-Native",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,

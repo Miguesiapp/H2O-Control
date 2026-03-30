@@ -5,10 +5,11 @@ import {
   StyleSheet, 
   TouchableOpacity, 
   Alert, 
-  SafeAreaView, 
   ScrollView, 
-  ActivityIndicator 
+  ActivityIndicator,
+  StatusBar
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context'; // Importación correcta
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { db } from '../config/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
@@ -29,16 +30,14 @@ export default function TraceabilityScannerScreen({ navigation }) {
   const [itemData, setItemData] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // Forzamos la solicitud de permiso apenas se monta el componente
   useEffect(() => {
     if (!permission || !permission.granted) {
       requestPermission();
     }
   }, []);
 
-  // Manejador del escaneo
   const handleBarCodeScanned = async ({ data }) => {
-    if (scanned || loading) return; // Evita escaneos múltiples accidentales
+    if (scanned || loading) return; 
     
     setScanned(true);
     setLoading(true);
@@ -52,46 +51,35 @@ export default function TraceabilityScannerScreen({ navigation }) {
       } else {
         Alert.alert(
           "No Encontrado", 
-          `El código QR "${data}" no está registrado en el inventario.`,
+          `El lote "${data}" no existe en el sistema.`,
           [{ text: "Reintentar", onPress: () => setScanned(false) }]
         );
       }
     } catch (error) {
-      Alert.alert("Error", "No se pudo conectar con la base de datos.");
+      Alert.alert("Error", "Problema de conexión con la base de datos.");
       setScanned(false);
     } finally {
       setLoading(false);
     }
   };
 
-  // 1. Estado de carga inicial de permisos
-  if (!permission) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#2e4a3b" />
-        <Text style={styles.loadingText}>Iniciando cámara...</Text>
-      </View>
-    );
-  }
+  if (!permission) return <View style={styles.center}><ActivityIndicator size="large" color="#2e4a3b" /></View>;
 
-  // 2. Estado si el permiso fue denegado
   if (!permission.granted) {
     return (
       <SafeAreaView style={styles.center}>
         <Camera color="#ccc" size={60} style={{ marginBottom: 20 }} />
-        <Text style={styles.permissionText}>Se requiere acceso a la cámara para auditar lotes.</Text>
+        <Text style={styles.permissionText}>Acceso denegado a la cámara.</Text>
         <TouchableOpacity style={styles.btn} onPress={requestPermission}>
           <Text style={styles.btnText}>Habilitar Cámara</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 20 }}>
-          <Text style={{ color: '#888' }}>Volver atrás</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <StatusBar barStyle="dark-content" />
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <ChevronLeft color="#2e4a3b" size={28} />
@@ -102,29 +90,31 @@ export default function TraceabilityScannerScreen({ navigation }) {
 
       {!itemData ? (
         <View style={styles.scannerWrapper}>
+          {/* LA CÁMARA VA SOLA */}
           <CameraView
-            style={styles.scanner}
+            style={StyleSheet.absoluteFillObject}
             onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
             barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-          >
-            <View style={styles.overlay}>
+          />
+          
+          {/* EL VISOR VA AFUERA, FLOTANDO ENCIMA */}
+          <View style={styles.overlay}>
+            <View style={styles.unfocusedContainer} />
+            <View style={styles.focusedRow}>
               <View style={styles.unfocusedContainer} />
-              <View style={styles.focusedRow}>
-                <View style={styles.unfocusedContainer} />
-                <View style={styles.focusedContainer}>
-                  <View style={styles.cornerTopLeft} />
-                  <View style={styles.cornerTopRight} />
-                  <View style={styles.cornerBottomLeft} />
-                  <View style={styles.cornerBottomRight} />
-                  {loading && <ActivityIndicator size="large" color="#fff" />}
-                </View>
-                <View style={styles.unfocusedContainer} />
+              <View style={styles.focusedContainer}>
+                <View style={styles.cornerTopLeft} />
+                <View style={styles.cornerTopRight} />
+                <View style={styles.cornerBottomLeft} />
+                <View style={styles.cornerBottomRight} />
+                {loading && <ActivityIndicator size="large" color="#fff" />}
               </View>
-              <View style={styles.unfocusedContainer}>
-                <Text style={styles.overlayText}>Centra el QR del bidón aquí</Text>
-              </View>
+              <View style={styles.unfocusedContainer} />
             </View>
-          </CameraView>
+            <View style={styles.unfocusedContainer}>
+              <Text style={styles.overlayText}>Centra el QR del bidón aquí</Text>
+            </View>
+          </View>
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.resultContainer}>
@@ -138,14 +128,13 @@ export default function TraceabilityScannerScreen({ navigation }) {
           <View style={styles.infoCard}>
             <Text style={styles.label}>Producto</Text>
             <Text style={styles.value}>{itemData.itemName}</Text>
-            
             <View style={styles.row}>
               <View style={styles.col}>
                 <Text style={styles.label}>Lote Interno</Text>
                 <Text style={styles.subValue}>{itemData.batchInternal}</Text>
               </View>
               <View style={styles.col}>
-                <Text style={styles.label}>Cantidad Actual</Text>
+                <Text style={styles.label}>Stock Actual</Text>
                 <Text style={styles.subValue}>{itemData.quantity} {itemData.unit}</Text>
               </View>
             </View>
@@ -154,17 +143,11 @@ export default function TraceabilityScannerScreen({ navigation }) {
           <View style={styles.detailsList}>
             <View style={styles.detailItem}>
               <Calendar color="#888" size={18} />
-              <Text style={styles.detailText}>
-                Ingreso: {itemData.createdAt?.toDate ? itemData.createdAt.toDate().toLocaleDateString() : 'S/D'}
-              </Text>
+              <Text style={styles.detailText}>Empresa: {itemData.company}</Text>
             </View>
             <View style={styles.detailItem}>
               <Beaker color="#888" size={18} />
               <Text style={styles.detailText}>pH Medido: {itemData.measuredPh || 'Pendiente'}</Text>
-            </View>
-            <View style={styles.detailItem}>
-              <User color="#888" size={18} />
-              <Text style={styles.detailText}>Empresa: {itemData.company}</Text>
             </View>
           </View>
 
@@ -186,25 +169,28 @@ const styles = StyleSheet.create({
     alignItems: 'center', 
     padding: 20, 
     backgroundColor: '#fff',
-    zIndex: 10
+    elevation: 4,
+    shadowOpacity: 0.1
   },
   headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#2e4a3b' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 30, backgroundColor: '#fff' },
   permissionText: { textAlign: 'center', color: '#666', marginBottom: 20, fontSize: 16 },
-  loadingText: { marginTop: 10, color: '#2e4a3b' },
   btn: { backgroundColor: '#2e4a3b', paddingVertical: 15, paddingHorizontal: 30, borderRadius: 12 },
   btnText: { color: '#fff', fontWeight: 'bold' },
-  scannerWrapper: { flex: 1, overflow: 'hidden' },
-  scanner: { flex: 1 },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+  scannerWrapper: { flex: 1, position: 'relative' }, // Crucial para el overlay
+  overlay: { 
+    ...StyleSheet.absoluteFillObject, // Cubre toda la cámara
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center'
+  },
   unfocusedContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  focusedRow: { flexDirection: 'row', height: 220 },
-  focusedContainer: { width: 220, height: 220, position: 'relative', justifyContent: 'center', alignItems: 'center' },
-  overlayText: { color: '#fff', marginTop: 20, fontWeight: 'bold', backgroundColor: 'rgba(0,0,0,0.5)', padding: 10, borderRadius: 5 },
+  focusedRow: { flexDirection: 'row', height: 240 },
+  focusedContainer: { width: 240, height: 240, position: 'relative', justifyContent: 'center', alignItems: 'center' },
+  overlayText: { color: '#fff', marginTop: 20, fontWeight: 'bold', backgroundColor: 'rgba(0,0,0,0.6)', padding: 12, borderRadius: 8 },
   resultContainer: { padding: 20 },
   statusBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 15, borderRadius: 12, marginBottom: 20 },
   statusText: { fontWeight: 'bold', fontSize: 16 },
-  infoCard: { backgroundColor: '#fff', padding: 20, borderRadius: 15, elevation: 3, shadowOpacity: 0.1, shadowRadius: 10 },
+  infoCard: { backgroundColor: '#fff', padding: 20, borderRadius: 15, elevation: 3 },
   label: { fontSize: 10, color: '#aaa', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: 5 },
   value: { fontSize: 22, fontWeight: 'bold', color: '#333', marginBottom: 15 },
   row: { flexDirection: 'row', justifyContent: 'space-between' },

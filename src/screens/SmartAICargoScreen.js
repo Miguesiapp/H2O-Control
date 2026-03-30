@@ -8,8 +8,8 @@ import {
   TouchableOpacity, 
   Alert, 
   SafeAreaView, 
-  ActivityIndicator, 
-  Platform 
+  ActivityIndicator,
+  useWindowDimensions 
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker'; 
 import { db, auth, storage } from '../config/firebase';
@@ -24,24 +24,23 @@ import {
   Trash2, 
   BrainCircuit, 
   Camera, 
-  ClipboardText 
+  ClipboardList // Corregido: ClipboardText no existe en lucide-react-native
 } from 'lucide-react-native';
 
 export default function SmartAICargoScreen({ navigation }) {
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
+
   const [rawText, setRawText] = useState('');
   const [loading, setLoading] = useState(false);
   const [processedData, setProcessedData] = useState(null);
   const [cameraPermission, setCameraPermission] = useState(null);
 
-  // --- SOLICITUD DE PERMISOS AL INICIAR ---
+  // --- SOLICITUD DE PERMISOS ---
   useEffect(() => {
     (async () => {
-      try {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        setCameraPermission(status === 'granted');
-      } catch (e) {
-        console.log("Error al pedir permisos:", e);
-      }
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      setCameraPermission(status === 'granted');
     })();
   }, []);
 
@@ -57,7 +56,7 @@ export default function SmartAICargoScreen({ navigation }) {
       const result = await analyzeLogisticsText(rawText);
       setProcessedData(result);
     } catch (error) {
-      Alert.alert("Error de IA", "No se pudo interpretar el texto.");
+      Alert.alert("Error de IA", "No se pudo interpretar el texto. Verifica tu conexión.");
     } finally {
       setLoading(false);
     }
@@ -67,43 +66,43 @@ export default function SmartAICargoScreen({ navigation }) {
   const handleImagePick = async () => {
     if (!cameraPermission) {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      setCameraPermission(status === 'granted');
       if (status !== 'granted') {
-        Alert.alert("Permisos", "Se requiere acceso a la cámara.");
+        Alert.alert("Permisos", "Se requiere acceso a la cámara para escanear remitos.");
         return;
       }
+      setCameraPermission(true);
     }
 
     try {
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
-        quality: 0.4, // Bajamos un poco la calidad para que la PWA no pese tanto al subir
+        quality: 0.5,
         base64: true,
       });
 
       if (!result.canceled && result.assets && result.assets[0].base64) {
         setLoading(true);
-        // 1. Guardar respaldo en Storage
+        // 1. Guardar respaldo en Firebase Storage
         const fileName = `remitos/REMITO_${Date.now()}.jpg`;
         const storageRef = ref(storage, fileName);
         await uploadString(storageRef, result.assets[0].base64, 'base64');
         const downloadURL = await getDownloadURL(storageRef);
 
-        // 2. Analizar con Gemini
+        // 2. Analizar con la IA
         const data = await analyzeLogisticsImage(result.assets[0].base64);
         
-        // 3. Vincular URL (Usamos spread para no perder datos si data viene incompleto)
+        // 3. Vincular datos y URL
         setProcessedData({ ...(data || {}), evidenceUrl: downloadURL });
       }
     } catch (error) {
       console.error(error);
-      Alert.alert("Error", "La IA no pudo procesar la imagen.");
+      Alert.alert("Error", "La IA no pudo procesar la imagen del remito.");
     } finally {
       setLoading(false);
     }
   };
 
-  // --- INYECCIÓN FINAL ---
+  // --- INYECCIÓN FINAL A FIRESTORE ---
   const confirmAndUpload = async () => {
     if (!processedData || !processedData.items) return;
 
@@ -111,7 +110,6 @@ export default function SmartAICargoScreen({ navigation }) {
       setLoading(true);
       const batchInternal = "IA-" + new Date().getTime().toString().slice(-6);
 
-      // Datos para el QR (Primer item)
       const firstItemForQR = processedData.items[0] ? {
         itemName: processedData.items[0].name?.toUpperCase(),
         batchInternal: batchInternal,
@@ -134,10 +132,10 @@ export default function SmartAICargoScreen({ navigation }) {
       }
 
       Alert.alert(
-        "Proceso Exitoso", 
-        "¿Deseas imprimir las etiquetas QR ahora?",
+        "Éxito", 
+        "Stock inyectado correctamente. ¿Imprimir etiquetas?",
         [
-          { text: "Ahora no", onPress: () => navigation.goBack() },
+          { text: "Cerrar", onPress: () => navigation.goBack() },
           { 
             text: "IMPRIMIR QR", 
             onPress: () => navigation.navigate('QRGenerator', { 
@@ -148,7 +146,7 @@ export default function SmartAICargoScreen({ navigation }) {
         ]
       );
     } catch (error) {
-      Alert.alert("Error", "Error al inyectar datos en Firestore.");
+      Alert.alert("Error", "No se pudo actualizar el inventario.");
     } finally {
       setLoading(false);
     }
@@ -162,29 +160,29 @@ export default function SmartAICargoScreen({ navigation }) {
         </TouchableOpacity>
         <View style={{alignItems: 'center'}}>
             <Text style={styles.headerTitle}>Carga Inteligente</Text>
-            <Text style={styles.headerSub}>H2O Control Neural</Text>
+            <Text style={styles.headerSub}>H2O Neural v2.0</Text>
         </View>
         <BrainCircuit color="#fff" size={24} />
       </View>
 
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         
-        <View style={styles.modeSelector}>
+        <View style={[styles.modeSelector, isLandscape && { justifyContent: 'space-around' }]}>
           <TouchableOpacity style={styles.modeBtn} onPress={handleImagePick} disabled={loading}>
-            <Camera color="#2e4a3b" size={30} />
-            <Text style={styles.modeBtnText}>Foto Remito</Text>
+            <Camera color="#2e4a3b" size={32} />
+            <Text style={styles.modeBtnText}>Cámara Remito</Text>
           </TouchableOpacity>
           <View style={styles.modeDivider} />
           <TouchableOpacity style={styles.modeBtn} onPress={() => {setRawText(''); setProcessedData(null);}} disabled={loading}>
-            <ClipboardText color="#2e4a3b" size={30} />
-            <Text style={styles.modeBtnText}>Limpiar</Text>
+            <ClipboardList color="#2e4a3b" size={32} /> 
+            <Text style={styles.modeBtnText}>Limpiar Todo</Text>
           </TouchableOpacity>
         </View>
 
         <TextInput
-          style={styles.textArea}
+          style={[styles.textArea, isLandscape && { height: 80 }]}
           multiline
-          placeholder="Pega aquí el detalle del remito o WhatsApp..."
+          placeholder="Pega aquí el texto de logística..."
           placeholderTextColor="#999"
           value={rawText}
           onChangeText={setRawText}
@@ -199,7 +197,7 @@ export default function SmartAICargoScreen({ navigation }) {
           {loading ? <ActivityIndicator color="#fff" /> : (
             <>
               <Sparkles color="#fff" size={20} />
-              <Text style={styles.btnText}>Analizar con IA Gemini</Text>
+              <Text style={styles.btnText}>Analizar con IA</Text>
             </>
           )}
         </TouchableOpacity>
@@ -214,7 +212,7 @@ export default function SmartAICargoScreen({ navigation }) {
             </View>
 
             {processedData?.evidenceUrl && (
-              <Text style={styles.evidenceLink}>📷 Foto de respaldo vinculada</Text>
+              <Text style={styles.evidenceLink}>📷 Evidencia fotográfica vinculada</Text>
             )}
 
             {processedData?.items?.map((item, index) => (
@@ -222,7 +220,7 @@ export default function SmartAICargoScreen({ navigation }) {
                 <CheckCircle2 color="#2e7d32" size={18} />
                 <View style={{ flex: 1 }}>
                     <Text style={styles.itemName}>{item?.name || 'Item sin nombre'}</Text>
-                    <Text style={styles.itemMeta}>Lote: {item?.lote || 'S/D'} • Vence: {item?.vencimiento || 'S/D'}</Text>
+                    <Text style={styles.itemMeta}>Lote: {item?.lote || 'N/A'} • Vence: {item?.vencimiento || 'N/A'}</Text>
                 </View>
                 <Text style={styles.itemQty}>{item?.qty} {item?.unit || 'uds'}</Text>
               </View>
@@ -230,7 +228,7 @@ export default function SmartAICargoScreen({ navigation }) {
 
             <TouchableOpacity style={styles.confirmBtn} onPress={confirmAndUpload}>
               <Send color="#fff" size={20} />
-              <Text style={styles.confirmBtnText}>Confirmar e Inyectar Stock</Text>
+              <Text style={styles.confirmBtnText}>Confirmar e Inyectar</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.cancelBtn} onPress={() => setProcessedData(null)}>
@@ -239,49 +237,52 @@ export default function SmartAICargoScreen({ navigation }) {
             </TouchableOpacity>
           </View>
         )}
-        <View style={{ height: 50 }} />
+        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#f0f2f0' },
+  safe: { flex: 1, backgroundColor: '#f5f7f5' },
   header: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'center', 
     paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingVertical: 18,
     backgroundColor: '#2e4a3b', 
-    borderBottomLeftRadius: 20, 
-    borderBottomRightRadius: 20 
+    borderBottomLeftRadius: 25, 
+    borderBottomRightRadius: 25 
   },
-  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#fff' },
-  headerSub: { fontSize: 10, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 1 },
+  headerTitle: { fontSize: 20, fontWeight: '900', color: '#fff' },
+  headerSub: { fontSize: 10, color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: 1.5 },
   backBtn: { padding: 5 },
   container: { padding: 20 },
   modeSelector: { 
     flexDirection: 'row', 
     backgroundColor: '#fff', 
-    borderRadius: 15, 
-    padding: 15, 
+    borderRadius: 20, 
+    padding: 20, 
     marginBottom: 20,
-    elevation: 2,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
     alignItems: 'center'
   },
-  modeBtn: { flex: 1, alignItems: 'center', gap: 5 },
-  modeBtnText: { fontSize: 12, fontWeight: 'bold', color: '#2e4a3b' },
-  modeDivider: { width: 1, height: '80%', backgroundColor: '#eee' },
+  modeBtn: { flex: 1, alignItems: 'center', gap: 6 },
+  modeBtnText: { fontSize: 13, fontWeight: '800', color: '#2e4a3b' },
+  modeDivider: { width: 1, height: '70%', backgroundColor: '#eee' },
   textArea: { 
     backgroundColor: '#fff', 
-    padding: 20, 
-    borderRadius: 15, 
-    height: 120, 
+    padding: 18, 
+    borderRadius: 18, 
+    height: 140, 
     textAlignVertical: 'top', 
     fontSize: 16, 
     borderWidth: 1, 
-    borderColor: '#ddd',
+    borderColor: '#e0e0e0',
     color: '#333'
   },
   processBtn: { 
@@ -290,41 +291,41 @@ const styles = StyleSheet.create({
     justifyContent: 'center', 
     alignItems: 'center', 
     padding: 18, 
-    borderRadius: 15, 
+    borderRadius: 18, 
     marginTop: 15, 
-    gap: 10, 
-    elevation: 3 
+    gap: 12, 
+    elevation: 5 
   },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  btnText: { color: '#fff', fontSize: 16, fontWeight: '900' },
   resultCard: { 
     backgroundColor: '#fff', 
-    padding: 20, 
-    borderRadius: 15, 
+    padding: 22, 
+    borderRadius: 20, 
     marginTop: 25, 
-    elevation: 5, 
-    borderTopWidth: 5, 
+    elevation: 8, 
+    borderTopWidth: 6, 
     borderTopColor: '#2e7d32' 
   },
   resultHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  resultTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
-  companyBadge: { backgroundColor: '#f1f8f4', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#c8e6c9' },
-  companyBadgeText: { color: '#2e7d32', fontSize: 11, fontWeight: 'bold' },
-  evidenceLink: { fontSize: 11, color: '#2e7d32', fontWeight: 'bold', marginBottom: 15, fontStyle: 'italic' },
-  itemRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 15, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  itemName: { flex: 1, fontSize: 14, color: '#333', fontWeight: 'bold' },
-  itemMeta: { fontSize: 11, color: '#666', marginTop: 2 },
-  itemQty: { fontWeight: 'bold', color: '#2e4a3b', fontSize: 16 },
+  resultTitle: { fontSize: 18, fontWeight: '800', color: '#222' },
+  companyBadge: { backgroundColor: '#e8f5e9', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: '#c8e6c9' },
+  companyBadgeText: { color: '#2e7d32', fontSize: 12, fontWeight: '900' },
+  evidenceLink: { fontSize: 12, color: '#2e7d32', fontWeight: '700', marginBottom: 15, fontStyle: 'italic' },
+  itemRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 15, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  itemName: { flex: 1, fontSize: 15, color: '#333', fontWeight: '800' },
+  itemMeta: { fontSize: 12, color: '#777', marginTop: 3 },
+  itemQty: { fontWeight: '900', color: '#2e4a3b', fontSize: 18 },
   confirmBtn: { 
     backgroundColor: '#2e7d32', 
     flexDirection: 'row', 
     justifyContent: 'center', 
     alignItems: 'center', 
-    padding: 16, 
-    borderRadius: 12, 
+    padding: 18, 
+    borderRadius: 15, 
     marginTop: 15, 
     gap: 10 
   },
-  confirmBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  cancelBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 15, gap: 5 },
-  cancelBtnText: { color: '#d32f2f', fontSize: 13, fontWeight: '600' }
+  confirmBtnText: { color: '#fff', fontWeight: '900', fontSize: 17 },
+  cancelBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 18, gap: 6 },
+  cancelBtnText: { color: '#d32f2f', fontSize: 14, fontWeight: '700' }
 });

@@ -23,17 +23,20 @@ import QuarterlyCalculatorScreen from '../screens/QuarterlyCalculatorScreen';
 import QualityControlScreen from '../screens/QualityControlScreen'; 
 import HistoryScreen from '../screens/HistoryScreen';
 
-// 5. Módulos de Inteligencia IA y Trazabilidad QR (NUEVOS)
+// 5. Módulos de Inteligencia IA y Trazabilidad QR
 import SmartAICargoScreen from '../screens/SmartAICargoScreen'; 
 import QRGeneratorScreen from '../screens/QRGeneratorScreen';
-import TraceabilityScannerScreen from '../screens/TraceabilityScannerScreen'; // <--- AGREGADO
+import TraceabilityScannerScreen from '../screens/TraceabilityScannerScreen';
+
+// 6. Módulo de Personal y Asistencia (TÓTEM Y REPORTES)
+import StaffAttendanceScreen from '../screens/StaffAttendanceScreen'; 
+import AttendanceReportsScreen from '../screens/AttendanceReportsScreen';
 
 const Stack = createStackNavigator();
 
 export default function AppNavigator({ user }) {
   return (
     <Stack.Navigator 
-      // Si el usuario ya está logueado, entra directo al Dashboard
       initialRouteName={user ? "Home" : "Login"}
       screenOptions={{ 
         headerShown: false,
@@ -52,7 +55,7 @@ export default function AppNavigator({ user }) {
       <Stack.Screen name="SmartAICargo" component={SmartAICargoScreen} />
       <Stack.Screen name="QuarterlyCalculator" component={QuarterlyCalculatorScreen} />
 
-      {/* SECCIÓN: TRAZABILIDAD Y QR (EL CORAZÓN DEL SISTEMA) */}
+      {/* SECCIÓN: TRAZABILIDAD Y QR */}
       <Stack.Screen name="QRGenerator" component={QRGeneratorScreen} /> 
       <Stack.Screen name="TraceabilityScanner" component={TraceabilityScannerScreen} />
       
@@ -71,6 +74,10 @@ export default function AppNavigator({ user }) {
       <Stack.Screen name="AddFormula" component={AddFormulaScreen} />
       <Stack.Screen name="QualityControl" component={QualityControlScreen} />
       <Stack.Screen name="History" component={HistoryScreen} />
+
+      {/* SECCIÓN: PERSONAL Y ASISTENCIA */}
+      <Stack.Screen name="StaffAttendance" component={StaffAttendanceScreen} />
+      <Stack.Screen name="AttendanceReports" component={AttendanceReportsScreen} />
       
     </Stack.Navigator>
   );

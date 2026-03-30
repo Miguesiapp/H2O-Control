@@ -1,25 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Dimensions } from 'react-native';
+import { 
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, 
+  Alert, Dimensions, StatusBar, useWindowDimensions 
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context'; 
 import { db, auth } from '../config/firebase';
 import { collection, query, onSnapshot } from 'firebase/firestore';
 import { 
-  LogOut, 
-  FlaskConical, 
-  ClipboardCheck, 
-  Droplets, 
-  ChevronRight, 
-  Clock, 
-  Sparkles, 
-  Calculator,
-  QrCode,
-  Printer // Nuevo icono para generación manual
+  LogOut, FlaskConical, ClipboardCheck, Droplets, 
+  ChevronRight, Clock, Sparkles, Calculator, QrCode, Printer,
+  UserCheck // <--- Nuevo icono para el Tótem
 } from 'lucide-react-native';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const ADMIN_EMAIL = "miguesilva.1985@outlook.es";
 
 export default function HomeScreen({ navigation }) {
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height; 
+  
   const [criticalCount, setCriticalCount] = useState(0);
   const [loadingAlerts, setLoadingAlerts] = useState(true);
   const companies = ["H2Ocontrol", "WaterDay", "Alianza", "Agrocube", "BioAcker"];
@@ -33,25 +31,28 @@ export default function HomeScreen({ navigation }) {
       const alerts = items.filter(item => item.quantity <= (item.minStock || 100));
       setCriticalCount(alerts.length);
       setLoadingAlerts(false);
+    }, (error) => {
+      console.error("Error en Firebase:", error);
+      setLoadingAlerts(false);
     });
 
     return () => unsubscribe();
   }, []);
 
   const handleLogOut = () => {
-    Alert.alert("Cerrar Sesión", "¿Deseas salir?", [
+    Alert.alert("Cerrar Sesión", "¿Deseas salir de H2O Control?", [
       { text: "Cancelar", style: "cancel" },
-      { text: "Salir", onPress: () => auth.signOut().then(() => navigation.replace('Login')) }
+      { text: "Salir", style: 'destructive', onPress: () => auth.signOut().then(() => navigation.replace('Login')) }
     ]);
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <StatusBar barStyle="dark-content" />
       <ScrollView 
         style={styles.scrollView} 
         contentContainerStyle={styles.scrollContent}
-        bounces={true}
-        overScrollMode="always"
+        showsVerticalScrollIndicator={false}
       >
         {/* HEADER */}
         <View style={styles.header}>
@@ -62,6 +63,7 @@ export default function HomeScreen({ navigation }) {
           
           <View style={styles.headerButtons}>
             <TouchableOpacity 
+              activeOpacity={0.7}
               style={[styles.actionBtn, { backgroundColor: '#f0f4f2' }]} 
               onPress={() => navigation.navigate('History')}
             >
@@ -69,6 +71,7 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
 
             <TouchableOpacity 
+              activeOpacity={0.7}
               style={[styles.actionBtn, { backgroundColor: '#fff0f0' }]} 
               onPress={handleLogOut}
             >
@@ -77,13 +80,16 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
 
-        {/* BANNER DINÁMICO */}
+        {/* ALERTA DE STOCK */}
         {!loadingAlerts && criticalCount > 0 && (
           <TouchableOpacity 
+            activeOpacity={0.9}
             style={styles.aiBanner}
             onPress={() => navigation.navigate('QuarterlyCalculator')}
           >
-            <Sparkles color="#2e4a3b" size={16} />
+            <View style={styles.alertCircle}>
+               <Sparkles color="#fff" size={14} />
+            </View>
             <Text style={styles.aiBannerText}>
               {criticalCount} insumos críticos detectados.
             </Text>
@@ -91,12 +97,13 @@ export default function HomeScreen({ navigation }) {
           </TouchableOpacity>
         )}
 
-        {/* SECCIÓN ADMIN */}
+        {/* SECCIÓN ADMIN: IA Y GESTIÓN */}
         {isAdmin && (
           <View style={styles.adminSection}>
             <Text style={styles.sectionTitle}>Gestión Maestra</Text>
             
             <TouchableOpacity 
+              activeOpacity={0.8}
               style={styles.adminCard}
               onPress={() => navigation.navigate('SmartAICargo')}
             >
@@ -105,7 +112,7 @@ export default function HomeScreen({ navigation }) {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.adminCardTitle}>Carga Inteligente IA</Text>
-                <Text style={styles.adminCardSub}>Escanear remitos y fotos</Text>
+                <Text style={styles.adminCardSub}>Procesar remitos con OpenAI</Text>
               </View>
               <ChevronRight color="rgba(255,255,255,0.5)" size={20} />
             </TouchableOpacity>
@@ -115,33 +122,50 @@ export default function HomeScreen({ navigation }) {
                     style={[styles.adminSmallCard, { backgroundColor: '#4a6b5a' }]}
                     onPress={() => navigation.navigate('QuarterlyCalculator')}
                 >
-                    <Calculator color="#fff" size={20} />
+                    <Calculator color="#fff" size={18} />
                     <Text style={styles.adminSmallCardText}>Reposición</Text>
                 </TouchableOpacity>
 
-                {/* NUEVO: GENERAR QR MANUAL PARA STOCK EXISTENTE */}
                 <TouchableOpacity 
                     style={[styles.adminSmallCard, { backgroundColor: '#2e4a3b' }]}
                     onPress={() => navigation.navigate('QRGenerator', { manual: true })}
                 >
-                    <Printer color="#fff" size={20} />
+                    <Printer color="#fff" size={18} />
                     <Text style={styles.adminSmallCardText}>Generar QR</Text>
                 </TouchableOpacity>
             </View>
           </View>
         )}
 
-        {/* UNIDADES DE NEGOCIO */}
+        {/* NUEVA SECCIÓN: CONTROL DE PLANTA (TÓTEM) */}
+        <Text style={styles.sectionTitle}>Control de Planta</Text>
+        <TouchableOpacity 
+          activeOpacity={0.8}
+          style={[styles.attendanceBtn, isLandscape && { width: '48.5%' }]}
+          onPress={() => navigation.navigate('StaffAttendance')}
+        >
+          <View style={styles.attendanceIconBox}>
+            <UserCheck color="#fff" size={28} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.attendanceTitle}>Tótem de Asistencia</Text>
+            <Text style={styles.attendanceSub}>Registrar Ingreso / Egreso</Text>
+          </View>
+          <ChevronRight color="#2e4a3b" size={18} />
+        </TouchableOpacity>
+
+        {/* UNIDADES DE NEGOCIO (ADAPTATIVO) */}
         <Text style={styles.sectionTitle}>Unidades de Negocio</Text>
-        <View style={styles.grid}>
+        <View style={[styles.grid, isLandscape && styles.gridLandscape]}>
           {companies.map((company) => (
             <TouchableOpacity 
               key={company} 
-              style={styles.card} 
+              activeOpacity={0.6}
+              style={[styles.card, isLandscape && styles.cardLandscape]} 
               onPress={() => navigation.navigate('CompanyDetail', { companyName: company })}
             >
               <View style={styles.iconContainer}>
-                <Droplets color="#2e4a3b" size={22} />
+                <Droplets color="#2e4a3b" size={20} />
               </View>
               <Text style={styles.cardText}>{company}</Text>
               <ChevronRight color="#ccc" size={16} />
@@ -149,7 +173,7 @@ export default function HomeScreen({ navigation }) {
           ))}
         </View>
 
-        {/* AUDITORÍA Y CALIDAD */}
+        {/* OPERACIONES Y CALIDAD */}
         <Text style={styles.sectionTitle}>Operaciones y Calidad</Text>
         <View style={styles.row}>
           <TouchableOpacity 
@@ -170,15 +194,15 @@ export default function HomeScreen({ navigation }) {
         </View>
 
         <TouchableOpacity 
-          style={[styles.menuItem, { backgroundColor: '#edf2ff', width: '100%', marginBottom: 10 }]}
+          activeOpacity={0.8}
+          style={[styles.menuItem, { backgroundColor: '#edf2ff', width: '100%', flexDirection: 'row', justifyContent: 'center' }]}
           onPress={() => navigation.navigate('Formulation')}
         >
-          <FlaskConical color="#4466ff" size={24} />
-          <Text style={styles.menuItemText}>H2O (Formulación de Productos)</Text>
+          <FlaskConical color="#4466ff" size={22} />
+          <Text style={[styles.menuItemText, { marginLeft: 10 }]}>H2O (Fórmulas de Laboratorio)</Text>
         </TouchableOpacity>
 
-        {/* Padding final para asegurar que el último item suba del todo */}
-        <View style={{ height: 100 }} />
+        <View style={{ height: 60 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -187,91 +211,105 @@ export default function HomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#fff' },
   scrollView: { flex: 1 },
-  scrollContent: { 
-    paddingHorizontal: 20, 
-    paddingTop: 10,
-    paddingBottom: 40, 
-    flexGrow: 1 
-  },
-  header: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    marginBottom: 20
-  },
-  welcome: { fontSize: 26, fontWeight: '900', color: '#1a1a1a' },
-  userMail: { fontSize: 13, color: '#666' },
+  scrollContent: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  welcome: { fontSize: 28, fontWeight: '900', color: '#1a1a1a', letterSpacing: -0.5 },
+  userMail: { fontSize: 13, color: '#888', marginTop: -2 },
   headerButtons: { flexDirection: 'row', gap: 10 },
-  actionBtn: { width: 45, height: 45, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  actionBtn: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   aiBanner: {
     backgroundColor: '#e8f5e9',
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 15,
-    borderRadius: 15,
+    padding: 14,
+    borderRadius: 16,
     marginBottom: 20,
     borderWidth: 1,
     borderColor: '#c8e6c9',
-    gap: 10
+    gap: 12
   },
-  aiBannerText: { flex: 1, fontSize: 13, color: '#2e4a3b', fontWeight: 'bold' },
-  sectionTitle: { fontSize: 18, fontWeight: '800', marginBottom: 15, marginTop: 10, color: '#333' },
+  alertCircle: { backgroundColor: '#2e4a3b', padding: 6, borderRadius: 20 },
+  aiBannerText: { flex: 1, fontSize: 14, color: '#2e4a3b', fontWeight: '700' },
+  sectionTitle: { fontSize: 19, fontWeight: '800', marginBottom: 15, marginTop: 15, color: '#222' },
+  
+  // BOTÓN ASISTENCIA (ESTILO NUEVO)
+  attendanceBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    marginBottom: 10
+  },
+  attendanceIconBox: { backgroundColor: '#2e4a3b', padding: 12, borderRadius: 15, marginRight: 15 },
+  attendanceTitle: { fontSize: 17, fontWeight: '800', color: '#1a1a1a' },
+  attendanceSub: { fontSize: 12, color: '#666' },
+
+  // GRID ADAPTATIVO
   grid: { gap: 10 },
+  gridLandscape: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
   card: { 
     flexDirection: 'row', 
     alignItems: 'center', 
     backgroundColor: '#fff', 
-    padding: 18, 
+    padding: 16, 
     borderRadius: 16, 
     borderWidth: 1, 
     borderColor: '#f0f0f0',
     elevation: 2,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 4
+    shadowRadius: 3,
   },
-  iconContainer: { backgroundColor: '#f1f8f4', padding: 10, borderRadius: 10, marginRight: 15 },
-  cardText: { flex: 1, fontSize: 16, fontWeight: '700', color: '#222' },
-  row: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
+  cardLandscape: {
+    width: '48.5%', 
+    marginBottom: 5,
+  },
+
+  iconContainer: { backgroundColor: '#f1f8f4', padding: 8, borderRadius: 10, marginRight: 15 },
+  cardText: { flex: 1, fontSize: 16, fontWeight: '700', color: '#333' },
+  row: { flexDirection: 'row', gap: 12, marginBottom: 12 },
   menuItem: { 
     flex: 1, 
-    padding: 20, 
-    borderRadius: 18, 
+    paddingVertical: 20, 
+    borderRadius: 20, 
     alignItems: 'center', 
-    gap: 10, 
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.05
+    gap: 8,
+    elevation: 2
   },
-  menuItemText: { fontWeight: '800', fontSize: 13, textAlign: 'center', color: '#444' },
-  adminSection: { marginBottom: 10 },
+  menuItemText: { fontWeight: '800', fontSize: 14, color: '#444' },
+  adminSection: { marginBottom: 5 },
   adminCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#2e4a3b', 
-    padding: 22,
-    borderRadius: 20,
-    elevation: 5
+    padding: 20,
+    borderRadius: 22,
+    elevation: 4
   },
-  aiIconContainer: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    padding: 12,
-    borderRadius: 14,
-    marginRight: 15
-  },
+  aiIconContainer: { backgroundColor: 'rgba(255,255,255,0.15)', padding: 10, borderRadius: 12, marginRight: 15 },
   adminCardTitle: { color: '#fff', fontSize: 18, fontWeight: '900' },
-  adminCardSub: { color: 'rgba(255,255,255,0.8)', fontSize: 13, marginTop: 2 },
-  adminRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  adminCardSub: { color: 'rgba(255,255,255,0.7)', fontSize: 13 },
+  adminRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
   adminSmallCard: { 
     flex: 1, 
     flexDirection: 'row', 
     alignItems: 'center', 
     justifyContent: 'center', 
-    padding: 18, 
+    padding: 16, 
     borderRadius: 16, 
-    gap: 10,
-    elevation: 3
+    gap: 8,
+    elevation: 2
   },
-  adminSmallCardText: { color: '#fff', fontSize: 13, fontWeight: '800' }
+  adminSmallCardText: { color: '#fff', fontSize: 14, fontWeight: '700' }
 });
