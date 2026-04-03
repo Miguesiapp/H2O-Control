@@ -8,9 +8,9 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash.png", 
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0f1710" 
     },
     "ios": {
       "supportsTablet": true,
@@ -23,19 +23,19 @@
       "package": "com.migue.h2ocontrol",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0f1710"
       },
       "edgeToEdgeEnabled": true,
       "permissions": [
         "android.permission.CAMERA",
-        "android.permission.WRITE_EXTERNAL_STORAGE"
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-barcode-scanner",
       [
         "expo-camera",
         {
@@ -46,8 +46,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "TU-PROJECT-ID-AQUI" 
+        "projectId": "f8b19d0e-dd0e-4857-bde6-703581c1be69"
       }
-    }
+    },
+    "owner": "migue.si"
   }
 }
