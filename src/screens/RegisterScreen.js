@@ -1,20 +1,13 @@
 import React, { useState } from 'react';
 import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  Alert, 
-  SafeAreaView, 
-  ScrollView, 
-  KeyboardAvoidingView, 
-  Platform 
+  View, Text, TextInput, TouchableOpacity, StyleSheet, 
+  Alert, StatusBar, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator 
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
 import { createUserWithEmailAndPassword, deleteUser } from 'firebase/auth'; 
 import { setDoc, doc, serverTimestamp } from 'firebase/firestore';
-import { ChevronLeft, User, Mail, Lock, ShieldCheck } from 'lucide-react-native';
+import { ChevronLeft, User, Mail, Lock, ShieldCheck, UserPlus } from 'lucide-react-native';
 
 export default function RegisterScreen({ navigation }) {
   const [email, setEmail] = useState('');
@@ -23,139 +16,136 @@ export default function RegisterScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
-    // 1. Limpieza y validación inicial
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = displayName.trim();
 
     if (!cleanEmail || !password || !cleanName) {
-      Alert.alert("Campos incompletos", "Por favor completa todos los datos para el alta de personal.");
+      Alert.alert("Campos Requeridos", "Por favor completa todos los datos para el alta de personal.");
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert("Contraseña débil", "La contraseña debe tener al menos 6 caracteres.");
+      Alert.alert("Seguridad", "La contraseña debe tener al menos 6 caracteres por política de la empresa.");
       return;
     }
 
     setLoading(true);
 
     try {
-      // 2. Crear usuario en Firebase Authentication
+      // 1. Registro en Auth
       const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
       const user = userCredential.user;
 
       try {
-        // 3. Crear el perfil en Firestore (Colección Users)
-        // IMPORTANTE: Asegurate de haber publicado las Reglas de Firestore que te pasé
+        // 2. Creación de Perfil Corporativo en Firestore
         await setDoc(doc(db, "Users", user.uid), {
           uid: user.uid,
           name: cleanName,
           email: cleanEmail,
-          role: 'operario', // Por defecto todos entran como operarios
-          createdAt: serverTimestamp()
+          role: 'operario', // Nivel de acceso base
+          status: 'activo',
+          createdAt: serverTimestamp(),
+          lastLogin: serverTimestamp()
         });
 
         setLoading(false);
-        Alert.alert("Usuario Creado", "Bienvenido al sistema H2O Control.");
+        Alert.alert("Alta Exitosa", `Bienvenido ${cleanName}. Se ha creado tu legajo digital.`);
         navigation.replace('Home');
 
       } catch (firestoreError) {
-        // Si Firestore falla (por reglas o red), borramos el usuario de Auth
-        // para evitar cuentas huérfanas y permitir re-intento.
+        // Rollback: Si Firestore falla, borramos el usuario de Auth para evitar inconsistencias
         await deleteUser(user);
         setLoading(false);
-        console.error("Error en Firestore:", firestoreError);
-        Alert.alert("Error de Base de Datos", "No se pudo crear el perfil. Contacta al administrador.");
+        Alert.alert("Error de Sistema", "Fallo al crear el perfil en la base de datos central.");
       }
 
     } catch (authError) {
       setLoading(false);
-      let errorMessage = "No se pudo completar el registro.";
+      let errorMessage = "No se pudo procesar el alta.";
+      if (authError.code === 'auth/email-already-in-use') errorMessage = "Este correo ya pertenece a un empleado registrado.";
+      if (authError.code === 'auth/invalid-email') errorMessage = "El formato del correo es inválido.";
       
-      if (authError.code === 'auth/email-already-in-use') {
-        errorMessage = "Este correo ya está registrado por otro empleado.";
-      } else if (authError.code === 'auth/invalid-email') {
-        errorMessage = "El formato del correo electrónico no es válido.";
-      }
-      
-      Alert.alert("Error de Registro", errorMessage);
+      Alert.alert("Fallo de Autenticación", errorMessage);
     }
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <StatusBar barStyle="light-content" />
       <KeyboardAvoidingView 
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
       >
-        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           
           <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
             <ChevronLeft color="#fff" size={28} />
           </TouchableOpacity>
 
-          <View style={styles.brandContainer}>
-            <View style={styles.logoCircle}>
-              <ShieldCheck color="#fff" size={40} />
+          <View style={styles.brandSection}>
+            <View style={styles.logoBadge}>
+              <UserPlus color="#10b981" size={35} />
             </View>
-            <Text style={styles.title}>Alta de Personal</Text>
-            <Text style={styles.subtitle}>Gestión de Accesos H2O</Text>
+            <Text style={styles.brandTitle}>H2O Control</Text>
+            <Text style={styles.brandSub}>ALTA DE NUEVO PERSONAL</Text>
           </View>
 
-          <View style={styles.formCard}>
-            {/* Input Nombre */}
-            <View style={styles.inputContainer}>
-              <User color="#2e4a3b" size={20} style={styles.inputIcon} />
+          <View style={styles.card}>
+            <Text style={styles.label}>Información de Legajo</Text>
+            
+            <View style={styles.inputBox}>
+              <User color="#64748b" size={20} />
               <TextInput 
                 style={styles.input} 
-                placeholder="Nombre completo" 
-                placeholderTextColor="#999"
+                placeholder="Nombre y Apellido completo" 
+                placeholderTextColor="#94a3b8"
                 value={displayName} 
                 onChangeText={setDisplayName}
               />
             </View>
 
-            {/* Input Email */}
-            <View style={styles.inputContainer}>
-              <Mail color="#2e4a3b" size={20} style={styles.inputIcon} />
+            <View style={styles.inputBox}>
+              <Mail color="#64748b" size={20} />
               <TextInput 
                 style={styles.input} 
-                placeholder="Correo electrónico" 
-                placeholderTextColor="#999"
+                placeholder="Correo corporativo o personal" 
+                placeholderTextColor="#94a3b8"
                 value={email} 
                 onChangeText={setEmail}
                 autoCapitalize="none"
                 keyboardType="email-address"
               />
             </View>
-            
-            {/* Input Password */}
-            <View style={styles.inputContainer}>
-              <Lock color="#2e4a3b" size={20} style={styles.inputIcon} />
+
+            <View style={styles.inputBox}>
+              <Lock color="#64748b" size={20} />
               <TextInput 
                 style={styles.input} 
-                placeholder="Contraseña (mín. 6 caracteres)" 
-                placeholderTextColor="#999"
+                placeholder="Contraseña de acceso" 
+                placeholderTextColor="#94a3b8"
                 value={password} 
                 secureTextEntry 
                 onChangeText={setPassword}
               />
             </View>
-            
-            {/* Botón Registro */}
+
             <TouchableOpacity 
-              style={[styles.button, loading && { opacity: 0.7 }]} 
+              style={[styles.mainBtn, loading && { opacity: 0.8 }]} 
               onPress={handleRegister}
               disabled={loading}
             >
-              <Text style={styles.buttonText}>
-                {loading ? "PROCESANDO..." : "CONFIRMAR ALTA"}
-              </Text>
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.mainBtnText}>CONFIRMAR REGISTRO</Text>
+              )}
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.footerLink}>
-            <Text style={styles.linkText}>¿Ya tienes cuenta? <Text style={styles.linkBold}>Inicia sesión</Text></Text>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.footerBtn}>
+            <Text style={styles.footerText}>
+              ¿Ya tienes una cuenta? <Text style={{fontWeight: 'bold', color: '#fff'}}>Inicia Sesión</Text>
+            </Text>
           </TouchableOpacity>
 
         </ScrollView>
@@ -165,52 +155,24 @@ export default function RegisterScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#2e4a3b' },
-  container: { flexGrow: 1, justifyContent: 'center', padding: 25 },
-  backBtn: { position: 'absolute', top: 10, left: 10, padding: 10, zIndex: 10 },
-  brandContainer: { alignItems: 'center', marginBottom: 30 },
-  logoCircle: { 
-    width: 80, 
-    height: 80, 
-    backgroundColor: 'rgba(255,255,255,0.15)', 
-    borderRadius: 40, 
-    justifyContent: 'center', 
-    alignItems: 'center',
-    marginBottom: 15
-  },
-  title: { fontSize: 26, fontWeight: 'bold', color: '#fff', letterSpacing: 1 },
-  subtitle: { fontSize: 11, color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: 2 },
-  formCard: { 
-    backgroundColor: '#fff', 
-    padding: 25, 
-    borderRadius: 20, 
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 10
-  },
-  inputContainer: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: '#f5f7f5', 
-    borderRadius: 12, 
-    marginBottom: 15, 
-    paddingHorizontal: 15,
-    borderWidth: 1,
-    borderColor: '#eee'
-  },
-  inputIcon: { marginRight: 10 },
-  input: { flex: 1, paddingVertical: 15, color: '#333', fontSize: 15 },
-  button: { 
-    backgroundColor: '#2e4a3b', 
-    padding: 18, 
-    borderRadius: 12, 
-    alignItems: 'center',
-    marginTop: 10,
-    elevation: 3
-  },
-  buttonText: { color: 'white', fontWeight: 'bold', fontSize: 14, letterSpacing: 1 },
-  footerLink: { marginTop: 25 },
-  linkText: { textAlign: 'center', color: 'rgba(255,255,255,0.7)', fontSize: 14 },
-  linkBold: { color: '#fff', fontWeight: 'bold' }
+  safe: { flex: 1, backgroundColor: '#0f172a' },
+  scrollContent: { flexGrow: 1, padding: 25, justifyContent: 'center' },
+  backBtn: { position: 'absolute', top: 20, left: 20, zIndex: 10, backgroundColor: 'rgba(255,255,255,0.1)', padding: 8, borderRadius: 12 },
+  
+  brandSection: { alignItems: 'center', marginBottom: 40 },
+  logoBadge: { width: 70, height: 70, backgroundColor: '#fff', borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginBottom: 15, elevation: 10, shadowColor: '#10b981', shadowOpacity: 0.3, shadowRadius: 10 },
+  brandTitle: { fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: -0.5 },
+  brandSub: { fontSize: 10, color: '#94a3b8', fontWeight: '800', letterSpacing: 2, marginTop: 5 },
+
+  card: { backgroundColor: '#fff', borderRadius: 24, padding: 25, elevation: 20, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 15 },
+  label: { fontSize: 12, fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 20 },
+  
+  inputBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', borderRadius: 16, marginBottom: 15, paddingHorizontal: 15, borderWidth: 1, borderColor: '#e2e8f0' },
+  input: { flex: 1, paddingVertical: 16, marginLeft: 10, color: '#0f172a', fontSize: 15, fontWeight: '600' },
+  
+  mainBtn: { backgroundColor: '#0f172a', paddingVertical: 18, borderRadius: 16, alignItems: 'center', marginTop: 15, elevation: 5, shadowColor: '#000', shadowOpacity: 0.2 },
+  mainBtnText: { color: '#fff', fontWeight: '900', fontSize: 14, letterSpacing: 1 },
+  
+  footerBtn: { marginTop: 30, padding: 10 },
+  footerText: { textAlign: 'center', color: '#94a3b8', fontSize: 14 }
 });

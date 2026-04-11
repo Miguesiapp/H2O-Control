@@ -2,38 +2,39 @@ import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
   initializeAuth, 
-  getReactNativePersistence, 
-  browserSessionPersistence 
+  getReactNativePersistence 
 } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage'; // Agregamos Storage para las fotos de remitos
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// REEMPLAZO DINÁMICO: 
+// Usamos process.env para leer del .env sin exponer la clave en el código
 const firebaseConfig = {
-  apiKey: "AIzaSyD9Hi4cke0FVFfklD7fj-Da-5s2USVrV7M",
-  authDomain: "h2o-control-a153b.firebaseapp.com",
-  projectId: "h2o-control-a153b",
-  storageBucket: "h2o-control-a153b.firebasestorage.app",
-  messagingSenderId: "742826612856",
-  appId: "1:742826612856:web:e9b75028710a47d277b58d",
-  measurementId: "G-E0GMN93FK1"
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID
 };
 
+// Inicialización de la App
 const app = initializeApp(firebaseConfig);
 
-// Lógica de persistencia inteligente
+// Lógica de persistencia (Para que no se deslogueen en la planta de Batán)
 let auth;
 if (Platform.OS === 'web') {
-  // En la Web (PWA), usamos la persistencia del navegador
   auth = getAuth(app); 
 } else {
-  // En Móvil (Android/iOS), usamos AsyncStorage para que no se cierre la sesión
   auth = initializeAuth(app, {
     persistence: getReactNativePersistence(AsyncStorage)
   });
 }
 
 const db = getFirestore(app);
+const storage = getStorage(app); // Necesario para guardar las fotos que lee la IA
 
-export { auth, db };
+export { auth, db, storage };

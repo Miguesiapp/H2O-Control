@@ -1,82 +1,89 @@
 import React, { useState } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, TextInput, 
-  TouchableOpacity, Alert, StatusBar 
+  TouchableOpacity, Alert, StatusBar, ActivityIndicator 
 } from 'react-native';
-// IMPORTANTE: Cambio a la librería recomendada por Expo
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { auth, db } from '../config/firebase';
-import { doc, collection, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { auth } from '../config/firebase';
+import { serverTimestamp } from 'firebase/firestore';
 import { registerMovement } from '../services/logisticsService';
-import { ChevronLeft, Play, Beaker } from 'lucide-react-native';
+import { ChevronLeft, Play, Beaker, FileText, Factory, AlertCircle } from 'lucide-react-native';
 
 export default function ProductionOrderScreen({ route, navigation }) {
   const { companyName } = route.params;
   const [productName, setProductName] = useState('');
   const [targetQuantity, setTargetQuantity] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Generador de Lote Automático (DDMMYYYY)
-  const generateDateBatch = () => {
-    const today = new Date();
-    const day = String(today.getDate()).padStart(2, '0');
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const year = today.getFullYear();
-    return `${day}${month}${year}`;
+  // Generador de Lote Único Nivel Industrial (Formato: PT-YYYYMMDD-ID)
+  const generateUniqueBatch = () => {
+    const fecha = new Date().toISOString().split('T')[0].replace(/-/g, '');
+    const idUnico = Date.now().toString().slice(-4);
+    return `PT-${fecha}-${idUnico}`;
   };
 
   const handleStartProduction = async () => {
-    if (!productName || !targetQuantity) {
-      Alert.alert("Error", "Completa el nombre del producto y la cantidad");
+    if (!productName.trim() || !targetQuantity.trim()) {
+      Alert.alert("Atención", "Especifica el producto y el volumen a fabricar.");
+      return;
+    }
+
+    const qty = Number(targetQuantity.replace(',', '.'));
+    if (isNaN(qty) || qty <= 0) {
+      Alert.alert("Error", "El volumen debe ser un número mayor a 0.");
       return;
     }
 
     try {
-      const batchId = generateDateBatch();
-      const qty = Number(targetQuantity);
+      setIsSubmitting(true);
+      const batchId = generateUniqueBatch();
       
       const productionData = {
-        itemName: productName.toUpperCase(),
+        itemName: productName.trim().toUpperCase(),
         quantity: qty,
-        stockType: 'PT',
+        stockType: 'PT', // Se marca como Producto Terminado en proceso
         batchInternal: batchId,
         unit: 'Lts',
         company: companyName,
-        status: 'PENDIENTE',
+        status: 'PENDIENTE_LABORATORIO', // Clave para que el escáner sepa que no está liberado
         lastUpdate: serverTimestamp()
       };
 
-      // REGISTRO DE MOVIMIENTO Y ACTUALIZACIÓN DE STOCK
+      // Usamos el motor logístico blindado
       await registerMovement(
-        auth.currentUser.email,
-        'ORDEN_PRODUCCION_INICIO',
+        auth.currentUser?.email || 'Sistema',
+        'ORDEN_PRODUCCION_EMITIDA',
         companyName,
         productionData
       );
 
       Alert.alert(
-        "Formulación Iniciada", 
-        `Lote: ${batchId}\nEl producto ha sido enviado a Laboratorio para su aprobación final.`
+        "Orden Emitida con Éxito", 
+        `Lote Asignado: ${batchId}\n\nEl producto figura en estado PENDIENTE. El Laboratorio debe realizar el control de calidad (pH/Densidad) para liberarlo.`,
+        [{ text: "Entendido", onPress: () => navigation.goBack() }]
       );
-      navigation.goBack();
     } catch (error) {
       console.error(error);
-      Alert.alert("Error", "No se pudo sincronizar con el inventario");
+      Alert.alert("Error del Sistema", "No se pudo emitir la orden de producción.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar barStyle="dark-content" />
       
+      {/* HEADER ENTERPRISE */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <ChevronLeft color="#2e4a3b" size={28} />
+          <ChevronLeft color="#0f172a" size={28} />
         </TouchableOpacity>
         <View style={{alignItems: 'center'}}>
           <Text style={styles.headerTitle}>Orden de Producción</Text>
           <Text style={styles.headerSub}>{companyName}</Text>
         </View>
-        <Beaker color="#2e4a3b" size={24} />
+        <View style={{ width: 28 }} />
       </View>
 
       <ScrollView 
@@ -84,41 +91,78 @@ export default function ProductionOrderScreen({ route, navigation }) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        {/* BANNER INFORMATIVO */}
+        <View style={styles.infoBanner}>
+          <View style={styles.iconBox}>
+            <Factory color="#3b82f6" size={24} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.bannerTitle}>Emisión de Nueva Tanda</Text>
+            <Text style={styles.bannerText}>
+              Esta acción generará un identificador único en el sistema. El producto no estará disponible para despacho hasta su liberación técnica.
+            </Text>
+          </View>
+        </View>
+
+        {/* FORMULARIO PRINCIPAL */}
         <View style={styles.card}>
-          <Text style={styles.label}>Producto a Formular</Text>
-          <TextInput 
-            style={styles.input} 
-            placeholder="Ej: Fertilizante H2O-Acker" 
-            value={productName}
-            onChangeText={setProductName}
-            placeholderTextColor="#999"
-          />
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Producto a Formular</Text>
+            <View style={styles.inputWrapper}>
+              <FileText color="#94a3b8" size={20} style={styles.inputIcon} />
+              <TextInput 
+                style={styles.input} 
+                placeholder="Ej: FERTILIZANTE ACTION" 
+                value={productName}
+                onChangeText={setProductName}
+                placeholderTextColor="#94a3b8"
+                autoCapitalize="characters"
+              />
+            </View>
+          </View>
 
-          <Text style={styles.label}>Volumen Total (Litros)</Text>
-          <TextInput 
-            style={styles.input} 
-            placeholder="Ej: 1000" 
-            keyboardType="numeric"
-            value={targetQuantity}
-            onChangeText={setTargetQuantity}
-            placeholderTextColor="#999"
-          />
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Volumen Objetivo (Litros / Kg)</Text>
+            <View style={styles.inputWrapper}>
+              <Beaker color="#94a3b8" size={20} style={styles.inputIcon} />
+              <TextInput 
+                style={styles.input} 
+                placeholder="Ej: 1000" 
+                keyboardType="numeric"
+                value={targetQuantity}
+                onChangeText={setTargetQuantity}
+                placeholderTextColor="#94a3b8"
+              />
+            </View>
+          </View>
         </View>
 
-        <View style={styles.batchInfo}>
-           <Text style={styles.batchTitle}>Identificación de Tanda</Text>
-           <Text style={styles.batchValue}>LOTE INTERNO: {generateDateBatch()}</Text>
-           <Text style={styles.infoText}>
-             Nota: Al iniciar, el producto quedará en estado "Pendiente" hasta que Laboratorio apruebe el control de calidad.
-           </Text>
+        {/* ALERTA DE FLUJO */}
+        <View style={styles.workflowAlert}>
+          <AlertCircle color="#f59e0b" size={20} style={{ marginTop: 2 }} />
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={styles.workflowTitle}>Flujo de Trabajo Requerido</Text>
+            <Text style={styles.workflowText}>
+              Una vez emitida la orden, diríjase al módulo de <Text style={{fontWeight: 'bold'}}>H2O Laboratorio</Text> para registrar la receta utilizada y habilitar el código QR.
+            </Text>
+          </View>
         </View>
 
-        <TouchableOpacity style={styles.mainButton} onPress={handleStartProduction}>
-          <Play color="#fff" size={20} fill="#fff" />
-          <Text style={styles.mainButtonText}>Iniciar Formulación</Text>
+        <TouchableOpacity 
+          style={[styles.mainButton, isSubmitting && { opacity: 0.7 }]} 
+          onPress={handleStartProduction}
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <>
+              <Play color="#fff" size={20} fill="#fff" />
+              <Text style={styles.mainButtonText}>Emitir Orden y Generar Lote</Text>
+            </>
+          )}
         </TouchableOpacity>
         
-        {/* Espacio extra al final del scroll */}
         <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
@@ -126,64 +170,44 @@ export default function ProductionOrderScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#f5f7f5' },
+  safe: { flex: 1, backgroundColor: '#f8fafc' },
   header: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    paddingHorizontal: 20, 
-    paddingVertical: 15, 
-    backgroundColor: '#fff', 
-    borderBottomWidth: 1, 
-    borderBottomColor: '#eee' 
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
+    paddingHorizontal: 20, paddingVertical: 15, backgroundColor: '#fff', 
+    borderBottomWidth: 1, borderBottomColor: '#e2e8f0', elevation: 2,
+    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5
   },
   backBtn: { padding: 5 },
-  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#2e4a3b' },
-  headerSub: { fontSize: 10, color: '#888', textTransform: 'uppercase' },
+  headerTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a' },
+  headerSub: { fontSize: 11, color: '#64748b', textTransform: 'uppercase', fontWeight: '800', letterSpacing: 0.5 },
+  
   container: { padding: 20 },
+  
+  infoBanner: { flexDirection: 'row', backgroundColor: '#eff6ff', padding: 20, borderRadius: 16, marginBottom: 20, borderWidth: 1, borderColor: '#bfdbfe' },
+  iconBox: { backgroundColor: '#dbeafe', padding: 12, borderRadius: 12, marginRight: 15, height: 48, justifyContent: 'center' },
+  bannerTitle: { fontSize: 15, fontWeight: '800', color: '#1e3a8a', marginBottom: 4 },
+  bannerText: { fontSize: 12, color: '#1e40af', lineHeight: 18 },
+
   card: { 
-    backgroundColor: '#fff', 
-    padding: 20, 
-    borderRadius: 20, // Bordes unificados con el estilo premium
-    elevation: 4, 
-    shadowColor: '#000', 
-    shadowOpacity: 0.1, 
-    shadowRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)'
+    backgroundColor: '#fff', padding: 20, borderRadius: 16, elevation: 2, 
+    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8,
+    borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 20
   },
-  label: { fontSize: 11, fontWeight: 'bold', color: '#2e4a3b', marginBottom: 8, marginTop: 5, textTransform: 'uppercase' },
-  input: { 
-    backgroundColor: '#f9f9f9', 
-    padding: 15, 
-    borderRadius: 12, 
-    borderWidth: 1, 
-    borderColor: '#eee', 
-    fontSize: 16,
-    color: '#333',
-    marginBottom: 15
-  },
-  batchInfo: {
-    backgroundColor: '#e8f5e9',
-    padding: 20,
-    borderRadius: 15,
-    marginTop: 20,
-    borderWidth: 1,
-    borderColor: '#c8e6c9'
-  },
-  batchTitle: { fontSize: 10, fontWeight: 'bold', color: '#2e7d32', textTransform: 'uppercase', letterSpacing: 1 },
-  batchValue: { fontSize: 18, fontWeight: 'bold', color: '#2e4a3b', marginVertical: 5 },
-  infoText: { color: '#666', fontSize: 11, fontStyle: 'italic', lineHeight: 16 },
+  
+  inputGroup: { marginBottom: 20 },
+  label: { fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, paddingHorizontal: 15 },
+  inputIcon: { marginRight: 10 },
+  input: { flex: 1, paddingVertical: 15, fontSize: 16, color: '#0f172a', fontWeight: '600' },
+
+  workflowAlert: { flexDirection: 'row', backgroundColor: '#fffbeb', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: '#fde68a' },
+  workflowTitle: { fontSize: 13, fontWeight: '800', color: '#92400e', marginBottom: 2 },
+  workflowText: { fontSize: 12, color: '#b45309', lineHeight: 18 },
+
   mainButton: { 
-    backgroundColor: '#2e4a3b', 
-    flexDirection: 'row', 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    padding: 18, 
-    borderRadius: 15, 
-    marginTop: 30, 
-    gap: 10,
-    elevation: 3
+    backgroundColor: '#10b981', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', 
+    padding: 18, borderRadius: 14, marginTop: 30, gap: 10, elevation: 4,
+    shadowColor: '#10b981', shadowOpacity: 0.3, shadowRadius: 8
   },
-  mainButtonText: { color: '#fff', fontSize: 17, fontWeight: 'bold' }
+  mainButtonText: { color: '#fff', fontSize: 16, fontWeight: '900', letterSpacing: 0.5 }
 });

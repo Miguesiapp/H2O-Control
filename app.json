@@ -1,35 +1,33 @@
 {
   "expo": {
-    "name": "H2O-Control-Native",
-    "slug": "H2O-Control-Native",
+    "name": "H2O Control Neural",
+    "slug": "H2O-Control-Neural",
     "version": "1.0.0",
-    "orientation": "default",
+    "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash.png", 
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0f1710" 
+      "backgroundColor": "#0f172a"
     },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.migue.h2ocontrol",
       "infoPlist": {
-        "NSCameraUsageDescription": "H2O Control necesita acceso a la cámara para el registro de asistencia de personal."
+        "NSCameraUsageDescription": "H2O Control necesita acceso a la cámara para el registro biométrico de asistencia."
       }
     },
     "android": {
       "package": "com.migue.h2ocontrol",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0f1710"
+        "backgroundColor": "#0f172a"
       },
       "edgeToEdgeEnabled": true,
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.CAMERA"
       ]
     },
     "web": {
@@ -39,10 +37,11 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Permitir que H2O Control use la cámara para el presentismo.",
+          "cameraPermission": "Permitir que H2O Control Neural use la cámara para el presentismo biométrico.",
           "recordAudioPermission": false
         }
-      ]
+      ],
+      "expo-print"
     ],
     "extra": {
       "eas": {

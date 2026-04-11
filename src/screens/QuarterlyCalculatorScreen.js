@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  View, Text, StyleSheet, ScrollView, TextInput, 
-  TouchableOpacity, Alert, ActivityIndicator, StatusBar 
+  View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, 
+  ActivityIndicator, ScrollView, TextInput, StatusBar 
 } from 'react-native';
-// IMPORTANTE: Cambio a la librería recomendada para evitar warnings
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
 import { collection, getDocs, query, where } from 'firebase/firestore';
-import { ChevronLeft, Calculator, AlertCircle, CheckCircle2, ShoppingCart, Target } from 'lucide-react-native';
+import { ChevronLeft, Calculator, AlertCircle, CheckCircle2, ShoppingCart, Target, Beaker, Factory } from 'lucide-react-native';
 
 export default function QuarterlyCalculatorScreen({ navigation }) {
   const [formulas, setFormulas] = useState([]);
@@ -20,10 +19,15 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
   useEffect(() => {
     const fetchFormulas = async () => {
       try {
-        const snap = await getDocs(collection(db, "Formulas"));
-        setFormulas(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        // ACTUALIZACIÓN: Ahora buscamos en Formulas_Maestras (Solo las Activas)
+        const q = query(collection(db, "Formulas_Maestras"), where("status", "==", "ACTIVA"));
+        const snap = await getDocs(q);
+        const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Orden alfabético
+        data.sort((a, b) => a.productName.localeCompare(b.productName));
+        setFormulas(data);
       } catch (error) {
-        Alert.alert("Error", "No se pudo conectar con el laboratorio.");
+        Alert.alert("Error de Conexión", "No se pudo sincronizar el catálogo de fórmulas.");
       } finally {
         setInitialLoading(false);
       }
@@ -32,8 +36,10 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
   }, []);
 
   const runCalculation = async () => {
-    if (!selectedFormula || !goal) {
-      Alert.alert("Atención", "Selecciona una fórmula y define el volumen de producción deseado.");
+    const targetVolume = Number(goal.replace(',', '.'));
+
+    if (!selectedFormula || isNaN(targetVolume) || targetVolume <= 0) {
+      Alert.alert("Datos Incompletos", "Por favor selecciona un producto técnico e ingresa un volumen válido.");
       return;
     }
 
@@ -42,14 +48,23 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
       const inventoryRef = collection(db, "Inventory");
       const calculation = [];
 
-      for (const ing of selectedFormula.ingredients) {
-        const amountNeeded = (Number(goal) * Number(ing.percentage)) / 100;
+      // Utilizamos el peso/densidad si existe para mayor precisión
+      const density = selectedFormula.densidadObjetivo || 1;
+      const targetKilos = targetVolume * density;
 
+      for (const ing of selectedFormula.ingredients) {
+        const amountNeeded = (targetKilos * Number(ing.percentage)) / 100;
+
+        // Buscamos cuánto stock tenemos de esta materia prima en general (sin importar en qué tanque esté)
         const q = query(inventoryRef, where("itemName", "==", ing.name), where("stockType", "==", "MP"));
         const stockSnap = await getDocs(q);
         
         let totalInStock = 0;
-        stockSnap.forEach(doc => totalInStock += Number(doc.data().quantity));
+        stockSnap.forEach(doc => {
+          // Aseguramos que la cantidad sea un número válido y mayor a cero (por si hay lotes en negativo por error)
+          const qty = Number(doc.data().quantity);
+          if (qty > 0) totalInStock += qty;
+        });
 
         calculation.push({
           name: ing.name,
@@ -61,7 +76,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
       setResults(calculation);
     } catch (error) {
       console.error(error);
-      Alert.alert("Error", "Error al procesar el balance de inventario.");
+      Alert.alert("Fallo de Cálculo", "Ocurrió un error al procesar el balance de inventario.");
     } finally {
       setLoading(false);
     }
@@ -70,25 +85,26 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
   if (initialLoading) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#2e4a3b" />
-        <Text style={styles.loadingText}>Cargando base de datos...</Text>
+        <ActivityIndicator size="large" color="#0f172a" />
+        <Text style={styles.loadingText}>Sincronizando recetas maestras...</Text>
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar barStyle="dark-content" />
       
+      {/* HEADER ENTERPRISE */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <ChevronLeft color="#2e4a3b" size={28} />
+          <ChevronLeft color="#0f172a" size={28} />
         </TouchableOpacity>
         <View style={{alignItems: 'center'}}>
-            <Text style={styles.headerTitle}>H2O Intelligence</Text>
-            <Text style={styles.headerSub}>Calculador de Abastecimiento</Text>
+          <Text style={styles.headerTitle}>Inteligencia Logística</Text>
+          <Text style={styles.headerSub}>Calculadora de Reposición</Text>
         </View>
-        <Target color="#2e4a3b" size={24} />
+        <Target color="#0f172a" size={24} />
       </View>
 
       <ScrollView 
@@ -96,14 +112,25 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.label}>1. Seleccionar Producto a Fabricar</Text>
+        {/* BANNER EXPLICATIVO */}
+        <View style={styles.infoBanner}>
+          <Text style={styles.bannerText}>
+            Selecciona una fórmula maestra y proyecta un lote de producción. H2O Neural cruzará la receta con el stock físico disponible para detectar quiebres y generar órdenes de compra.
+          </Text>
+        </View>
+
+        <Text style={styles.label}>1. Producto a Proyectar</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.formulaList}>
           {formulas.map(f => (
             <TouchableOpacity 
               key={f.id} 
+              activeOpacity={0.7}
               style={[styles.formulaChip, selectedFormula?.id === f.id && styles.formulaChipActive]}
               onPress={() => setSelectedFormula(f)}
             >
+              <View style={styles.chipIconBox}>
+                <Beaker color={selectedFormula?.id === f.id ? "#fff" : "#64748b"} size={16} />
+              </View>
               <Text style={[styles.formulaChipText, selectedFormula?.id === f.id && styles.formulaChipTextActive]}>
                 {f.productName}
               </Text>
@@ -111,56 +138,67 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
           ))}
         </ScrollView>
 
-        <Text style={styles.label}>2. Volumen de Producción (Lts)</Text>
-        <TextInput 
-          style={styles.input} 
-          placeholder="Ej: 5000" 
-          keyboardType="numeric"
-          placeholderTextColor="#aaa"
-          value={goal}
-          onChangeText={setGoal}
-        />
+        <Text style={styles.label}>2. Volumen Deseado (Litros)</Text>
+        <View style={styles.inputWrapper}>
+          <Factory color="#94a3b8" size={20} style={{ marginRight: 10 }} />
+          <TextInput 
+            style={styles.input} 
+            placeholder="Ej: 5000" 
+            keyboardType="numeric"
+            placeholderTextColor="#94a3b8"
+            value={goal}
+            onChangeText={setGoal}
+          />
+        </View>
 
-        <TouchableOpacity style={styles.calcBtn} onPress={runCalculation} disabled={loading}>
-          {loading ? <ActivityIndicator color="#fff" /> : (
+        <TouchableOpacity 
+          style={[styles.calcBtn, loading && { opacity: 0.7 }]} 
+          onPress={runCalculation} 
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
             <>
               <Calculator color="#fff" size={20} />
-              <Text style={styles.calcBtnText}>Analizar Necesidad de Compra</Text>
+              <Text style={styles.calcBtnText}>Ejecutar Análisis de Stock</Text>
             </>
           )}
         </TouchableOpacity>
 
         {results.length > 0 && (
           <View style={styles.resultsContainer}>
-            <Text style={styles.resultsTitle}>Balance de Materias Primas</Text>
+            <Text style={styles.resultsTitle}>Balance Operativo de Materias Primas</Text>
             {results.map((item, index) => (
               <View key={index} style={[styles.resultCard, item.balance < 0 ? styles.borderError : styles.borderSuccess]}>
                 <View style={styles.resultHeader}>
                   <Text style={styles.itemName}>{item.name}</Text>
-                  {item.balance < 0 ? <AlertCircle color="#d32f2f" size={20} /> : <CheckCircle2 color="#2e7d32" size={20} />}
+                  {item.balance < 0 ? <AlertCircle color="#ef4444" size={20} /> : <CheckCircle2 color="#10b981" size={20} />}
                 </View>
                 
                 <View style={styles.dataRow}>
-                  <View>
+                  <View style={styles.dataCol}>
                     <Text style={styles.dataLabel}>Requerido</Text>
-                    <Text style={styles.dataValue}>{item.needed.toFixed(1)} L/K</Text>
+                    <Text style={styles.dataValue}>{item.needed.toFixed(1)} <Text style={styles.dataUnit}>L/K</Text></Text>
                   </View>
-                  <View>
-                    <Text style={styles.dataLabel}>En Depósito</Text>
-                    <Text style={styles.dataValue}>{item.stock.toFixed(1)} L/K</Text>
+                  <View style={styles.dataColCenter}>
+                    <Text style={styles.dataLabel}>Físico Real</Text>
+                    <Text style={styles.dataValue}>{item.stock.toFixed(1)} <Text style={styles.dataUnit}>L/K</Text></Text>
                   </View>
-                  <View>
-                    <Text style={styles.dataLabel}>Diferencia</Text>
-                    <Text style={[styles.dataValue, { color: item.balance < 0 ? '#d32f2f' : '#2e7d32' }]}>
-                      {item.balance.toFixed(1)}
+                  <View style={styles.dataColRight}>
+                    <Text style={styles.dataLabel}>Proyección</Text>
+                    <Text style={[styles.dataValue, { color: item.balance < 0 ? '#ef4444' : '#10b981' }]}>
+                      {item.balance > 0 ? '+' : ''}{item.balance.toFixed(1)}
                     </Text>
                   </View>
                 </View>
 
                 {item.balance < 0 && (
                   <View style={styles.buyWarning}>
-                    <ShoppingCart color="#d32f2f" size={14} />
-                    <Text style={styles.buyText}>REPOSICIÓN: Faltan {Math.abs(item.balance).toFixed(1)} unidades</Text>
+                    <View style={styles.buyIconBox}>
+                       <ShoppingCart color="#b91c1c" size={16} />
+                    </View>
+                    <Text style={styles.buyText}>REPOSICIÓN CRÍTICA: Faltan {Math.abs(item.balance).toFixed(1)} Kg/Lts</Text>
                   </View>
                 )}
               </View>
@@ -174,84 +212,57 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#f0f2f0' },
+  safe: { flex: 1, backgroundColor: '#f8fafc' },
   header: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    backgroundColor: '#fff', 
-    borderBottomWidth: 1, 
-    borderBottomColor: '#e0e0e0',
-    elevation: 4
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
+    paddingHorizontal: 20, paddingVertical: 15, backgroundColor: '#fff', 
+    borderBottomWidth: 1, borderBottomColor: '#e2e8f0', elevation: 2 
   },
   backBtn: { padding: 5 },
-  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#2e4a3b' },
-  headerSub: { fontSize: 10, color: '#888', textTransform: 'uppercase' },
+  headerTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a' },
+  headerSub: { fontSize: 11, color: '#64748b', textTransform: 'uppercase', fontWeight: '800', letterSpacing: 0.5 },
+  
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc' },
+  loadingText: { marginTop: 15, color: '#475569', fontWeight: '700', fontSize: 14 },
+  
   container: { padding: 20 },
-  label: { fontSize: 12, fontWeight: '800', color: '#2e4a3b', marginBottom: 12, marginTop: 10, textTransform: 'uppercase', letterSpacing: 1 },
-  formulaList: { flexDirection: 'row', marginBottom: 20 },
-  formulaChip: { paddingHorizontal: 18, paddingVertical: 12, backgroundColor: '#fff', borderRadius: 25, marginRight: 12, borderWidth: 1, borderColor: '#ddd', elevation: 2 },
-  formulaChipActive: { backgroundColor: '#2e4a3b', borderColor: '#2e4a3b', elevation: 5 },
-  formulaChipText: { color: '#666', fontWeight: '800', fontSize: 13 },
+  infoBanner: { backgroundColor: '#eff6ff', padding: 15, borderRadius: 12, marginBottom: 25, borderWidth: 1, borderColor: '#bfdbfe' },
+  bannerText: { color: '#1e3a8a', fontSize: 12, textAlign: 'center', lineHeight: 18, fontWeight: '500' },
+
+  label: { fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 10, marginTop: 5, textTransform: 'uppercase', letterSpacing: 0.5 },
+  
+  formulaList: { flexDirection: 'row', marginBottom: 25 },
+  formulaChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, paddingVertical: 10, backgroundColor: '#fff', borderRadius: 14, marginRight: 12, borderWidth: 1, borderColor: '#e2e8f0', elevation: 1 },
+  formulaChipActive: { backgroundColor: '#0f172a', borderColor: '#0f172a', elevation: 4 },
+  chipIconBox: { marginRight: 8 },
+  formulaChipText: { color: '#64748b', fontWeight: '800', fontSize: 13 },
   formulaChipTextActive: { color: '#fff' },
-  input: { 
-    backgroundColor: '#fff', 
-    padding: 20, 
-    borderRadius: 18, 
-    borderWidth: 1, 
-    borderColor: '#ddd', 
-    fontSize: 24, 
-    fontWeight: '900',
-    color: '#333',
-    elevation: 2
-  },
-  calcBtn: { 
-    backgroundColor: '#2e4a3b', 
-    flexDirection: 'row', 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    padding: 20, 
-    borderRadius: 18, 
-    marginTop: 25, 
-    gap: 12,
-    elevation: 6
-  },
+  
+  inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 16, paddingHorizontal: 15, elevation: 1 },
+  input: { flex: 1, paddingVertical: 18, fontSize: 22, color: '#0f172a', fontWeight: '900' },
+  
+  calcBtn: { backgroundColor: '#3b82f6', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 20, borderRadius: 16, marginTop: 30, gap: 12, elevation: 4, shadowColor: '#3b82f6', shadowOpacity: 0.3, shadowRadius: 8 },
   calcBtnText: { color: '#fff', fontSize: 16, fontWeight: '900', letterSpacing: 0.5 },
-  resultsContainer: { marginTop: 30, paddingBottom: 50 },
-  resultsTitle: { fontSize: 14, fontWeight: '900', color: '#888', marginBottom: 15, textTransform: 'uppercase', letterSpacing: 1.5 },
-  resultCard: { 
-    backgroundColor: '#fff', 
-    padding: 18, 
-    borderRadius: 20, 
-    marginBottom: 15, 
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)'
-  },
-  borderError: { borderLeftWidth: 6, borderLeftColor: '#d32f2f' },
-  borderSuccess: { borderLeftWidth: 6, borderLeftColor: '#2e7d32' },
-  resultHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-  itemName: { fontSize: 15, fontWeight: '900', color: '#1A2E24' },
-  dataRow: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#F9FBF9', padding: 12, borderRadius: 12 },
-  dataLabel: { fontSize: 8, color: '#888', textTransform: 'uppercase', fontWeight: '900', letterSpacing: 0.5 },
-  dataValue: { fontSize: 14, fontWeight: '800', marginTop: 4, color: '#333' },
-  buyWarning: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 8, 
-    marginTop: 15, 
-    backgroundColor: '#FFF5F5', 
-    padding: 12, 
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#FFCDD2'
-  },
-  buyText: { fontSize: 11, color: '#d32f2f', fontWeight: '900' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F9FBF9' },
-  loadingText: { marginTop: 15, color: '#2e4a3b', fontWeight: '900', letterSpacing: 1 }
+  
+  resultsContainer: { marginTop: 40, paddingBottom: 50 },
+  resultsTitle: { fontSize: 13, fontWeight: '800', color: '#64748b', marginBottom: 15, textTransform: 'uppercase', letterSpacing: 1 },
+  
+  resultCard: { backgroundColor: '#fff', padding: 20, borderRadius: 16, marginBottom: 15, elevation: 2, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, borderWidth: 1, borderColor: '#e2e8f0' },
+  borderError: { borderLeftWidth: 6, borderLeftColor: '#ef4444' },
+  borderSuccess: { borderLeftWidth: 6, borderLeftColor: '#10b981' },
+  
+  resultHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  itemName: { fontSize: 16, fontWeight: '900', color: '#0f172a' },
+  
+  dataRow: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#f8fafc', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: '#f1f5f9' },
+  dataCol: { flex: 1 },
+  dataColCenter: { flex: 1, alignItems: 'center', borderLeftWidth: 1, borderRightWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 10 },
+  dataColRight: { flex: 1, alignItems: 'flex-end' },
+  dataLabel: { fontSize: 9, color: '#64748b', textTransform: 'uppercase', fontWeight: '800', letterSpacing: 0.5 },
+  dataValue: { fontSize: 15, fontWeight: '900', marginTop: 4, color: '#1e293b' },
+  dataUnit: { fontSize: 10, color: '#94a3b8', fontWeight: '700' },
+  
+  buyWarning: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 15, backgroundColor: '#fef2f2', padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#fca5a5' },
+  buyIconBox: { backgroundColor: '#fee2e2', padding: 6, borderRadius: 8 },
+  buyText: { fontSize: 12, color: '#b91c1c', fontWeight: '800' }
 });

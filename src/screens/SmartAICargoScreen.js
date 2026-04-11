@@ -15,7 +15,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { db, auth, storage } from '../config/firebase';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { registerMovement } from '../services/logisticsService';
-import { analyzeLogisticsText, analyzeLogisticsImage } from '../services/aiService'; 
+// Importamos el nuevo cerebro de IA (Asegurate de exportarlo así en aiService.js)
+import { analyzeSystemIntelligence, analyzeLogisticsImage } from '../services/aiService'; 
 import { 
   ChevronLeft, 
   Sparkles, 
@@ -24,11 +25,13 @@ import {
   Trash2, 
   BrainCircuit, 
   Camera, 
-  ClipboardList 
+  ClipboardList,
+  PlusCircle,    // Nuevo icono para Ingreso
+  MinusCircle    // Nuevo icono para Retiro
 } from 'lucide-react-native';
 
-// LISTA DE EMPRESAS AUTORIZADAS
-const COMPANIES = ['Agrocube', 'BioAcker', 'Alianza', 'H2O', 'Waterday'];
+// LISTA DE EMPRESAS ACTUALIZADA
+const COMPANIES = ['Agrocube', 'BioAcker', 'Alianza', 'H2O Control', 'WaterDay', 'AgroFontezuela'];
 
 export default function SmartAICargoScreen({ navigation }) {
   const { width, height } = useWindowDimensions();
@@ -37,8 +40,11 @@ export default function SmartAICargoScreen({ navigation }) {
   const [rawText, setRawText] = useState('');
   const [loading, setLoading] = useState(false);
   const [processedData, setProcessedData] = useState(null);
-  const [selectedCompany, setSelectedCompany] = useState(null); // Para el selector manual
+  const [selectedCompany, setSelectedCompany] = useState(null);
   const [cameraPermission, setCameraPermission] = useState(null);
+  
+  // NUEVO: Estado para controlar si suma (INGRESO) o resta (RETIRO_CASUAL)
+  const [opMode, setOpMode] = useState('INGRESO'); 
 
   useEffect(() => {
     (async () => {
@@ -49,19 +55,26 @@ export default function SmartAICargoScreen({ navigation }) {
 
   const handleAIProcess = async () => {
     if (!rawText.trim()) {
-      Alert.alert("Atención", "Pega el detalle antes de continuar.");
+      Alert.alert("Atención", "Pega o escribe el detalle antes de continuar.");
       return;
     }
 
     setLoading(true);
     try {
-      const result = await analyzeLogisticsText(rawText);
+      // Llamamos al nuevo cerebro
+      const result = await analyzeSystemIntelligence(rawText);
       setProcessedData(result);
       
-      // Si la IA detecta la empresa, la pre-seleccionamos
+      // Auto-seleccionar empresa si la IA la detecta
       if (result.company && COMPANIES.includes(result.company)) {
         setSelectedCompany(result.company);
       }
+      
+      // Auto-seleccionar el modo (Ingreso o Retiro) según lo que entendió la IA
+      if (result.operationType) {
+        setOpMode(result.operationType);
+      }
+      
     } catch (error) {
       Alert.alert("Error de IA", "No se pudo interpretar el texto. Verifica tu conexión.");
     } finally {
@@ -93,11 +106,15 @@ export default function SmartAICargoScreen({ navigation }) {
         await uploadString(storageRef, result.assets[0].base64, 'base64');
         const downloadURL = await getDownloadURL(storageRef);
 
+        // OCR de imagen
         const data = await analyzeLogisticsImage(result.assets[0].base64);
         setProcessedData({ ...(data || {}), evidenceUrl: downloadURL });
 
         if (data.company && COMPANIES.includes(data.company)) {
           setSelectedCompany(data.company);
+        }
+        if (data.operationType) {
+          setOpMode(data.operationType);
         }
       }
     } catch (error) {
@@ -110,28 +127,38 @@ export default function SmartAICargoScreen({ navigation }) {
   const confirmAndUpload = async () => {
     if (!processedData || !processedData.items) return;
     if (!selectedCompany) {
-      Alert.alert("Atención", "Debes seleccionar una empresa de destino.");
+      Alert.alert("Atención", "Debes seleccionar una empresa de destino/origen.");
       return;
     }
 
     try {
       setLoading(true);
-      const batchInternal = "IA-" + new Date().getTime().toString().slice(-6);
+      
+      // Trazabilidad Fuerte: H2O - Fecha - ID
+      const fechaIngreso = new Date().toISOString().split('T')[0].replace(/-/g, '');
+      const batchInternal = `H2O-${fechaIngreso}-${Date.now().toString().slice(-4)}`;
 
       const firstItemForQR = processedData.items[0] ? {
         itemName: processedData.items[0].name?.toUpperCase(),
         batchInternal: batchInternal,
+        loteProveedor: processedData.items[0].lote || 'N/A',
         expiryDate: processedData.items[0].vencimiento || 'N/A'
       } : null;
 
       for (const item of processedData.items) {
-        const qtyNormalized = parseFloat(String(item.qty || 0).replace(',', '.'));
+        let qtyNormalized = parseFloat(String(item.qty || 0).replace(',', '.'));
+        
+        // LÓGICA DE AUDITORÍA: Si es Retiro Casual, lo transformamos en negativo
+        if (opMode === 'RETIRO_CASUAL') {
+          qtyNormalized = -Math.abs(qtyNormalized);
+        } else {
+          qtyNormalized = Math.abs(qtyNormalized);
+        }
 
-        // Usamos selectedCompany (manual o IA) para el registro
-        await registerMovement(auth.currentUser.email, 'INGRESO_IA_INTELIGENTE', selectedCompany, {
+        await registerMovement(auth.currentUser.email, opMode, selectedCompany, {
           itemName: item.name?.toUpperCase() || 'DESCONOCIDO',
           quantity: qtyNormalized,
-          stockType: item.type || 'MP', 
+          stockType: item.type || (item.isInternalMP ? 'MP' : 'PT'), 
           batchInternal: batchInternal,
           loteProveedor: item.lote || 'N/A',
           vencimiento: item.vencimiento || 'N/A',
@@ -140,17 +167,27 @@ export default function SmartAICargoScreen({ navigation }) {
         });
       }
 
+      const mensajeExito = opMode === 'INGRESO' 
+        ? `Stock inyectado en ${selectedCompany}. ¿Imprimir etiquetas?` 
+        : `Retiro casual descontado de ${selectedCompany}.`;
+
       Alert.alert(
         "Éxito", 
-        `Stock inyectado en ${selectedCompany}. ¿Imprimir etiquetas?`,
+        mensajeExito,
         [
           { text: "Cerrar", onPress: () => navigation.goBack() },
           { 
-            text: "IMPRIMIR QR", 
-            onPress: () => navigation.navigate('QRGenerator', { 
-              itemData: firstItemForQR,
-              companyName: selectedCompany 
-            }) 
+            text: opMode === 'INGRESO' ? "IMPRIMIR QR" : "VER STOCK", 
+            onPress: () => {
+              if(opMode === 'INGRESO') {
+                navigation.navigate('QRGenerator', { 
+                  itemData: firstItemForQR,
+                  companyName: selectedCompany 
+                });
+              } else {
+                navigation.navigate('StockView', { companyName: selectedCompany });
+              }
+            } 
           }
         ]
       );
@@ -168,16 +205,35 @@ export default function SmartAICargoScreen({ navigation }) {
           <ChevronLeft color="#fff" size={28} />
         </TouchableOpacity>
         <View style={{alignItems: 'center'}}>
-            <Text style={styles.headerTitle}>Carga Inteligente</Text>
-            <Text style={styles.headerSub}>H2O Neural v2.0</Text>
+            <Text style={styles.headerTitle}>Ingreso Inteligente</Text>
+            <Text style={styles.headerSub}>H2O control Intelligent</Text>
         </View>
         <BrainCircuit color="#fff" size={24} />
       </View>
 
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         
+        {/* NUEVO: SELECTOR DE MODO DE OPERACIÓN */}
+        <View style={styles.modeToggleContainer}>
+          <TouchableOpacity 
+            style={[styles.toggleBtn, opMode === 'INGRESO' && styles.toggleBtnActiveIngreso]} 
+            onPress={() => setOpMode('INGRESO')}
+          >
+            <PlusCircle color={opMode === 'INGRESO' ? '#fff' : '#2e4a3b'} size={18} />
+            <Text style={[styles.toggleText, opMode === 'INGRESO' && {color: '#fff'}]}>Ingreso / Compra</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.toggleBtn, opMode === 'RETIRO_CASUAL' && styles.toggleBtnActiveRetiro]} 
+            onPress={() => setOpMode('RETIRO_CASUAL')}
+          >
+            <MinusCircle color={opMode === 'RETIRO_CASUAL' ? '#fff' : '#d32f2f'} size={18} />
+            <Text style={[styles.toggleText, opMode === 'RETIRO_CASUAL' && {color: '#fff'}]}>Retiro Casual</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* SELECTOR MANUAL DE EMPRESA */}
-        <Text style={styles.sectionLabel}>Empresa de Destino:</Text>
+        <Text style={styles.sectionLabel}>Empresa (Origen/Destino):</Text>
         <View style={styles.companySelector}>
           {COMPANIES.map((comp) => (
             <TouchableOpacity 
@@ -207,7 +263,7 @@ export default function SmartAICargoScreen({ navigation }) {
         <TextInput
           style={[styles.textArea, isLandscape && { height: 80 }]}
           multiline
-          placeholder="Pega aquí el texto de logística..."
+          placeholder="Ej: Ingresaron 2 bines de Action... o Se llevaron 5L de muestra de Combate..."
           placeholderTextColor="#999"
           value={rawText}
           onChangeText={setRawText}
@@ -222,7 +278,7 @@ export default function SmartAICargoScreen({ navigation }) {
           {loading ? <ActivityIndicator color="#fff" /> : (
             <>
               <Sparkles color="#fff" size={20} />
-              <Text style={styles.btnText}>Analizar con IA</Text>
+              <Text style={styles.btnText}>Auditar con IA</Text>
             </>
           )}
         </TouchableOpacity>
@@ -230,11 +286,21 @@ export default function SmartAICargoScreen({ navigation }) {
         {processedData && !loading && (
           <View style={styles.resultCard}>
             <View style={styles.resultHeader}>
-              <Text style={styles.resultTitle}>Detección de IA</Text>
-              <View style={styles.companyBadge}>
-                <Text style={styles.companyBadgeText}>{selectedCompany || 'Pendiente'}</Text>
+              <Text style={styles.resultTitle}>Auditoría IA</Text>
+              <View style={[styles.companyBadge, opMode === 'RETIRO_CASUAL' && { backgroundColor: '#ffebee', borderColor: '#ffcdd2' }]}>
+                <Text style={[styles.companyBadgeText, opMode === 'RETIRO_CASUAL' && { color: '#c62828' }]}>
+                  {selectedCompany || 'Pendiente'}
+                </Text>
               </View>
             </View>
+
+            {/* AVISOS PREDICTIVOS DEL CEREBRO */}
+            {processedData.operationalAdvice && (
+              <View style={styles.adviceBox}>
+                <Sparkles color="#d84315" size={16} />
+                <Text style={styles.adviceText}>{processedData.operationalAdvice}</Text>
+              </View>
+            )}
 
             {processedData?.evidenceUrl && (
               <Text style={styles.evidenceLink}>📷 Evidencia fotográfica vinculada</Text>
@@ -242,22 +308,29 @@ export default function SmartAICargoScreen({ navigation }) {
 
             {processedData?.items?.map((item, index) => (
               <View key={index} style={styles.itemRow}>
-                <CheckCircle2 color="#2e7d32" size={18} />
+                <CheckCircle2 color={opMode === 'INGRESO' ? "#2e7d32" : "#d32f2f"} size={18} />
                 <View style={{ flex: 1 }}>
                     <Text style={styles.itemName}>{item?.name || 'Item sin nombre'}</Text>
                     <Text style={styles.itemMeta}>Lote: {item?.lote || 'N/A'} • Vence: {item?.vencimiento || 'N/A'}</Text>
                 </View>
-                <Text style={styles.itemQty}>{item?.qty} {item?.unit || 'uds'}</Text>
+                <Text style={[styles.itemQty, opMode === 'RETIRO_CASUAL' && {color: '#d32f2f'}]}>
+                  {opMode === 'RETIRO_CASUAL' ? '-' : '+'}{item?.qty} {item?.unit || 'uds'}
+                </Text>
               </View>
             ))}
 
-            <TouchableOpacity style={styles.confirmBtn} onPress={confirmAndUpload}>
+            <TouchableOpacity 
+              style={[styles.confirmBtn, opMode === 'RETIRO_CASUAL' && { backgroundColor: '#d32f2f' }]} 
+              onPress={confirmAndUpload}
+            >
               <Send color="#fff" size={20} />
-              <Text style={styles.confirmBtnText}>Confirmar e Inyectar en {selectedCompany || '...'}</Text>
+              <Text style={styles.confirmBtnText}>
+                {opMode === 'INGRESO' ? `Confirmar Ingreso a ${selectedCompany || '...'}` : `Confirmar Retiro de ${selectedCompany || '...'}`}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.cancelBtn} onPress={() => setProcessedData(null)}>
-              <Trash2 color="#d32f2f" size={18} />
+              <Trash2 color="#999" size={18} />
               <Text style={styles.cancelBtnText}>Descartar análisis</Text>
             </TouchableOpacity>
           </View>
@@ -279,6 +352,14 @@ const styles = StyleSheet.create({
   headerSub: { fontSize: 10, color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: 1.5 },
   backBtn: { padding: 5 },
   container: { padding: 20 },
+  
+  // NUEVOS ESTILOS DEL MODO (INGRESO / RETIRO)
+  modeToggleContainer: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+  toggleBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 14, borderRadius: 15, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e0e0e0', elevation: 2 },
+  toggleBtnActiveIngreso: { backgroundColor: '#2e4a3b', borderColor: '#2e4a3b' },
+  toggleBtnActiveRetiro: { backgroundColor: '#d32f2f', borderColor: '#d32f2f' },
+  toggleText: { marginLeft: 8, fontSize: 13, fontWeight: '800', color: '#555' },
+
   sectionLabel: { fontSize: 12, fontWeight: '800', color: '#666', marginBottom: 10, marginLeft: 5 },
   companySelector: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
   companyChip: { 
@@ -309,10 +390,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff', padding: 22, borderRadius: 20, marginTop: 25, 
     elevation: 8, borderTopWidth: 6, borderTopColor: '#2e7d32' 
   },
-  resultHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  resultHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
   resultTitle: { fontSize: 18, fontWeight: '800', color: '#222' },
   companyBadge: { backgroundColor: '#e8f5e9', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: '#c8e6c9' },
   companyBadgeText: { color: '#2e7d32', fontSize: 12, fontWeight: '900' },
+  
+  // AVISO PREDICTIVO
+  adviceBox: { backgroundColor: '#fff3e0', padding: 12, borderRadius: 10, flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 15, borderWidth: 1, borderColor: '#ffe0b2' },
+  adviceText: { flex: 1, fontSize: 12, color: '#d84315', fontWeight: '600', fontStyle: 'italic' },
+
   evidenceLink: { fontSize: 12, color: '#2e7d32', fontWeight: '700', marginBottom: 15, fontStyle: 'italic' },
   itemRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 15, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   itemName: { flex: 1, fontSize: 15, color: '#333', fontWeight: '800' },
@@ -324,5 +410,5 @@ const styles = StyleSheet.create({
   },
   confirmBtnText: { color: '#fff', fontWeight: '900', fontSize: 17 },
   cancelBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 18, gap: 6 },
-  cancelBtnText: { color: '#d32f2f', fontSize: 14, fontWeight: '700' }
+  cancelBtnText: { color: '#777', fontSize: 14, fontWeight: '700' }
 });

@@ -1,20 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, FlatList, TouchableOpacity, 
-  ActivityIndicator, StatusBar 
+  ActivityIndicator, StatusBar, TextInput
 } from 'react-native';
-// IMPORTANTE: Cambio a la librería recomendada por Expo
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { ChevronLeft, Search, Package, Calendar, Tag, AlertTriangle } from 'lucide-react-native';
+import { ChevronLeft, Search, PackageOpen, AlertTriangle, ShieldCheck, X } from 'lucide-react-native';
 
 export default function StockView({ route, navigation }) {
   const { companyName, stockType, title } = route.params;
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
+  
+  // NUEVO: Estado para el buscador
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
+    // Escucha en tiempo real a Firebase
     const q = query(
       collection(db, "Inventory"),
       where("company", "==", companyName),
@@ -26,6 +30,8 @@ export default function StockView({ route, navigation }) {
       querySnapshot.forEach((doc) => {
         stockData.push({ ...doc.data(), id: doc.id });
       });
+      // Ordenamos alfabéticamente
+      stockData.sort((a, b) => (a.itemName || '').localeCompare(b.itemName || ''));
       setItems(stockData);
       setLoading(false);
     }, (error) => {
@@ -36,84 +42,104 @@ export default function StockView({ route, navigation }) {
     return () => unsubscribe();
   }, [companyName, stockType]);
 
-  // FUNCIÓN DE INTELIGENCIA: Define el estado del stock (Semáforo)
+  // FUNCIÓN DE INTELIGENCIA: Semáforo Corporativo
   const getStockLevel = (quantity, minStock = 100) => {
-    if (quantity <= 0) return { label: 'SIN STOCK', color: '#d32f2f', bg: '#ffebee' };
-    if (quantity <= minStock) return { label: 'REPOSICIÓN URGENTE', color: '#ef6c00', bg: '#fff3e0' };
-    return { label: 'STOCK ÓPTIMO', color: '#2e7d32', bg: '#e8f5e9' };
+    if (quantity <= 0) return { label: 'QUIEBRE DE STOCK', color: '#ef4444', bg: '#fef2f2', icon: AlertTriangle };
+    if (quantity <= minStock) return { label: 'PUNTO DE PEDIDO', color: '#f59e0b', bg: '#fffbeb', icon: AlertTriangle };
+    return { label: 'NIVEL ÓPTIMO', color: '#10b981', bg: '#ecfdf5', icon: ShieldCheck };
   };
+
+  // Filtrado local para el buscador
+  const filteredItems = items.filter(item => 
+    (item.itemName || item.productName || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const renderItem = ({ item }) => {
     const status = getStockLevel(item.quantity, item.minStock || 100);
+    const StatusIcon = status.icon;
 
     return (
-      <View style={[styles.itemCard, { borderLeftColor: status.color }]}>
+      <View style={[styles.itemCard, { borderTopColor: status.color }]}>
         <View style={styles.itemHeader}>
-          <Package color={status.color} size={20} />
           <Text style={styles.itemName}>{item.itemName || item.productName}</Text>
           <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
+            <StatusIcon color={status.color} size={12} style={{marginRight: 4}} />
              <Text style={[styles.statusBadgeText, { color: status.color }]}>{status.label}</Text>
           </View>
         </View>
 
-        <View style={styles.quantityRow}>
-           <Text style={styles.quantityValue}>{item.quantity}</Text>
-           <Text style={styles.quantityUnit}>{item.unit || 'uds'}</Text>
-           {item.quantity <= (item.minStock || 100) && (
-             <AlertTriangle size={16} color={status.color} style={{marginLeft: 10}} />
-           )}
-        </View>
-        
-        <View style={styles.detailsRow}>
-          <View style={styles.detail}>
-            <Tag size={12} color="#888" />
-            <Text style={styles.detailText}>Lote: {item.batchInternal || 'N/A'}</Text>
+        <View style={styles.contentRow}>
+          <View style={styles.qtyBox}>
+            <Text style={styles.quantityValue}>{item.quantity}</Text>
+            <Text style={styles.quantityUnit}>{item.unit || 'Uds'}</Text>
           </View>
-          <View style={styles.detail}>
-            <Calendar size={12} color="#888" />
-            <Text style={styles.detailText}>Min. Requerido: {item.minStock || 100}</Text>
+          
+          <View style={styles.metaBox}>
+            <Text style={styles.metaText}>Mín. Req: <Text style={styles.metaBold}>{item.minStock || 100}</Text></Text>
+            <Text style={styles.metaText}>Lote Interno: <Text style={styles.metaBold}>{item.batchInternal || 'S/D'}</Text></Text>
+            {item.loteProveedor && <Text style={styles.metaText}>Lote Prov: <Text style={styles.metaBold}>{item.loteProveedor}</Text></Text>}
+            {item.vencimiento && <Text style={styles.metaText}>Vence: <Text style={styles.metaBold}>{item.vencimiento}</Text></Text>}
           </View>
         </View>
-
-        {item.presentation && (
-          <Text style={styles.presentationText}>Presentación: {item.presentation} Lts</Text>
-        )}
       </View>
     );
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar barStyle="dark-content" />
       
+      {/* HEADER ENTERPRISE */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <ChevronLeft color="#2e4a3b" size={28} />
+          <ChevronLeft color="#0f172a" size={28} />
         </TouchableOpacity>
-        <View style={{alignItems: 'center'}}>
-          <Text style={styles.headerTitle}>{title}</Text>
-          <Text style={styles.headerSub}>{companyName}</Text>
-        </View>
-        <TouchableOpacity style={styles.searchBtn}>
-          <Search color="#2e4a3b" size={24} />
-        </TouchableOpacity>
+        
+        {isSearching ? (
+          <View style={styles.searchContainer}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Buscar producto..."
+              placeholderTextColor="#94a3b8"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus
+            />
+            <TouchableOpacity onPress={() => { setIsSearching(false); setSearchQuery(''); }}>
+              <X color="#64748b" size={20} />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            <View style={{flex: 1, marginLeft: 10}}>
+              <Text style={styles.headerTitle}>{title}</Text>
+              <Text style={styles.headerSub}>{companyName} • Categ: {stockType}</Text>
+            </View>
+            <TouchableOpacity style={styles.searchBtn} onPress={() => setIsSearching(true)}>
+              <Search color="#0f172a" size={24} />
+            </TouchableOpacity>
+          </>
+        )}
       </View>
 
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator size="large" color="#2e4a3b" />
-          <Text style={styles.loadingText}>Analizando niveles de stock...</Text>
+          <ActivityIndicator size="large" color="#0f172a" />
+          <Text style={styles.loadingText}>Auditando inventario...</Text>
         </View>
       ) : (
         <FlatList
-          data={items}
+          data={filteredItems}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No hay stock registrado en esta categoría.</Text>
+              <PackageOpen color="#cbd5e1" size={48} />
+              <Text style={styles.emptyText}>
+                {searchQuery ? 'No se encontraron coincidencias.' : 'Sin existencias registradas en esta unidad.'}
+              </Text>
             </View>
           }
         />
@@ -123,57 +149,45 @@ export default function StockView({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F9FBF9' },
+  safe: { flex: 1, backgroundColor: '#f8fafc' },
   header: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    paddingHorizontal: 20,
-    paddingVertical: 15, 
-    backgroundColor: '#fff',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 4
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, 
+    backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0', elevation: 2,
+    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5
   },
   backBtn: { padding: 5 },
-  searchBtn: { padding: 5 },
-  headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#2e4a3b' },
-  headerSub: { fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 1 },
-  list: { padding: 15, paddingBottom: 50 },
+  searchBtn: { padding: 10, backgroundColor: '#f1f5f9', borderRadius: 12 },
+  headerTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a' },
+  headerSub: { fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '700', marginTop: 2 },
+  
+  // BUSCADOR ACTIVO
+  searchContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#f1f5f9', borderRadius: 12, paddingHorizontal: 15, marginLeft: 10, height: 40 },
+  searchInput: { flex: 1, color: '#0f172a', fontSize: 14, fontWeight: '500' },
+
+  list: { padding: 20, paddingBottom: 50 },
+  
+  // TARJETA ENTERPRISE
   itemCard: { 
-    backgroundColor: '#fff', 
-    padding: 18, 
-    borderRadius: 20, 
-    marginBottom: 15,
-    borderLeftWidth: 8, 
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)'
+    backgroundColor: '#fff', borderRadius: 16, marginBottom: 15, padding: 20,
+    borderWidth: 1, borderColor: '#e2e8f0', borderTopWidth: 4,
+    elevation: 2, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 8
   },
-  itemHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
-  itemName: { flex: 1, fontSize: 15, fontWeight: '900', marginLeft: 10, color: '#1A2E24' },
-  statusBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 8 },
-  statusBadgeText: { fontSize: 9, fontWeight: '900' },
-  quantityRow: { flexDirection: 'row', alignItems: 'baseline', marginVertical: 10 },
-  quantityValue: { fontSize: 32, fontWeight: '900', color: '#2e4a3b' },
-  quantityUnit: { fontSize: 14, color: '#666', marginLeft: 6, fontWeight: '800', textTransform: 'uppercase' },
-  detailsRow: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    borderTopWidth: 1, 
-    borderTopColor: '#F0F0F0', 
-    paddingTop: 12,
-    marginTop: 8
-  },
-  detail: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  detailText: { fontSize: 11, color: '#888', fontWeight: '700' },
-  presentationText: { fontSize: 10, color: '#2e7d32', marginTop: 10, fontStyle: 'italic', fontWeight: '800' },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F9FBF9' },
-  loadingText: { marginTop: 15, color: '#2e4a3b', fontWeight: '800', letterSpacing: 1 },
-  emptyContainer: { alignItems: 'center', marginTop: 60, paddingHorizontal: 40 },
-  emptyText: { color: '#bbb', fontSize: 14, textAlign: 'center', fontWeight: '700', fontStyle: 'italic' }
+  itemHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 },
+  itemName: { flex: 1, fontSize: 16, fontWeight: '800', color: '#1e293b', marginRight: 10 },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' },
+  statusBadgeText: { fontSize: 9, fontWeight: '900', letterSpacing: 0.5 },
+  
+  contentRow: { flexDirection: 'row', alignItems: 'center' },
+  qtyBox: { paddingRight: 20, borderRightWidth: 1, borderRightColor: '#f1f5f9', minWidth: 100 },
+  quantityValue: { fontSize: 32, fontWeight: '900', color: '#0f172a', lineHeight: 35 },
+  quantityUnit: { fontSize: 12, color: '#64748b', fontWeight: '800', textTransform: 'uppercase' },
+  
+  metaBox: { flex: 1, paddingLeft: 20 },
+  metaText: { fontSize: 11, color: '#64748b', marginBottom: 4 },
+  metaBold: { fontWeight: '700', color: '#334155' },
+
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc' },
+  loadingText: { marginTop: 15, color: '#475569', fontWeight: '700', fontSize: 14 },
+  emptyContainer: { alignItems: 'center', marginTop: 80, paddingHorizontal: 40 },
+  emptyText: { color: '#94a3b8', fontSize: 14, textAlign: 'center', fontWeight: '600', marginTop: 15 }
 });

@@ -15,6 +15,7 @@ import IncomingInventoryScreen from '../screens/IncomingInventoryScreen';
 import OutgoingInventoryScreen from '../screens/OutgoingInventoryScreen';
 import ProductionOrderScreen from '../screens/ProductionOrderScreen';
 import PackagingOrderScreen from '../screens/PackagingOrderScreen';
+import InterCompanyTransferScreen from '../screens/InterCompanyTransferScreen'; // <-- NUEVO: Clearing
 
 // 4. Módulos de Laboratorio (H2O), Calidad (BBS) y Reportes
 import FormulationScreen from '../screens/FormulationScreen'; 
@@ -31,6 +32,9 @@ import TraceabilityScannerScreen from '../screens/TraceabilityScannerScreen';
 // 6. Módulo de Personal y Asistencia (TÓTEM Y REPORTES)
 import StaffAttendanceScreen from '../screens/StaffAttendanceScreen'; 
 import AttendanceReportsScreen from '../screens/AttendanceReportsScreen';
+
+// 7. Módulo de Inteligencia Ejecutiva (C-LEVEL)
+import ExecutiveReportsScreen from '../screens/ExecutiveReportsScreen';
 
 const Stack = createStackNavigator();
 
@@ -50,6 +54,9 @@ export default function AppNavigator({ user }) {
       
       {/* SECCIÓN: DASHBOARD PRINCIPAL */}
       <Stack.Screen name="Home" component={HomeScreen} />
+
+      {/* SECCIÓN: INTELIGENCIA EJECUTIVA (C-LEVEL) */}
+      <Stack.Screen name="ExecutiveReports" component={ExecutiveReportsScreen} />
       
       {/* SECCIÓN: INTELIGENCIA Y CARGA IA */}
       <Stack.Screen name="SmartAICargo" component={SmartAICargoScreen} />
@@ -63,11 +70,12 @@ export default function AppNavigator({ user }) {
       <Stack.Screen name="CompanyDetail" component={CompanyDetailScreen} />
       <Stack.Screen name="StockView" component={StockView} />
       
-      {/* SECCIÓN: OPERACIONES DE PLANTA */}
+      {/* SECCIÓN: OPERACIONES DE PLANTA (TRANIFERENCIAS) */}
       <Stack.Screen name="IncomingInventory" component={IncomingInventoryScreen} />
       <Stack.Screen name="OutgoingInventory" component={OutgoingInventoryScreen} />
       <Stack.Screen name="ProductionOrder" component={ProductionOrderScreen} />
       <Stack.Screen name="PackagingOrder" component={PackagingOrderScreen} />
+      <Stack.Screen name="InterCompanyTransfer" component={InterCompanyTransferScreen} />
       
       {/* SECCIÓN: LABORATORIO Y AUDITORÍA */}
       <Stack.Screen name="Formulation" component={FormulationScreen} />

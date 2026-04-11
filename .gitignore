@@ -40,3 +40,6 @@ Thumbs.db
 
 # --- TYPESCRIPT ---
 *.tsbuildinfo
+# --- FIREBASE NATIVE CONFIG (Opcional pero recomendado) ---
+google-services.json
+GoogleService-Info.plist
