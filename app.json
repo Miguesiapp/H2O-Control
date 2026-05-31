@@ -1,12 +1,11 @@
 {
   "expo": {
-    "name": "H2O Control Neural",
-    "slug": "H2O-Control-Neural",
-    "version": "1.0.0",
+    "name": "H2O-Control-Native",
+    "slug": "H2O-Control-Native",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
@@ -40,8 +39,7 @@
           "cameraPermission": "Permitir que H2O Control Neural use la cámara para el presentismo biométrico.",
           "recordAudioPermission": false
         }
-      ],
-      "expo-print"
+      ]
     ],
     "extra": {
       "eas": {

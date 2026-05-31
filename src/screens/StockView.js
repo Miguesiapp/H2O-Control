@@ -6,19 +6,17 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { ChevronLeft, Search, PackageOpen, AlertTriangle, ShieldCheck, X } from 'lucide-react-native';
+import { ChevronLeft, Search, PackageOpen, AlertTriangle, ShieldCheck, X, FlaskConical } from 'lucide-react-native';
 
 export default function StockView({ route, navigation }) {
   const { companyName, stockType, title } = route.params;
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
   
-  // NUEVO: Estado para el buscador
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
 
   useEffect(() => {
-    // Escucha en tiempo real a Firebase
     const q = query(
       collection(db, "Inventory"),
       where("company", "==", companyName),
@@ -30,6 +28,7 @@ export default function StockView({ route, navigation }) {
       querySnapshot.forEach((doc) => {
         stockData.push({ ...doc.data(), id: doc.id });
       });
+      
       // Ordenamos alfabéticamente
       stockData.sort((a, b) => (a.itemName || '').localeCompare(b.itemName || ''));
       setItems(stockData);
@@ -49,9 +48,16 @@ export default function StockView({ route, navigation }) {
     return { label: 'NIVEL ÓPTIMO', color: '#10b981', bg: '#ecfdf5', icon: ShieldCheck };
   };
 
-  // Filtrado local para el buscador
+  // Lógica visual para el Estado de Laboratorio
+  const getLabStatusColor = (status) => {
+    if (status === 'APTO') return '#10b981'; // Verde
+    if (status === 'RECHAZADO') return '#ef4444'; // Rojo
+    return '#f59e0b'; // Naranja para PENDIENTE
+  };
+
   const filteredItems = items.filter(item => 
-    (item.itemName || item.productName || '').toLowerCase().includes(searchQuery.toLowerCase())
+    (item.itemName || item.productName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (item.batchInternal || '').toLowerCase().includes(searchQuery.toLowerCase()) // Ahora también busca por Lote
   );
 
   const renderItem = ({ item }) => {
@@ -64,7 +70,7 @@ export default function StockView({ route, navigation }) {
           <Text style={styles.itemName}>{item.itemName || item.productName}</Text>
           <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
             <StatusIcon color={status.color} size={12} style={{marginRight: 4}} />
-             <Text style={[styles.statusBadgeText, { color: status.color }]}>{status.label}</Text>
+            <Text style={[styles.statusBadgeText, { color: status.color }]}>{status.label}</Text>
           </View>
         </View>
 
@@ -77,8 +83,19 @@ export default function StockView({ route, navigation }) {
           <View style={styles.metaBox}>
             <Text style={styles.metaText}>Mín. Req: <Text style={styles.metaBold}>{item.minStock || 100}</Text></Text>
             <Text style={styles.metaText}>Lote Interno: <Text style={styles.metaBold}>{item.batchInternal || 'S/D'}</Text></Text>
+            
             {item.loteProveedor && <Text style={styles.metaText}>Lote Prov: <Text style={styles.metaBold}>{item.loteProveedor}</Text></Text>}
             {item.vencimiento && <Text style={styles.metaText}>Vence: <Text style={styles.metaBold}>{item.vencimiento}</Text></Text>}
+            
+            {/* NUEVO: Reflejo del estado de Laboratorio (Crucial para el Granel PT) */}
+            {item.status && (
+              <View style={styles.labStatusRow}>
+                <FlaskConical color={getLabStatusColor(item.status)} size={12} style={{marginRight: 4}} />
+                <Text style={styles.metaText}>
+                  Calidad: <Text style={[styles.metaBold, { color: getLabStatusColor(item.status) }]}>{item.status}</Text>
+                </Text>
+              </View>
+            )}
           </View>
         </View>
       </View>
@@ -99,7 +116,7 @@ export default function StockView({ route, navigation }) {
           <View style={styles.searchContainer}>
             <TextInput
               style={styles.searchInput}
-              placeholder="Buscar producto..."
+              placeholder="Buscar producto o lote..."
               placeholderTextColor="#94a3b8"
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -160,13 +177,11 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a' },
   headerSub: { fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '700', marginTop: 2 },
   
-  // BUSCADOR ACTIVO
   searchContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#f1f5f9', borderRadius: 12, paddingHorizontal: 15, marginLeft: 10, height: 40 },
   searchInput: { flex: 1, color: '#0f172a', fontSize: 14, fontWeight: '500' },
 
   list: { padding: 20, paddingBottom: 50 },
   
-  // TARJETA ENTERPRISE
   itemCard: { 
     backgroundColor: '#fff', borderRadius: 16, marginBottom: 15, padding: 20,
     borderWidth: 1, borderColor: '#e2e8f0', borderTopWidth: 4,
@@ -185,6 +200,7 @@ const styles = StyleSheet.create({
   metaBox: { flex: 1, paddingLeft: 20 },
   metaText: { fontSize: 11, color: '#64748b', marginBottom: 4 },
   metaBold: { fontWeight: '700', color: '#334155' },
+  labStatusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2, backgroundColor: '#f8fafc', alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
 
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc' },
   loadingText: { marginTop: 15, color: '#475569', fontWeight: '700', fontSize: 14 },

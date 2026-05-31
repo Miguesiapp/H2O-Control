@@ -48,9 +48,10 @@ export default function IncomingInventoryScreen({ route, navigation }) {
         providerName: formData.providerName.trim() || 'S/D',
         expiryDate: formData.expiryDate.trim() || 'S/V',
         category: category,
-        stockType: 'MP', 
+        stockType: 'MP', // Se clasifica como Materia Prima / Insumo
         batchInternal: batchInternal, 
         unit: category === 'Materia Prima' ? 'Lts/Kg' : 'Uds',
+        status: 'APTO' // IMPORTANTÍSIMO: Para que el calculador de Producción lo tome como disponible
       };
 
       await registerMovement(
@@ -60,20 +61,13 @@ export default function IncomingInventoryScreen({ route, navigation }) {
         movementData
       );
 
+      // ALERTA SIMPLIFICADA: Sin opciones de códigos QR
       Alert.alert(
         "Alta de Stock Exitosa", 
-        `Se registró el lote interno:\n${batchInternal}\n\n¿Deseas imprimir la etiqueta de trazabilidad QR para identificar la mercadería?`,
-        [
-          { text: "No, volver", onPress: () => navigation.goBack(), style: "cancel" },
-          { 
-            text: "IMPRIMIR QR", 
-            onPress: () => navigation.navigate('QRGenerator', { 
-              itemData: movementData, 
-              companyName: companyName 
-            }) 
-          }
-        ]
+        `Se registró correctamente el lote interno:\n${batchInternal}\n\nEl stock ya se encuentra disponible para su uso en planta.`,
+        [{ text: "Entendido", onPress: () => navigation.goBack() }]
       );
+
     } catch (error) {
       console.error(error);
       Alert.alert("Error de Sistema", "No se pudo sincronizar el ingreso con el servidor.");
@@ -103,10 +97,10 @@ export default function IncomingInventoryScreen({ route, navigation }) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* BANNER DE ADVERTENCIA */}
+        {/* BANNER INFORMATIVO */}
         <View style={styles.infoBanner}>
           <Text style={styles.bannerText}>
-            Para ingresos complejos, se recomienda usar el módulo de <Text style={{fontWeight: '800'}}>Carga Inteligente (IA)</Text> mediante escaneo OCR de remitos.
+            Para ingresos complejos de facturas largas, se recomienda usar el módulo de <Text style={{fontWeight: '800'}}>Ingreso Inteligente (IA)</Text>.
           </Text>
         </View>
 

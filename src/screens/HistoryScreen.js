@@ -1,21 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, StatusBar, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { db, auth } from '../config/firebase';
+import { db } from '../config/firebase'; // Ya no requerimos 'auth' si no bloqueamos por usuario
 import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
-import { ChevronLeft, Clock, ArrowDownToLine, ArrowUpFromLine, Activity, User } from 'lucide-react-native';
-
-const ADMIN_EMAILS = ['miguesilva.1985@outlook.es', 'bduville@h2ocontrol.com.ar'];
+import { ChevronLeft, Clock, ArrowDownToLine, ArrowUpFromLine, Activity, User, ArrowRightLeft } from 'lucide-react-native';
 
 export default function HistoryScreen({ navigation }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Verificamos si es administrador
-  const isAuthorized = ADMIN_EMAILS.includes(auth.currentUser?.email?.toLowerCase() || '');
-
   useEffect(() => {
-    // Escucha en tiempo real de la colección correcta: AuditLog
+    // Escucha en tiempo real de la colección AuditLog
     const q = query(collection(db, 'AuditLog'), orderBy('timestamp', 'desc'), limit(100));
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -24,8 +19,8 @@ export default function HistoryScreen({ navigation }) {
         return {
           id: doc.id,
           ...data,
-          // Manejo seguro de fechas de Firestore
-          formattedDate: data.timestamp?.toDate ? data.timestamp.toDate().toLocaleString() : 'Fecha Pendiente'
+          // Manejo seguro de fechas de Firestore (por si el serverTimestamp aún está pendiente)
+          formattedDate: data.timestamp?.toDate ? data.timestamp.toDate().toLocaleString() : 'Justo ahora'
         };
       });
       setHistory(logDocs);
@@ -38,12 +33,24 @@ export default function HistoryScreen({ navigation }) {
     return () => unsubscribe();
   }, []);
 
-  // Función para determinar el color e icono según la acción
+  // Función MOTOR DE COLORES sincronizada con nuestro sistema
   const getActionTheme = (action = '') => {
-    if (action.includes('INGRESO')) return { color: '#10b981', bg: '#ecfdf5', icon: ArrowDownToLine };
-    if (action.includes('EGRESO') || action.includes('RETIRO')) return { color: '#ef4444', bg: '#fef2f2', icon: ArrowUpFromLine };
-    if (action.includes('PRODUCCION') || action.includes('ENVASADO')) return { color: '#f59e0b', bg: '#fffbeb', icon: Activity };
-    return { color: '#64748b', bg: '#f1f5f9', icon: Clock };
+    const act = action.toUpperCase();
+    
+    if (act.includes('INGRESO') || act.includes('CARGA')) {
+      return { color: '#10b981', bg: '#ecfdf5', icon: ArrowDownToLine }; // Verde
+    }
+    if (act.includes('EGRESO') || act.includes('RETIRO') || act.includes('CONSUMO')) {
+      return { color: '#ef4444', bg: '#fef2f2', icon: ArrowUpFromLine }; // Rojo
+    }
+    if (act.includes('CLEARING') || act.includes('TRANSFERENCIA')) {
+      return { color: '#3b82f6', bg: '#eff6ff', icon: ArrowRightLeft }; // Azul
+    }
+    if (act.includes('PRODUCCION') || act.includes('ENVASADO')) {
+      return { color: '#f59e0b', bg: '#fffbeb', icon: Activity }; // Naranja
+    }
+    
+    return { color: '#64748b', bg: '#f1f5f9', icon: Clock }; // Gris por defecto
   };
 
   const renderLog = ({ item }) => {
@@ -81,7 +88,7 @@ export default function HistoryScreen({ navigation }) {
           <View style={styles.logFooter}>
             <View style={styles.userRow}>
               <User color="#94a3b8" size={12} />
-              <Text style={styles.logUser}>{item.user}</Text>
+              <Text style={styles.logUser}>{item.user || 'Sistema'}</Text>
             </View>
             <Text style={styles.logBatch}>Lote: {item.batchInternal || 'N/A'}</Text>
           </View>
@@ -139,7 +146,7 @@ export default function HistoryScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0f172a' }, // Fondo oscuro para el header
+  safe: { flex: 1, backgroundColor: '#0f172a' },
   header: { 
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
     paddingHorizontal: 20, paddingVertical: 15, backgroundColor: '#0f172a',

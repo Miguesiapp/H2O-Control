@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
   ArrowDownToLine, ArrowUpFromLine, Package, Container, 
-  ChevronLeft, Database, Beaker, Archive, Plus, ChevronRight, Briefcase
+  ChevronLeft, Database, Beaker, Archive, Plus, ChevronRight, Briefcase, BrainCircuit, Sparkles
 } from 'lucide-react-native';
 import QuickAddModal from '../components/QuickAddModal';
 
@@ -20,10 +20,10 @@ export default function CompanyDetailScreen({ route, navigation }) {
   const isLandscape = width > height;
 
   const menuOptions = [
-    { id: 'ingresos', title: 'Ingreso MP', sub: 'Remitos / Compras', icon: <ArrowDownToLine size={28} color="#10b981" />, bg: '#ecfdf5', border: '#a7f3d0', screen: 'IncomingInventory' },
+    { id: 'ingresos', title: 'Ingreso Manual', sub: 'Remitos / Compras', icon: <ArrowDownToLine size={28} color="#10b981" />, bg: '#ecfdf5', border: '#a7f3d0', screen: 'IncomingInventory' },
     { id: 'egresos', title: 'Despachos', sub: 'Salida a Cliente', icon: <ArrowUpFromLine size={28} color="#ef4444" />, bg: '#fef2f2', border: '#fecaca', screen: 'OutgoingInventory' },
-    { id: 'prod', title: 'Producción', sub: 'Crear Granel', icon: <Package size={28} color="#f59e0b" />, bg: '#fffbeb', border: '#fde68a', screen: 'ProductionOrder' },
-    { id: 'envasado', title: 'Envasado', sub: 'Llenado Final', icon: <Container size={28} color="#3b82f6" />, bg: '#eff6ff', border: '#bfdbfe', screen: 'PackagingOrder' },
+    { id: 'prod', title: 'Producción', sub: 'Crear Granel (OP)', icon: <Package size={28} color="#f59e0b" />, bg: '#fffbeb', border: '#fde68a', screen: 'ProductionOrder' },
+    { id: 'envasado', title: 'Envasado', sub: 'Llenado Final (OE)', icon: <Container size={28} color="#3b82f6" />, bg: '#eff6ff', border: '#bfdbfe', screen: 'PackagingOrder' },
   ];
 
   const stockOptions = [
@@ -56,7 +56,29 @@ export default function CompanyDetailScreen({ route, navigation }) {
         showsVerticalScrollIndicator={false} 
         contentContainerStyle={styles.container}
       >
-        <Text style={styles.sectionLabel}>Flujo Operativo</Text>
+        <Text style={styles.sectionLabel}>Ingreso Inteligente</Text>
+        
+        {/* BANNER DE INTELIGENCIA ARTIFICIAL */}
+        <TouchableOpacity 
+          style={styles.aiBanner}
+          activeOpacity={0.8}
+          // Al navegar, le pasamos la empresa actual para que la IA ya tenga contexto
+          onPress={() => navigation.navigate('SmartAICargo', { companyName })} 
+        >
+          <View style={styles.aiIconBox}>
+            <BrainCircuit color="#fff" size={28} />
+          </View>
+          <View style={{flex: 1, marginLeft: 15}}>
+            <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
+              <Text style={styles.aiBannerTitle}>Auditoría con IA</Text>
+              <Sparkles color="#fbbf24" size={16} />
+            </View>
+            <Text style={styles.aiBannerSub}>Escanear remitos o cerrar órdenes automáticamente.</Text>
+          </View>
+          <ChevronRight color="#fff" size={20} opacity={0.7} />
+        </TouchableOpacity>
+
+        <Text style={[styles.sectionLabel, { marginTop: 10 }]}>Flujo Operativo Manual</Text>
         <View style={[styles.grid, isLandscape && styles.gridLandscape]}>
           {menuOptions.map((item) => (
             <TouchableOpacity 
@@ -135,6 +157,16 @@ const styles = StyleSheet.create({
   container: { padding: 20, paddingBottom: 100 },
   sectionLabel: { fontSize: 12, color: '#64748b', fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 15, marginLeft: 5 },
   
+  /* ESTILOS DEL NUEVO BANNER IA */
+  aiBanner: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#0f172a', 
+    padding: 20, borderRadius: 20, marginBottom: 25, elevation: 5,
+    shadowColor: '#0f172a', shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }
+  },
+  aiIconBox: { backgroundColor: 'rgba(255,255,255,0.1)', padding: 12, borderRadius: 14 },
+  aiBannerTitle: { fontSize: 16, fontWeight: '900', color: '#fff' },
+  aiBannerSub: { fontSize: 11, color: '#94a3b8', marginTop: 4, lineHeight: 16 },
+
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12 },
   gridLandscape: { flexDirection: 'row', flexWrap: 'wrap' },
   

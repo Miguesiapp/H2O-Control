@@ -15,7 +15,7 @@ import IncomingInventoryScreen from '../screens/IncomingInventoryScreen';
 import OutgoingInventoryScreen from '../screens/OutgoingInventoryScreen';
 import ProductionOrderScreen from '../screens/ProductionOrderScreen';
 import PackagingOrderScreen from '../screens/PackagingOrderScreen';
-import InterCompanyTransferScreen from '../screens/InterCompanyTransferScreen'; // <-- NUEVO: Clearing
+import InterCompanyTransferScreen from '../screens/InterCompanyTransferScreen'; 
 
 // 4. Módulos de Laboratorio (H2O), Calidad (BBS) y Reportes
 import FormulationScreen from '../screens/FormulationScreen'; 
@@ -24,10 +24,10 @@ import QuarterlyCalculatorScreen from '../screens/QuarterlyCalculatorScreen';
 import QualityControlScreen from '../screens/QualityControlScreen'; 
 import HistoryScreen from '../screens/HistoryScreen';
 
-// 5. Módulos de Inteligencia IA y Trazabilidad QR
+// 5. Módulos de Inteligencia IA
 import SmartAICargoScreen from '../screens/SmartAICargoScreen'; 
-import QRGeneratorScreen from '../screens/QRGeneratorScreen';
-import TraceabilityScannerScreen from '../screens/TraceabilityScannerScreen';
+// NUEVO: El cerebro conversacional
+import AiAssistantScreen from '../screens/AiAssistantScreen'; 
 
 // 6. Módulo de Personal y Asistencia (TÓTEM Y REPORTES)
 import StaffAttendanceScreen from '../screens/StaffAttendanceScreen'; 
@@ -35,6 +35,8 @@ import AttendanceReportsScreen from '../screens/AttendanceReportsScreen';
 
 // 7. Módulo de Inteligencia Ejecutiva (C-LEVEL)
 import ExecutiveReportsScreen from '../screens/ExecutiveReportsScreen';
+
+// NOTA: Se eliminaron QRGeneratorScreen y TraceabilityScannerScreen de las importaciones.
 
 const Stack = createStackNavigator();
 
@@ -61,16 +63,14 @@ export default function AppNavigator({ user }) {
       {/* SECCIÓN: INTELIGENCIA Y CARGA IA */}
       <Stack.Screen name="SmartAICargo" component={SmartAICargoScreen} />
       <Stack.Screen name="QuarterlyCalculator" component={QuarterlyCalculatorScreen} />
-
-      {/* SECCIÓN: TRAZABILIDAD Y QR */}
-      <Stack.Screen name="QRGenerator" component={QRGeneratorScreen} /> 
-      <Stack.Screen name="TraceabilityScanner" component={TraceabilityScannerScreen} />
+      {/* NUEVO: Ruta registrada para la pantalla del chat IA */}
+      <Stack.Screen name="AiAssistant" component={AiAssistantScreen} />
       
       {/* SECCIÓN: GESTIÓN DE UNIDADES DE NEGOCIO */}
       <Stack.Screen name="CompanyDetail" component={CompanyDetailScreen} />
       <Stack.Screen name="StockView" component={StockView} />
       
-      {/* SECCIÓN: OPERACIONES DE PLANTA (TRANIFERENCIAS) */}
+      {/* SECCIÓN: OPERACIONES DE PLANTA (TRANSFERENCIAS) */}
       <Stack.Screen name="IncomingInventory" component={IncomingInventoryScreen} />
       <Stack.Screen name="OutgoingInventory" component={OutgoingInventoryScreen} />
       <Stack.Screen name="ProductionOrder" component={ProductionOrderScreen} />

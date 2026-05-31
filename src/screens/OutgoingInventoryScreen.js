@@ -4,9 +4,11 @@ import {
   TouchableOpacity, Alert, StatusBar, ActivityIndicator 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { auth } from '../config/firebase';
-import { deductStock, registerMovement } from '../services/logisticsService';
-import { ChevronLeft, Truck, Send, PackageMinus, MapPin, Barcode, ClipboardType } from 'lucide-react-native';
+import { auth, db } from '../config/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { registerMovement } from '../services/logisticsService';
+// Cambié Barcode por Hash para eliminar la idea visual del escáner
+import { ChevronLeft, Truck, Send, PackageMinus, MapPin, Hash, ClipboardType } from 'lucide-react-native';
 
 export default function OutgoingInventoryScreen({ route, navigation }) {
   const { companyName } = route.params;
@@ -37,42 +39,53 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
       const itemName = formData.productName.trim().toUpperCase();
       const batchId = formData.batchInternal.trim().toUpperCase();
 
-      // 1. Restar del Stock Final
-      const success = await deductStock(
+      // 1. VERIFICACIÓN PREVIA DE STOCK EN FIREBASE
+      const inventoryRef = collection(db, 'Inventory');
+      const qStock = query(
+        inventoryRef, 
+        where('company', '==', companyName),
+        where('itemName', '==', itemName),
+        where('batchInternal', '==', batchId)
+      );
+      
+      const stockSnap = await getDocs(qStock);
+      
+      let currentStock = 0;
+      if (!stockSnap.empty) {
+        currentStock = stockSnap.docs[0].data().quantity || 0;
+      }
+
+      // Si no hay stock suficiente, frenamos el despacho
+      if (currentStock < qtyNormalized) {
+         Alert.alert(
+           "Stock Insuficiente", 
+           `En el sistema figuran solo ${currentStock} unidades disponibles del producto ${itemName} (Lote: ${batchId}). No puedes despachar ${qtyNormalized}.`
+         );
+         setIsSubmitting(false);
+         return;
+      }
+
+      // 2. REGISTRAR EL EGRESO (Descuenta el stock automáticamente al usar valor negativo)
+      await registerMovement(
+        auth.currentUser?.email || 'Sistema',
+        'EGRESO_DESPACHO_CLIENTE',
         companyName,
-        itemName,
-        qtyNormalized,
-        batchId,
-        'FINAL'
+        {
+          itemName: itemName,
+          quantity: -Math.abs(qtyNormalized), // Forzamos el negativo para restar del inventario
+          batchInternal: batchId,
+          details: `Destino: ${formData.destination.trim()} | Transporte: ${formData.transportName.trim()}`,
+          stockType: 'PT', // Se despacha Producto Terminado
+          unit: 'Uds'
+        }
       );
 
-      if (success) {
-        // 2. Registrar en Auditoría (Remito de Salida Interno)
-        await registerMovement(
-          auth.currentUser?.email || 'Sistema',
-          'EGRESO_DESPACHO_CLIENTE',
-          companyName,
-          {
-            itemName: itemName,
-            quantity: -Math.abs(qtyNormalized), // Lo guardamos en negativo para auditoría visual
-            batchInternal: batchId,
-            details: `Destino: ${formData.destination.trim()} | Transporte: ${formData.transportName.trim()}`,
-            stockType: 'LOG',
-            unit: 'Uds'
-          }
-        );
-
-        Alert.alert(
-          "Despacho Autorizado", 
-          `Se han descontado ${qtyNormalized} unidades del lote ${batchId}.\nEl registro ha sido guardado en la auditoría general.`,
-          [{ text: "Entendido", onPress: () => navigation.goBack() }]
-        );
-      } else {
-        Alert.alert(
-          "Quiebre de Stock", 
-          "El sistema no encontró disponibilidad suficiente para el producto y lote indicados. Verifica el código de trazabilidad."
-        );
-      }
+      Alert.alert(
+        "Despacho Registrado Exitosamente", 
+        `Se han descontado ${qtyNormalized} unidades del lote ${batchId}.\nEl registro ha sido guardado en la auditoría general.`,
+        [{ text: "Entendido", onPress: () => navigation.goBack() }]
+      );
+      
     } catch (error) {
       console.error(error);
       Alert.alert("Error de Sistema", "No se pudo procesar la salida de mercadería.");
@@ -139,10 +152,10 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
             <View style={{ flex: 1.5 }}>
               <Text style={styles.label}>Lote de Salida</Text>
               <View style={styles.inputWrapper}>
-                <Barcode color="#94a3b8" size={18} style={styles.inputIcon} />
+                <Hash color="#94a3b8" size={18} style={styles.inputIcon} />
                 <TextInput 
                   style={[styles.input, {fontSize: 13}]} 
-                  placeholder="Ej: PT-20260411-1234" 
+                  placeholder="Ej: OP-20260411-1234" 
                   placeholderTextColor="#94a3b8"
                   value={formData.batchInternal}
                   onChangeText={(txt) => setFormData({...formData, batchInternal: txt})}

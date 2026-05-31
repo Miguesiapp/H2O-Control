@@ -1,59 +1,100 @@
 import { db } from '../config/firebase';
 import { collection, addDoc, updateDoc, doc, increment, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 
+// ============================================================================
 // FUNCIÓN 1: REGISTRAR MOVIMIENTOS (El Director de Orquesta)
-export const registerMovement = async (userEmail, type, company, data) => {
+// ============================================================================
+export const registerMovement = async (userEmail, actionType, company, data) => {
   try {
-    // 1. Guardar siempre en el Historial de Auditoría (Inalterable)
+    // 1. GUARDAR SIEMPRE EN AUDITORÍA (Historial Inalterable)
     await addDoc(collection(db, "AuditLog"), {
       user: userEmail,
-      action: type,
+      action: actionType,
       company: company,
       itemName: data.itemName?.toUpperCase(),
       quantity: data.quantity, // Puede ser positivo o negativo
       unit: data.unit || 'Lts',
+      stockType: data.stockType || 'MP',
       batchInternal: data.batchInternal || 'N/A',
       loteProveedor: data.loteProveedor || 'N/A',
+      details: data.details || '',
       timestamp: serverTimestamp(),
     });
 
     const numericQty = Number(data.quantity);
     const inventoryRef = collection(db, "Inventory");
+    const itemNameUpper = data.itemName?.toUpperCase();
 
-    // 2. Lógica de Inyección vs Deducción
+    // 2. LÓGICA DE INVENTARIO: ¿Suma o Resta?
     if (numericQty > 0) {
-      // INGRESO: Buscamos si por casualidad se está editando un lote exacto
+      // ---------------------------------------------------
+      // CASO A: INYECCIÓN DE STOCK (Suma)
+      // ---------------------------------------------------
       const q = query(
         inventoryRef, 
         where("company", "==", company), 
         where("batchInternal", "==", data.batchInternal),
-        where("itemName", "==", data.itemName?.toUpperCase())
+        where("itemName", "==", itemNameUpper)
       );
       
       const querySnapshot = await getDocs(q);
 
       if (!querySnapshot.empty) {
-        // Sumar al existente
+        // El lote ya existe: Sumamos a la cantidad actual
         const itemDoc = querySnapshot.docs[0];
         await updateDoc(doc(db, "Inventory", itemDoc.id), {
           quantity: increment(numericQty),
           lastUpdated: serverTimestamp()
         });
       } else {
-        // Lote totalmente nuevo (Lo normal en ingresos por compras/remitos)
+        // Lote totalmente nuevo (Ingresos, Cargas Iniciales, OP nuevas)
         await addDoc(inventoryRef, {
           ...data,
-          itemName: data.itemName?.toUpperCase(),
+          itemName: itemNameUpper,
           company: company,
           quantity: numericQty,
           stockType: data.stockType || 'MP', 
+          status: data.status || 'PENDIENTE', // Vital para que Laboratorio lo vea o lo libere
           createdAt: serverTimestamp(),
           lastUpdated: serverTimestamp()
         });
       }
+
     } else if (numericQty < 0) {
-      // RETIRO CASUAL: Descontamos usando el sistema FIFO
-      await deductStockFIFO(company, data.itemName?.toUpperCase(), Math.abs(numericQty));
+      // ---------------------------------------------------
+      // CASO B: EXTRACCIÓN DE STOCK (Resta)
+      // ---------------------------------------------------
+      const absQty = Math.abs(numericQty);
+
+      // ENRUTADOR INTELIGENTE: ¿Descuento Exacto o FIFO?
+      const isExactDeduction = 
+        actionType === 'EGRESO_DESPACHO_CLIENTE' || 
+        actionType === 'CONSUMO_ENVASADO' ||
+        (actionType === 'EGRESO_CLEARING' && data.batchInternal && data.batchInternal !== 'S/D');
+
+      if (isExactDeduction) {
+        // DESCUENTO EXACTO: Va directo al Lote que el usuario eligió en pantalla
+        const qExact = query(
+          inventoryRef, 
+          where("company", "==", company), 
+          where("itemName", "==", itemNameUpper),
+          where("batchInternal", "==", data.batchInternal)
+        );
+        const snapExact = await getDocs(qExact);
+        
+        if (!snapExact.empty) {
+          const itemDoc = snapExact.docs[0];
+          await updateDoc(doc(db, "Inventory", itemDoc.id), {
+            quantity: increment(-absQty),
+            lastUpdated: serverTimestamp()
+          });
+        } else {
+          console.warn(`Alerta: No se encontró el lote exacto ${data.batchInternal} para descontar.`);
+        }
+      } else {
+        // DESCUENTO FIFO: Se usa para Producción o Retiros casuales donde no importa qué tambor se abre primero.
+        await deductStockFIFO(company, itemNameUpper, absQty);
+      }
     }
   } catch (error) {
     console.error("Error en registerMovement:", error);
@@ -61,11 +102,14 @@ export const registerMovement = async (userEmail, type, company, data) => {
   }
 };
 
-// FUNCIÓN 2: RESTAR STOCK CON SISTEMA FIFO (Primero en entrar, primero en salir)
+
+// ============================================================================
+// FUNCIÓN 2: SISTEMA FIFO (Primero en entrar, primero en salir)
+// ============================================================================
 export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
   try {
     const inventoryRef = collection(db, "Inventory");
-    // Buscamos todos los lotes de este producto que tengan stock disponible
+    // Buscamos todos los lotes de este producto que tengan stock físico (> 0)
     const q = query(
       inventoryRef,
       where("company", "==", company),
@@ -76,17 +120,17 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
     const querySnapshot = await getDocs(q);
 
     if (querySnapshot.empty) {
-      console.warn(`🚨 Alerta: Se intentó retirar ${itemName} pero no hay stock registrado en ${company}.`);
+      console.warn(`Alerta FIFO: Se intentó retirar ${itemName} pero el stock es 0 en ${company}.`);
       return false;
     }
 
-    // Ordenamos en memoria por fecha de creación (FIFO) para gastar primero lo más viejo
+    // Ordenamos en memoria por fecha de creación (Gastamos primero lo más viejo)
     const docs = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     docs.sort((a, b) => (a.createdAt?.toMillis() || 0) - (b.createdAt?.toMillis() || 0));
 
     let remainingToDeduct = quantityToDeduct;
 
-    // Empezamos a vaciar los lotes desde el más antiguo al más nuevo
+    // Bucle inteligente: vacía lotes antiguos y pasa al siguiente si es necesario
     for (const item of docs) {
       if (remainingToDeduct <= 0) break;
 
@@ -103,7 +147,7 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
     }
 
     if (remainingToDeduct > 0) {
-      console.warn(`⚠️ Se retiró todo el stock posible, pero quedaron faltando ${remainingToDeduct} unidades de ${itemName}.`);
+      console.warn(`Alerta FIFO: Quedaron faltando ${remainingToDeduct} unidades de ${itemName}.`);
     }
 
     return true;

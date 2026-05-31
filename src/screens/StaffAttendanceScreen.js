@@ -142,7 +142,7 @@ export default function StaffAttendanceScreen({ navigation }) {
               <View style={[styles.iconCircle, { backgroundColor: '#ecfdf5' }]}>
                 <UserCheck color="#10b981" size={40} />
               </View>
-              <Text style={styles.btnTitle}>INICIAR TURNO</Text>
+              <Text style={styles.btnTitle}>CHECK IN</Text>
               <Text style={styles.btnSub}>Check In Biométrico</Text>
             </TouchableOpacity>
 
@@ -153,7 +153,7 @@ export default function StaffAttendanceScreen({ navigation }) {
               <View style={[styles.iconCircle, { backgroundColor: '#fef2f2' }]}>
                 <UserX color="#ef4444" size={40} />
               </View>
-              <Text style={styles.btnTitle}>FINALIZAR TURNO</Text>
+              <Text style={styles.btnTitle}>CHECK OUT</Text>
               <Text style={styles.btnSub}>Check Out Seguro</Text>
             </TouchableOpacity>
           </View>

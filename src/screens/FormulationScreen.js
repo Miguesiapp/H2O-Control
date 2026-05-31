@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
 import { collection, onSnapshot, query, orderBy, where } from 'firebase/firestore';
-import { ChevronLeft, Plus, Calculator, Beaker, Search, AlertTriangle, ListFilter } from 'lucide-react-native';
+import { ChevronLeft, Plus, Beaker, Search, AlertTriangle, ListFilter, BrainCircuit } from 'lucide-react-native';
 
 export default function FormulationScreen({ navigation }) {
   const [formulas, setFormulas] = useState([]);
@@ -14,7 +14,7 @@ export default function FormulationScreen({ navigation }) {
   const [searchText, setSearchText] = useState('');
 
   useEffect(() => {
-    // ACTUALIZACIÓN CRÍTICA: Apuntamos a Formulas_Maestras y solo traemos las ACTIVAS
+    // Apuntamos a Formulas_Maestras y solo traemos las ACTIVAS
     const q = query(
       collection(db, "Formulas_Maestras"), 
       where("status", "==", "ACTIVA"),
@@ -112,8 +112,9 @@ export default function FormulationScreen({ navigation }) {
           <Text style={styles.headerTitle}>H2O Laboratorio</Text>
           <Text style={styles.headerSub}>Catálogo de Fórmulas</Text>
         </View>
-        <TouchableOpacity onPress={() => navigation.navigate('QuarterlyCalculator')} style={styles.calcBtn}>
-          <Calculator color="#0f172a" size={24} />
+        {/* NUEVO: Acceso al Chat Asistente de IA en lugar de la calculadora estática */}
+        <TouchableOpacity onPress={() => navigation.navigate('AiAssistant')} style={styles.aiBtn}>
+          <BrainCircuit color="#0f172a" size={24} />
         </TouchableOpacity>
       </View>
 
@@ -158,7 +159,7 @@ export default function FormulationScreen({ navigation }) {
         />
       )}
 
-      {/* FAB C-LEVEL */}
+      {/* FAB C-LEVEL para agregar nueva fórmula (Flujo Híbrido IA/Manual) */}
       <TouchableOpacity 
         style={styles.fab} 
         activeOpacity={0.8}
@@ -178,7 +179,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: '#e2e8f0', elevation: 2, zIndex: 10
   },
   backBtn: { padding: 5 },
-  calcBtn: { padding: 8, backgroundColor: '#f1f5f9', borderRadius: 10 },
+  aiBtn: { padding: 8, backgroundColor: '#f1f5f9', borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0' },
   headerTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a' },
   headerSub: { fontSize: 11, color: '#64748b', textTransform: 'uppercase', fontWeight: '800', letterSpacing: 0.5 },
   

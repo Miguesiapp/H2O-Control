@@ -8,6 +8,9 @@ import { db } from '../config/firebase';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { ChevronLeft, Calculator, AlertCircle, CheckCircle2, ShoppingCart, Target, Beaker, Factory } from 'lucide-react-native';
 
+// IMPORTAMOS EL DICCIONARIO CENTRALIZADO DESDE EL SERVICIO
+import { EQUIVALENCIES } from '../services/formulaService';
+
 export default function QuarterlyCalculatorScreen({ navigation }) {
   const [formulas, setFormulas] = useState([]);
   const [selectedFormula, setSelectedFormula] = useState(null);
@@ -19,11 +22,9 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
   useEffect(() => {
     const fetchFormulas = async () => {
       try {
-        // ACTUALIZACIÓN: Ahora buscamos en Formulas_Maestras (Solo las Activas)
         const q = query(collection(db, "Formulas_Maestras"), where("status", "==", "ACTIVA"));
         const snap = await getDocs(q);
         const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        // Orden alfabético
         data.sort((a, b) => a.productName.localeCompare(b.productName));
         setFormulas(data);
       } catch (error) {
@@ -48,26 +49,36 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
       const inventoryRef = collection(db, "Inventory");
       const calculation = [];
 
-      // Utilizamos el peso/densidad si existe para mayor precisión
       const density = selectedFormula.densidadObjetivo || 1;
       const targetKilos = targetVolume * density;
 
       for (const ing of selectedFormula.ingredients) {
+        const ingNameUpper = ing.name.toUpperCase();
         const amountNeeded = (targetKilos * Number(ing.percentage)) / 100;
 
-        // Buscamos cuánto stock tenemos de esta materia prima en general (sin importar en qué tanque esté)
-        const q = query(inventoryRef, where("itemName", "==", ing.name), where("stockType", "==", "MP"));
+        // BÚSQUEDA INTELIGENTE CON SINÓNIMOS (Usando el dict importado)
+        const searchNames = [ingNameUpper];
+        if (EQUIVALENCIES[ingNameUpper]) {
+          searchNames.push(...EQUIVALENCIES[ingNameUpper]);
+        }
+
+        // Firebase permite buscar múltiples valores a la vez usando 'in'
+        const q = query(
+          inventoryRef, 
+          where("itemName", "in", searchNames), 
+          where("stockType", "==", "MP")
+        );
+        
         const stockSnap = await getDocs(q);
         
         let totalInStock = 0;
         stockSnap.forEach(doc => {
-          // Aseguramos que la cantidad sea un número válido y mayor a cero (por si hay lotes en negativo por error)
           const qty = Number(doc.data().quantity);
           if (qty > 0) totalInStock += qty;
         });
 
         calculation.push({
-          name: ing.name,
+          name: ingNameUpper,
           needed: amountNeeded,
           stock: totalInStock,
           balance: totalInStock - amountNeeded
@@ -95,14 +106,13 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar barStyle="dark-content" />
       
-      {/* HEADER ENTERPRISE */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <ChevronLeft color="#0f172a" size={28} />
         </TouchableOpacity>
         <View style={{alignItems: 'center'}}>
           <Text style={styles.headerTitle}>Inteligencia Logística</Text>
-          <Text style={styles.headerSub}>Calculadora de Reposición</Text>
+          <Text style={styles.headerSub}>Proyección de Fabricación</Text>
         </View>
         <Target color="#0f172a" size={24} />
       </View>
@@ -112,31 +122,41 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* BANNER EXPLICATIVO */}
         <View style={styles.infoBanner}>
           <Text style={styles.bannerText}>
-            Selecciona una fórmula maestra y proyecta un lote de producción. H2O Neural cruzará la receta con el stock físico disponible para detectar quiebres y generar órdenes de compra.
+            Selecciona una fórmula maestra y proyecta un lote de producción. H2O Neural cruzará la receta (y sus sinónimos) con el stock físico global para detectar quiebres.
           </Text>
         </View>
 
         <Text style={styles.label}>1. Producto a Proyectar</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.formulaList}>
-          {formulas.map(f => (
-            <TouchableOpacity 
-              key={f.id} 
-              activeOpacity={0.7}
-              style={[styles.formulaChip, selectedFormula?.id === f.id && styles.formulaChipActive]}
-              onPress={() => setSelectedFormula(f)}
-            >
-              <View style={styles.chipIconBox}>
-                <Beaker color={selectedFormula?.id === f.id ? "#fff" : "#64748b"} size={16} />
-              </View>
-              <Text style={[styles.formulaChipText, selectedFormula?.id === f.id && styles.formulaChipTextActive]}>
-                {f.productName}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        
+        {/* MANEJO DE ESTADO VACÍO (Para no asustarse si no hay fórmulas) */}
+        {formulas.length === 0 ? (
+          <View style={styles.emptyFormulasBox}>
+            <AlertCircle color="#f59e0b" size={20} />
+            <Text style={styles.emptyFormulasText}>
+              No hay fórmulas activas. Dirígete a "H2O Laboratorio" y carga tu primera Receta Maestra.
+            </Text>
+          </View>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.formulaList}>
+            {formulas.map(f => (
+              <TouchableOpacity 
+                key={f.id} 
+                activeOpacity={0.7}
+                style={[styles.formulaChip, selectedFormula?.id === f.id && styles.formulaChipActive]}
+                onPress={() => setSelectedFormula(f)}
+              >
+                <View style={styles.chipIconBox}>
+                  <Beaker color={selectedFormula?.id === f.id ? "#fff" : "#64748b"} size={16} />
+                </View>
+                <Text style={[styles.formulaChipText, selectedFormula?.id === f.id && styles.formulaChipTextActive]}>
+                  {f.productName}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
 
         <Text style={styles.label}>2. Volumen Deseado (Litros)</Text>
         <View style={styles.inputWrapper}>
@@ -152,9 +172,9 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
         </View>
 
         <TouchableOpacity 
-          style={[styles.calcBtn, loading && { opacity: 0.7 }]} 
+          style={[styles.calcBtn, (loading || formulas.length === 0) && { opacity: 0.7 }]} 
           onPress={runCalculation} 
-          disabled={loading}
+          disabled={loading || formulas.length === 0}
         >
           {loading ? (
             <ActivityIndicator color="#fff" size="small" />
@@ -231,6 +251,9 @@ const styles = StyleSheet.create({
 
   label: { fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 10, marginTop: 5, textTransform: 'uppercase', letterSpacing: 0.5 },
   
+  emptyFormulasBox: { flexDirection: 'row', backgroundColor: '#fffbeb', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: '#fde68a', alignItems: 'center', marginBottom: 25 },
+  emptyFormulasText: { flex: 1, marginLeft: 10, fontSize: 12, color: '#b45309', fontWeight: '600', lineHeight: 18 },
+
   formulaList: { flexDirection: 'row', marginBottom: 25 },
   formulaChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, paddingVertical: 10, backgroundColor: '#fff', borderRadius: 14, marginRight: 12, borderWidth: 1, borderColor: '#e2e8f0', elevation: 1 },
   formulaChipActive: { backgroundColor: '#0f172a', borderColor: '#0f172a', elevation: 4 },

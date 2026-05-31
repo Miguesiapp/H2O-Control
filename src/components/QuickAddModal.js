@@ -5,7 +5,6 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { auth } from '../config/firebase';
-// IMPORTANTE: Ahora usamos el servicio centralizado para garantizar la auditoría
 import { registerMovement } from '../services/logisticsService';
 import { Save, X, PackagePlus, AlertTriangle } from 'lucide-react-native';
 
@@ -16,8 +15,8 @@ export default function QuickAddModal({ visible, onClose, companyName }) {
     unit: 'Lts',
     type: 'MP',
     min: '',
-    loteProveedor: '', // Nuevo: Clave para trazabilidad
-    vencimiento: ''    // Nuevo: Clave para calidad
+    loteProveedor: '', 
+    vencimiento: ''    
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -36,7 +35,7 @@ export default function QuickAddModal({ visible, onClose, companyName }) {
       const fechaHoy = new Date().toISOString().split('T')[0].replace(/-/g, '');
       const batchInternal = `H2O-INI-${fechaHoy}-${Date.now().toString().slice(-4)}`;
 
-      // Usamos el Motor de Logística para que quede grabado en el AuditLog
+      // Usamos el Motor de Logística unificado
       await registerMovement(
         auth.currentUser?.email || 'Sistema', 
         'CARGA_INICIAL_MANUAL', 
@@ -49,7 +48,8 @@ export default function QuickAddModal({ visible, onClose, companyName }) {
           minStock: Number(form.min),
           loteProveedor: form.loteProveedor.trim() || 'S/D',
           vencimiento: form.vencimiento.trim() || 'S/V',
-          batchInternal: batchInternal
+          batchInternal: batchInternal,
+          status: 'APTO' // <--- ¡CRÍTICO! Permite que la Calculadora y Producción vean este stock de inmediato
         }
       );
       
@@ -58,7 +58,7 @@ export default function QuickAddModal({ visible, onClose, companyName }) {
       onClose();
       
       if(Platform.OS === 'web') {
-        alert("Carga inicial registrada en auditoría.");
+        alert("Carga inicial registrada exitosamente.");
       }
 
     } catch (e) {
@@ -126,7 +126,7 @@ export default function QuickAddModal({ visible, onClose, companyName }) {
               </View>
             </View>
 
-            {/* NUEVOS CAMPOS DE TRAZABILIDAD */}
+            {/* CAMPOS DE TRAZABILIDAD */}
             <View style={styles.row}>
               <View style={[styles.inputGroup, {flex: 1, marginRight: 10}]}>
                 <Text style={styles.label}>Lote Proveedor</Text>

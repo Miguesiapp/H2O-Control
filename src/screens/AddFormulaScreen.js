@@ -6,16 +6,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db, auth } from '../config/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { ChevronLeft, Save, Plus, Beaker, Trash2, QrCode } from 'lucide-react-native';
+import { ChevronLeft, Save, Plus, Beaker, Trash2, BrainCircuit, Sparkles } from 'lucide-react-native';
 
 export default function AddFormulaScreen({ navigation }) {
   const [productName, setProductName] = useState('');
-  const [companyName, setCompanyName] = useState('H2O Control'); // Para saber a quién le formulamos
+  const [companyName, setCompanyName] = useState('H2O Control'); 
   const [ph, setPh] = useState('');
   const [density, setDensity] = useState('');
   
-  // NUEVO: Agregamos 'loteMp' al estado de los ingredientes
-  const [ingredients, setIngredients] = useState([{ id: '1', name: '', percentage: '', loteMp: '' }]);
+  // Ingredientes abstractos (Sin lotes, solo porcentajes para la Fórmula Maestra)
+  const [ingredients, setIngredients] = useState([{ id: '1', name: '', percentage: '' }]);
 
   const toDecimal = (val) => {
     if (!val) return 0;
@@ -23,15 +23,14 @@ export default function AddFormulaScreen({ navigation }) {
   };
 
   const handleSave = async () => {
-    if (!productName || !ph || !density) {
-      Alert.alert("Atención", "Los datos de pH y Densidad son obligatorios para liberar el lote.");
+    if (!productName.trim() || !ph || !density) {
+      Alert.alert("Atención", "El nombre del producto, pH y Densidad son obligatorios.");
       return;
     }
 
-    // Validar que se haya ingresado al menos un lote de MP para la trazabilidad
-    const hasMissingLots = ingredients.some(ing => !ing.loteMp.trim());
-    if (hasMissingLots) {
-      Alert.alert("Trazabilidad Incompleta", "Por favor, ingresa el Lote de Proveedor/Interno de todas las materias primas utilizadas.");
+    const hasMissingIngredients = ingredients.some(ing => !ing.name.trim() || !ing.percentage);
+    if (hasMissingIngredients) {
+      Alert.alert("Datos Incompletos", "Por favor, completa el nombre y porcentaje de todos los ingredientes.");
       return;
     }
 
@@ -40,60 +39,38 @@ export default function AddFormulaScreen({ navigation }) {
       const densityVal = toDecimal(density);
 
       if (isNaN(phVal) || isNaN(densityVal)) {
-        Alert.alert("Error", "Los valores de pH o Densidad no son numéricos.");
+        Alert.alert("Error", "Los valores de pH o Densidad deben ser numéricos.");
         return;
       }
 
-      // LÓGICA DE TRAZABILIDAD: Generamos el Lote Principal (DNI del producto terminado)
-      const fechaFab = new Date().toISOString().split('T')[0].replace(/-/g, '');
-      const batchInternal = `PT-${fechaFab}-${Date.now().toString().slice(-4)}`;
-
-      // Guardamos la orden de producción en Firebase
-      await addDoc(collection(db, "Produccion_Lotes"), {
-        productName: productName.toUpperCase(),
-        companyTarget: companyName.toUpperCase(),
-        batchInternal: batchInternal,
-        ph: phVal,
-        density: densityVal,
+      // Guardamos la RECETA MAESTRA en Firebase
+      await addDoc(collection(db, "Formulas_Maestras"), {
+        productName: productName.trim().toUpperCase(),
+        companyTarget: companyName.trim().toUpperCase(),
+        phObjetivo: phVal,
+        densidadObjetivo: densityVal,
         ingredients: ingredients.map(ing => ({
-          name: ing.name.trim(),
-          percentage: toDecimal(ing.percentage),
-          loteMpUsado: ing.loteMp.trim().toUpperCase() // Trazabilidad de Cuna
+          name: ing.name.trim().toUpperCase(),
+          percentage: toDecimal(ing.percentage)
         })),
-        responsable: auth.currentUser?.email || 'Sistema',
-        fechaFabricacion: serverTimestamp()
+        status: 'ACTIVA', // Clave para que aparezca en el catálogo
+        creadaPor: auth.currentUser?.email || 'Sistema',
+        fechaCreacion: serverTimestamp()
       });
 
-      // Flujo de éxito y enlace al QR
       Alert.alert(
-        "Lote Liberado", 
-        `Se registró la fabricación con éxito.\nLote: ${batchInternal}\n¿Deseas imprimir la etiqueta QR para los bidones?`,
-        [
-          { text: "Solo Guardar", onPress: () => navigation.goBack(), style: "cancel" },
-          { 
-            text: "GENERAR QR", 
-            onPress: () => navigation.navigate('QRGenerator', {
-              itemData: {
-                itemName: productName.toUpperCase(),
-                batchInternal: batchInternal,
-                stockType: 'PT', // Le decimos al generador que es Producto Terminado
-                fechaIngreso: new Date().toLocaleDateString(),
-                quantity: 'N/A', // O podrías agregar un campo para los Litros Totales fabricados
-                unit: 'Lts'
-              },
-              companyName: companyName.toUpperCase()
-            }) 
-          }
-        ]
+        "Fórmula Registrada", 
+        `La receta maestra de ${productName.toUpperCase()} se guardó exitosamente y ya está disponible para el cálculo de producciones.`,
+        [{ text: "Entendido", onPress: () => navigation.goBack() }]
       );
     } catch (error) {
       console.error(error);
-      Alert.alert("Error", "No se pudo sincronizar el lote con el servidor.");
+      Alert.alert("Error", "No se pudo sincronizar la fórmula con el servidor.");
     }
   };
 
   const addIngredient = () => {
-    setIngredients([...ingredients, { id: Date.now().toString(), name: '', percentage: '', loteMp: '' }]);
+    setIngredients([...ingredients, { id: Date.now().toString(), name: '', percentage: '' }]);
   };
 
   const removeIngredient = (id) => {
@@ -117,28 +94,48 @@ export default function AddFormulaScreen({ navigation }) {
           <ChevronLeft color="#2e4a3b" size={28} />
         </TouchableOpacity>
         <View style={{ alignItems: 'center' }}>
-          <Text style={styles.headerTitle}>Registro de Fabricación</Text>
-          <Text style={styles.headerSub}>Control de Calidad y Trazabilidad</Text>
+          <Text style={styles.headerTitle}>Nueva Fórmula Maestra</Text>
+          <Text style={styles.headerSub}>Recetario Base del Sistema</Text>
         </View>
         <Beaker color="#2e4a3b" size={24} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        
+        {/* BOTÓN PREPARATORIO DE CARGA CON IA */}
+        <TouchableOpacity 
+          style={styles.aiBanner}
+          activeOpacity={0.8}
+          onPress={() => Alert.alert("Próximamente", "Aquí se abrirá la cámara para leer la receta en papel y autocompletar los campos.")} 
+        >
+          <View style={styles.aiIconBox}>
+            <BrainCircuit color="#fff" size={24} />
+          </View>
+          <View style={{flex: 1, marginLeft: 15}}>
+            <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
+              <Text style={styles.aiBannerTitle}>Escanear Receta con IA</Text>
+              <Sparkles color="#fbbf24" size={14} />
+            </View>
+            <Text style={styles.aiBannerSub}>Sube una foto y la IA extraerá los componentes automáticamente.</Text>
+          </View>
+        </TouchableOpacity>
+
+        <Text style={styles.sectionTitle}>Parámetros Generales</Text>
         <View style={styles.card}>
-          
           <View style={styles.row}>
             <View style={{ flex: 2, marginRight: 10 }}>
-              <Text style={styles.label}>Producto a Fabricar</Text>
+              <Text style={styles.label}>Nombre del Producto</Text>
               <TextInput 
                 style={styles.input} 
                 placeholder="Ej: ACTION / SHOCK" 
                 value={productName} 
                 onChangeText={setProductName}
                 placeholderTextColor="#999"
+                autoCapitalize="characters"
               />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Para Empresa</Text>
+              <Text style={styles.label}>Empresa</Text>
               <TextInput 
                 style={styles.input} 
                 placeholder="Ej: BioAcker" 
@@ -151,7 +148,7 @@ export default function AddFormulaScreen({ navigation }) {
           
           <View style={styles.row}>
             <View style={{ flex: 1, marginRight: 10 }}>
-              <Text style={styles.label}>pH Final</Text>
+              <Text style={styles.label}>pH Teórico</Text>
               <TextInput 
                 style={styles.input} 
                 placeholder="Ej: 6.5" 
@@ -175,7 +172,7 @@ export default function AddFormulaScreen({ navigation }) {
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>Materias Primas Utilizadas</Text>
+        <Text style={styles.sectionTitle}>Composición Química (% p/p)</Text>
         
         {ingredients.map((ing, idx) => (
           <View key={ing.id} style={styles.ingredientBlock}>
@@ -186,6 +183,7 @@ export default function AddFormulaScreen({ navigation }) {
                 value={ing.name}
                 onChangeText={(val) => updateIngredient(idx, 'name', val)}
                 placeholderTextColor="#bbb"
+                autoCapitalize="characters"
               />
               <TextInput 
                 style={[styles.input, { flex: 1, marginLeft: 10 }]} 
@@ -201,16 +199,6 @@ export default function AddFormulaScreen({ navigation }) {
                 </TouchableOpacity>
               )}
             </View>
-            {/* NUEVO: Campo obligatorio para el lote de trazabilidad */}
-            <View style={styles.loteRow}>
-              <TextInput 
-                style={styles.inputLote} 
-                placeholder="Lote de la MP (Escaneo o Manual)" 
-                value={ing.loteMp}
-                onChangeText={(val) => updateIngredient(idx, 'loteMp', val)}
-                placeholderTextColor="#999"
-              />
-            </View>
           </View>
         ))}
 
@@ -220,8 +208,8 @@ export default function AddFormulaScreen({ navigation }) {
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-          <QrCode color="#fff" size={20} />
-          <Text style={styles.saveButtonText}>Liberar Lote y Trazar</Text>
+          <Save color="#fff" size={20} />
+          <Text style={styles.saveButtonText}>Guardar Fórmula Maestra</Text>
         </TouchableOpacity>
         
         <View style={{ height: 40 }} />
@@ -241,23 +229,29 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '900', color: '#2e4a3b' },
   headerSub: { fontSize: 10, color: '#888', textTransform: 'uppercase', fontWeight: 'bold' },
   container: { padding: 20 },
+  
+  aiBanner: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#0f172a', 
+    padding: 18, borderRadius: 16, marginBottom: 20, elevation: 4
+  },
+  aiIconBox: { backgroundColor: 'rgba(255,255,255,0.1)', padding: 10, borderRadius: 12 },
+  aiBannerTitle: { fontSize: 15, fontWeight: '900', color: '#fff' },
+  aiBannerSub: { fontSize: 11, color: '#94a3b8', marginTop: 4, lineHeight: 16 },
+
   card: { 
-    backgroundColor: '#fff', padding: 15, borderRadius: 15, elevation: 3, 
-    shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5, marginBottom: 20,
-    borderWidth: 1, borderColor: '#e2e8f0'
+    backgroundColor: '#fff', padding: 18, borderRadius: 15, elevation: 2, 
+    borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 20
   },
   label: { fontSize: 11, fontWeight: '800', color: '#475569', marginTop: 10, marginBottom: 5, textTransform: 'uppercase' },
-  input: { backgroundColor: '#f8fafc', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', color: '#1e293b', fontWeight: '500' },
+  input: { backgroundColor: '#f8fafc', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', color: '#1e293b', fontWeight: '600' },
   row: { flexDirection: 'row' },
-  sectionTitle: { fontSize: 15, fontWeight: '900', color: '#0f1710', marginTop: 10, marginBottom: 15 },
+  sectionTitle: { fontSize: 14, fontWeight: '900', color: '#334155', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
   
-  ingredientBlock: { backgroundColor: '#fff', padding: 12, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: '#e2e8f0', elevation: 1 },
+  ingredientBlock: { backgroundColor: '#fff', padding: 12, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: '#e2e8f0', elevation: 1 },
   ingRow: { flexDirection: 'row', alignItems: 'center' },
-  loteRow: { marginTop: 8 },
-  inputLote: { backgroundColor: '#fffbe6', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#ffe0b2', color: '#d84315', fontSize: 13, fontWeight: '700' },
   
   deleteBtn: { padding: 8, marginLeft: 5 },
-  addBtn: { flexDirection: 'row', alignItems: 'center', marginTop: 5, backgroundColor: '#fff', alignSelf: 'flex-start', padding: 10, borderRadius: 10, borderWidth: 1, borderColor: '#2e4a3b' },
+  addBtn: { flexDirection: 'row', alignItems: 'center', marginTop: 5, backgroundColor: '#fff', alignSelf: 'flex-start', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#2e4a3b' },
   addBtnText: { color: '#2e4a3b', fontWeight: 'bold', marginLeft: 5, fontSize: 13 },
   saveButton: { backgroundColor: '#2e4a3b', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 18, borderRadius: 15, marginTop: 30, gap: 10, elevation: 4 },
   saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '900', textTransform: 'uppercase' }

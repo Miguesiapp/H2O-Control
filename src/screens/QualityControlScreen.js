@@ -8,9 +8,6 @@ import { db, auth } from '../config/firebase';
 import { collection, query, where, onSnapshot, updateDoc, doc } from 'firebase/firestore';
 import { ChevronLeft, CheckCircle, XCircle, Beaker, ClipboardCheck, AlertCircle, FileSignature } from 'lucide-react-native';
 
-const ADMIN_EMAIL = "miguesilva.1985@outlook.es";
-const AUTHORIZED_BBS = "calidad@empresa.com"; 
-
 export default function QualityControlScreen({ navigation }) {
   const [pendingLots, setPendingLots] = useState([]);
   const [analysis, setAnalysis] = useState({ ph: '', density: '', obs: '' });
@@ -18,7 +15,7 @@ export default function QualityControlScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. ESCUCHA OPTIMIZADA: Solo trae los lotes que necesitan revisión
+    // ESCUCHA OPTIMIZADA: Solo trae los lotes que necesitan revisión
     const q = query(
       collection(db, "Inventory"), 
       where("stockType", "==", "PT"),
@@ -44,15 +41,8 @@ export default function QualityControlScreen({ navigation }) {
   }, [selectedLot]);
 
   const handleAuthorize = async (lot, status) => {
-    const userEmail = auth.currentUser?.email?.toLowerCase() || '';
-    const isAdmin = userEmail === ADMIN_EMAIL.toLowerCase();
-    const isQuality = userEmail === AUTHORIZED_BBS.toLowerCase();
-
-    // Comprobamos si es administrador del sistema o personal de BBS
-    if (!isAdmin && !isQuality) {
-      Alert.alert("Acceso Denegado", "Operación restringida. Solo firmas autorizadas pueden liberar lotes.");
-      return;
-    }
+    // REGLA DE NEGOCIO (15-20 Usuarios): Todos pueden firmar, pero queda registrado QUIÉN lo hizo.
+    const userEmail = auth.currentUser?.email || 'Usuario Desconocido';
 
     // Normalización de decimales (Cambia comas por puntos)
     const phVal = analysis.ph.replace(',', '.');
@@ -72,10 +62,15 @@ export default function QualityControlScreen({ navigation }) {
         authorizedBy: userEmail,
         authorizedAt: new Date().toISOString()
       });
+
+      // ------------------------------------------------------------------
+      // AQUÍ DISPARAREMOS LA NOTIFICACIÓN PARA TODA LA PLANTA
+      // Ejemplo: si status === 'APTO' -> "El Lote de ACTION está listo para envasar".
+      // ------------------------------------------------------------------
       
       Alert.alert(
         status === 'APTO' ? "Lote Liberado" : "Lote Rechazado", 
-        `El código ${lot.batchInternal} ha sido actualizado a estado ${status}.`
+        `El código ${lot.batchInternal} ha sido actualizado a estado ${status} bajo la firma de ${userEmail}.`
       );
       
       setSelectedLot(null);

@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import { registerMovement, deductStockFIFO } from '../services/logisticsService';
+import { registerMovement } from '../services/logisticsService'; // ELIMINAMOS deductStockFIFO
 import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box } from 'lucide-react-native';
 
 export default function PackagingOrderScreen({ route, navigation }) {
@@ -24,15 +24,12 @@ export default function PackagingOrderScreen({ route, navigation }) {
   useEffect(() => {
     const fetchApprovedLots = async () => {
       try {
-        // En tu DB, los PT están en Produccion_Lotes o en Inventory?
-        // Según tu estructura actual, están en Produccion_Lotes luego de la orden, 
-        // o en Inventory si se cargaron manual. Asumimos Inventory por tu código previo:
         const q = query(
           collection(db, "Inventory"),
           where("company", "==", companyName),
-          where("stockType", "==", "PT"),
-          where("status", "==", "APTO"),
-          where("quantity", ">", 0) // Solo traer los que tienen líquido para envasar
+          where("stockType", "==", "PT"), // Producto Terminado a granel
+          where("status", "==", "APTO"),  // Liberado por laboratorio
+          where("quantity", ">", 0)       // Con líquido disponible
         );
         const querySnapshot = await getDocs(q);
         const lots = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -69,33 +66,42 @@ export default function PackagingOrderScreen({ route, navigation }) {
       setIsSubmitting(true);
       const batchId = selectedLot.batchInternal;
       const itemName = selectedLot.itemName?.toUpperCase();
+      const currentUser = auth.currentUser?.email || 'Sistema';
 
       // 1. DEDUCCIÓN AUTOMÁTICA DEL LÍQUIDO A GRANEL (PT)
-      // Como usamos FIFO en el servicio logístico, solo pasamos nombre y cantidad
-      await deductStockFIFO(companyName, itemName, litersToConsume);
+      // Usamos el motor unificado enviando el valor en negativo
+      await registerMovement(currentUser, 'CONSUMO_ENVASADO', companyName, {
+          itemName: itemName,
+          quantity: -Math.abs(litersToConsume), 
+          stockType: 'PT',
+          batchInternal: batchId,
+          unit: 'Lts'
+      });
 
       // 2. INYECCIÓN DEL PRODUCTO TERMINADO ENVASADO (FINAL)
       const packagedItemName = `${itemName} - ${presentation}L`;
-      await registerMovement(
-        auth.currentUser?.email || 'Sistema', 
-        'ENVASADO_FINAL', 
-        companyName, 
-        {
+      await registerMovement(currentUser, 'INGRESO_OE', companyName, {
           itemName: packagedItemName,
-          quantity: units,
+          quantity: Math.abs(units), // Se suman las unidades
           stockType: 'FINAL',
-          batchInternal: batchId, // Mantenemos el ADN del lote original
+          batchInternal: batchId, // Mantiene el ADN del lote original
           unit: 'Uds'
-        }
-      );
+      });
 
-      // 3. DEDUCCIÓN DE INSUMOS AUTOMÁTICA (Opcional - Requiere que los nombres coincidan exactos)
-      // await deductStockFIFO(companyName, `BIDON ${presentation}L`, units);
-      // await deductStockFIFO(companyName, `ETIQUETA ${itemName}`, units);
+      // (OPCIONAL EN EL FUTURO) Descuento de envases y etiquetas
+      /*
+      await registerMovement(currentUser, 'CONSUMO_INSUMO', companyName, {
+          itemName: `BIDON ${presentation}L`,
+          quantity: -Math.abs(units),
+          stockType: 'MP',
+          batchInternal: batchId,
+          unit: 'Uds'
+      });
+      */
 
       Alert.alert(
         "Envasado Exitoso", 
-        `Se han ingresado ${units} unidades de ${presentation}L.\nSe descontaron ${litersToConsume} Lts del granel.`,
+        `Se han ingresado ${units} unidades de ${presentation}L.\nSe descontaron ${litersToConsume} Lts del lote original.`,
         [{ text: "Entendido", onPress: () => navigation.goBack() }]
       );
     } catch (error) {
@@ -154,7 +160,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
                 </View>
                 <View style={styles.lotFooter}>
                   <FlaskConical color="#64748b" size={14} />
-                  <Text style={styles.lotMetaText}>ID: {lot.batchInternal}</Text>
+                  <Text style={styles.lotMetaText}>Lote OP: {lot.batchInternal}</Text>
                 </View>
               </TouchableOpacity>
             ))}
