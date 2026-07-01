@@ -15,8 +15,16 @@ export const EQUIVALENCIES = {
   "PERCYDE ACTIVADOR": ["ÁCIDO CLORHÍDRICO", "PH CONTROL"],
   "DROP": ["TOKE FULL"],
   "TOKE FULL": ["DROP"],
-  "AGROTURBO": ["KINKHO PH"],
-  "KINKHO PH": ["AGROTURBO"]
+  "TUTOR": ["KINKHO PH", "VITTA IONIC", "HARD"],
+  "KINKHO PH": ["TUTOR", "VITTA IONIC", "HARD"],
+  "VITTA IONIC": ["TUTOR", "KINKHO PH", "HARD"],
+  "HARD": ["TUTOR", "KINKHO PH", "VITTA IONIC"],
+  "ACTION": ["UNIQUE", "SHIRIKON SILIC", "TOKE ULTRA"],
+  "UNIQUE": ["ACTION", "SHIRIKON SILIC", "TOKE ULTRA"],
+  "SHIRIKON SILIC": ["ACTION", "UNIQUE", "TOKE ULTRA"],
+  "TOKE ULTRA": ["ACTION", "UNIQUE", "SHIRIKON SILIC"],
+  "COMBATE": ["TOKE PLUS"],
+  "TOKE PLUS": ["COMBATE"]
 };
 
 
@@ -45,7 +53,7 @@ export const saveMasterFormula = async (userEmail, company, formulaData) => {
     return docRef.id;
   } catch (error) {
     console.error("Error crítico al guardar Fórmula Maestra:", error);
-    throw error; 
+    throw error;
   }
 };
 
@@ -55,7 +63,7 @@ export const saveMasterFormula = async (userEmail, company, formulaData) => {
 export const getMasterFormulas = async (company) => {
   try {
     const q = query(
-      collection(db, "Formulas_Maestras"), 
+      collection(db, "Formulas_Maestras"),
       where("companyTarget", "==", company.trim().toUpperCase()),
       where("status", "==", "ACTIVA")
     );
@@ -109,13 +117,13 @@ export const getProductionHistory = async (companyTarget, limitDays = 30) => {
 export const calculateBatchRequirements = async (formulaId, targetLiters) => {
   try {
     const formulaDoc = await getDoc(doc(db, "Formulas_Maestras", formulaId));
-    
+
     if (!formulaDoc.exists()) {
       throw new Error("La fórmula maestra no existe.");
     }
 
     const formula = formulaDoc.data();
-    
+
     // Masa = Volumen * Densidad
     const targetKilos = Number(targetLiters) * formula.densidadObjetivo;
 
@@ -124,7 +132,7 @@ export const calculateBatchRequirements = async (formulaId, targetLiters) => {
       const kilosNeeded = (ing.percentage / 100) * targetKilos;
       return {
         mpName: ing.name,
-        kilosRequired: kilosNeeded.toFixed(2), 
+        kilosRequired: kilosNeeded.toFixed(2),
         porcentaje: ing.percentage
       };
     });

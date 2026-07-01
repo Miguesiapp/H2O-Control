@@ -112,10 +112,7 @@ export default function FormulationScreen({ navigation }) {
           <Text style={styles.headerTitle}>H2O Laboratorio</Text>
           <Text style={styles.headerSub}>Catálogo de Fórmulas</Text>
         </View>
-        {/* NUEVO: Acceso al Chat Asistente de IA en lugar de la calculadora estática */}
-        <TouchableOpacity onPress={() => navigation.navigate('AiAssistant')} style={styles.aiBtn}>
-          <BrainCircuit color="#0f172a" size={24} />
-        </TouchableOpacity>
+        <View style={{ width: 40 }} />
       </View>
 
       <View style={styles.searchContainer}>

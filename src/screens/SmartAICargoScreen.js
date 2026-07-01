@@ -30,7 +30,7 @@ import {
   PackageSearch // Icono para OE
 } from 'lucide-react-native';
 
-const COMPANIES = ['Agrocube', 'BioAcker', 'Alianza', 'H2O Control', 'WaterDay', 'AgroFontezuela'];
+const COMPANIES = ['STOCK_CENTRAL_MP', 'Agrocube', 'BioAcker', 'Alianza', 'H2O Control', 'WaterDay', 'AgroFontezuela'];
 
 export default function SmartAICargoScreen({ navigation }) {
   const { width, height } = useWindowDimensions();
@@ -145,7 +145,7 @@ export default function SmartAICargoScreen({ navigation }) {
         await registerMovement(currentUser, opMode, selectedCompany, {
           itemName: item.name?.toUpperCase() || 'DESCONOCIDO',
           quantity: qtyNormalized,
-          stockType: item.type || 'PT', 
+          stockType: (selectedCompany === 'STOCK_CENTRAL_MP' || item.isInternalMP) ? 'MP' : (item.type || 'PT'), 
           batchInternal: batchInternal,
           loteProveedor: item.lote || 'N/A',
           vencimiento: item.vencimiento || 'N/A',
@@ -288,7 +288,7 @@ export default function SmartAICargoScreen({ navigation }) {
           {loading ? <ActivityIndicator color="#fff" /> : (
             <>
               <Sparkles color="#fff" size={20} />
-              <Text style={styles.btnText}>Auditar Documento con IA</Text>
+              <Text style={styles.btnText}>Cargar Datos con IA</Text>
             </>
           )}
         </TouchableOpacity>

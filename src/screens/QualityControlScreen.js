@@ -18,7 +18,7 @@ export default function QualityControlScreen({ navigation }) {
     // ESCUCHA OPTIMIZADA: Solo trae los lotes que necesitan revisión
     const q = query(
       collection(db, "Inventory"), 
-      where("stockType", "==", "PT"),
+      where("stockType", "in", ["GRANEL", "MP"]),
       where("status", "in", ["PENDIENTE", "PENDIENTE_LABORATORIO"])
     );
     
@@ -48,8 +48,8 @@ export default function QualityControlScreen({ navigation }) {
     const phVal = analysis.ph.replace(',', '.');
     const densityVal = analysis.density.replace(',', '.');
 
-    if (status === 'APTO' && (!phVal || !densityVal)) {
-      Alert.alert("Protocolo Incompleto", "Los valores de pH y Densidad son obligatorios para la liberación.");
+    if (status === 'APTO' && lot.stockType === 'GRANEL' && (!phVal || !densityVal)) {
+      Alert.alert("Protocolo Incompleto", "Los valores de pH y Densidad son obligatorios para la liberación de GRANEL.");
       return;
     }
 

@@ -11,7 +11,6 @@ import { ChevronLeft, ArrowRightLeft, Package, CheckCircle2, Box } from 'lucide-
 
 const COMPANIES = ["H2Ocontrol", "WaterDay", "Alianza", "Agrocube", "BioAcker", "AgroFontezuela"];
 const STOCK_TYPES = [
-  { id: 'MP', label: 'Mat. Prima' },
   { id: 'FINAL', label: 'Envasado' },
   { id: 'PT', label: 'Granel' },
   { id: 'INSUMOS', label: 'Bidones/Cajas' }
@@ -25,7 +24,7 @@ export default function InterCompanyTransferScreen({ navigation }) {
     itemName: '',
     quantity: '',
     batchInternal: '',
-    stockType: 'MP'
+    stockType: 'FINAL'
   });
 
   const handleClearing = async () => {

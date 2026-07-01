@@ -45,7 +45,8 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
         inventoryRef, 
         where('company', '==', companyName),
         where('itemName', '==', itemName),
-        where('batchInternal', '==', batchId)
+        where('batchInternal', '==', batchId),
+        where('stockType', '==', 'FINAL')
       );
       
       const stockSnap = await getDocs(qStock);
@@ -75,7 +76,7 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
           quantity: -Math.abs(qtyNormalized), // Forzamos el negativo para restar del inventario
           batchInternal: batchId,
           details: `Destino: ${formData.destination.trim()} | Transporte: ${formData.transportName.trim()}`,
-          stockType: 'PT', // Se despacha Producto Terminado
+          stockType: 'FINAL', // Se despacha Producto Terminado (Envasado)
           unit: 'Uds'
         }
       );

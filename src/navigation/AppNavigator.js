@@ -26,8 +26,6 @@ import HistoryScreen from '../screens/HistoryScreen';
 
 // 5. Módulos de Inteligencia IA
 import SmartAICargoScreen from '../screens/SmartAICargoScreen'; 
-// NUEVO: El cerebro conversacional
-import AiAssistantScreen from '../screens/AiAssistantScreen'; 
 
 // 6. Módulo de Personal y Asistencia (TÓTEM Y REPORTES)
 import StaffAttendanceScreen from '../screens/StaffAttendanceScreen'; 
@@ -63,8 +61,6 @@ export default function AppNavigator({ user }) {
       {/* SECCIÓN: INTELIGENCIA Y CARGA IA */}
       <Stack.Screen name="SmartAICargo" component={SmartAICargoScreen} />
       <Stack.Screen name="QuarterlyCalculator" component={QuarterlyCalculatorScreen} />
-      {/* NUEVO: Ruta registrada para la pantalla del chat IA */}
-      <Stack.Screen name="AiAssistant" component={AiAssistantScreen} />
       
       {/* SECCIÓN: GESTIÓN DE UNIDADES DE NEGOCIO */}
       <Stack.Screen name="CompanyDetail" component={CompanyDetailScreen} />

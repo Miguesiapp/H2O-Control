@@ -8,11 +8,14 @@ import { auth, db } from '../config/firebase';
 import { collection, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
 import { registerMovement } from '../services/logisticsService';
 import { ChevronLeft, Play, Beaker, FileText, Factory, AlertCircle, Calculator, CheckCircle2, XCircle } from 'lucide-react-native';
+import { EQUIVALENCIES } from '../services/formulaService';
 
 export default function ProductionOrderScreen({ route, navigation }) {
   const { companyName } = route.params;
   const [productName, setProductName] = useState('');
   const [targetQuantity, setTargetQuantity] = useState('');
+  const [batchProvider, setBatchProvider] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
   
   const [isCalculating, setIsCalculating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -42,13 +45,16 @@ export default function ProductionOrderScreen({ route, navigation }) {
 
     setIsCalculating(true);
     try {
-      // 1. Buscar la Receta en la colección "Formulas"
-      const formulasRef = collection(db, 'Formulas');
-      const qFormula = query(formulasRef, where('name', '==', productName.trim().toUpperCase()));
+      // 1. Buscar la Receta en la colección "Formulas_Maestras"
+      const formulasRef = collection(db, 'Formulas_Maestras');
+      const eqNames = EQUIVALENCIES[productName.trim().toUpperCase()] || [];
+      const possibleFormulaNames = [productName.trim().toUpperCase(), ...eqNames];
+      
+      const qFormula = query(formulasRef, where('productName', 'in', possibleFormulaNames));
       const formulaSnap = await getDocs(qFormula);
 
       if (formulaSnap.empty) {
-        Alert.alert("Fórmula no encontrada", "No existe una receta maestra para este producto en la base de datos.");
+        Alert.alert("Fórmula no encontrada", "No existe una receta maestra para este producto ni sus equivalencias en la base de datos.");
         setIsCalculating(false);
         return;
       }
@@ -58,18 +64,23 @@ export default function ProductionOrderScreen({ route, navigation }) {
 
       // 2. Iterar sobre los ingredientes de la receta y cruzar con el Inventario
       for (const ingredient of formulaData.ingredients) {
-        // Asumiendo que ingredient tiene { name: 'DOSS', percentage: 0.15 } o { qtyPerLiter: 0.15 }
-        const requiredQty = qty * (ingredient.percentage || ingredient.qtyPerLiter);
+        // percentage viene como entero (ej. 15 para 15%), dividimos por 100
+        const percentageValue = ingredient.percentage !== undefined ? ingredient.percentage / 100 : (ingredient.qtyPerLiter || 0);
+        const requiredQty = qty * percentageValue;
         
         // Buscar stock actual de esta materia prima
+        const ingUpper = ingredient.name.trim().toUpperCase();
+        const eqIngs = EQUIVALENCIES[ingUpper] || [];
+        const possibleIngredients = [ingUpper, ...eqIngs];
+
         const inventoryRef = collection(db, 'Inventory');
-        const qStock = query(inventoryRef, where('itemName', '==', ingredient.name));
+        const qStock = query(inventoryRef, where('itemName', 'in', possibleIngredients));
         const stockSnap = await getDocs(qStock);
         
         let currentStock = 0;
-        if (!stockSnap.empty) {
-          currentStock = stockSnap.docs[0].data().quantity || 0;
-        }
+        stockSnap.forEach(doc => {
+            currentStock += doc.data().quantity || 0;
+        });
 
         calculatedNeeds.push({
           name: ingredient.name,
@@ -119,6 +130,12 @@ export default function ProductionOrderScreen({ route, navigation }) {
       const currentUser = auth.currentUser?.email || 'Sistema';
       const qty = Number(targetQuantity.replace(',', '.'));
 
+      if (!expiryDate.trim()) {
+        Alert.alert("Error", "Debes especificar la fecha de vencimiento del lote a granel.");
+        setIsSubmitting(false);
+        return;
+      }
+
       // 1. DESCONTAR LAS MATERIAS PRIMAS (Ciclo sobre requirements)
       for (const req of requirements) {
         await registerMovement(currentUser, 'RETIRO_PRODUCCION', companyName, {
@@ -130,15 +147,17 @@ export default function ProductionOrderScreen({ route, navigation }) {
         });
       }
 
-      // 2. REGISTRAR EL INGRESO DEL PRODUCTO TERMINADO (PT)
+      // 2. REGISTRAR EL INGRESO DEL PRODUCTO A GRANEL
       const productionData = {
         itemName: productName.trim().toUpperCase(),
         quantity: qty,
-        stockType: 'PT', 
+        stockType: 'GRANEL', 
         batchInternal: batchId,
+        batchProvider: batchProvider.trim() || 'S/D',
+        expiryDate: expiryDate.trim(),
         unit: 'Lts',
         company: companyName,
-        status: 'PENDIENTE_LABORATORIO', 
+        status: 'PENDIENTE', 
         lastUpdate: serverTimestamp()
       };
 
@@ -215,6 +234,34 @@ export default function ProductionOrderScreen({ route, navigation }) {
                 keyboardType="numeric"
                 value={targetQuantity}
                 onChangeText={(text) => { setTargetQuantity(text); setRequirements(null); }}
+                placeholderTextColor="#94a3b8"
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Lotes de Proveedor MP Usados</Text>
+            <View style={styles.inputWrapper}>
+              <FileText color="#94a3b8" size={20} style={styles.inputIcon} />
+              <TextInput 
+                style={styles.input} 
+                placeholder="Ej: BCK-990, L-445" 
+                value={batchProvider}
+                onChangeText={setBatchProvider}
+                placeholderTextColor="#94a3b8"
+              />
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Fecha Vencimiento del Granel *</Text>
+            <View style={styles.inputWrapper}>
+              <Beaker color="#94a3b8" size={20} style={styles.inputIcon} />
+              <TextInput 
+                style={styles.input} 
+                placeholder="MM/AAAA" 
+                value={expiryDate}
+                onChangeText={setExpiryDate}
                 placeholderTextColor="#94a3b8"
               />
             </View>

@@ -20,15 +20,14 @@ export default function CompanyDetailScreen({ route, navigation }) {
   const isLandscape = width > height;
 
   const menuOptions = [
-    { id: 'ingresos', title: 'Ingreso Manual', sub: 'Remitos / Compras', icon: <ArrowDownToLine size={28} color="#10b981" />, bg: '#ecfdf5', border: '#a7f3d0', screen: 'IncomingInventory' },
-    { id: 'egresos', title: 'Despachos', sub: 'Salida a Cliente', icon: <ArrowUpFromLine size={28} color="#ef4444" />, bg: '#fef2f2', border: '#fecaca', screen: 'OutgoingInventory' },
     { id: 'prod', title: 'Producción', sub: 'Crear Granel (OP)', icon: <Package size={28} color="#f59e0b" />, bg: '#fffbeb', border: '#fde68a', screen: 'ProductionOrder' },
     { id: 'envasado', title: 'Envasado', sub: 'Llenado Final (OE)', icon: <Container size={28} color="#3b82f6" />, bg: '#eff6ff', border: '#bfdbfe', screen: 'PackagingOrder' },
+    { id: 'egresos', title: 'Despachos', sub: 'Salida a Cliente', icon: <ArrowUpFromLine size={28} color="#ef4444" />, bg: '#fef2f2', border: '#fecaca', screen: 'OutgoingInventory' },
   ];
 
   const stockOptions = [
-    { id: 'stock_mp', title: 'Materias Primas', sub: 'Insumos y Bases', icon: <Database color="#64748b" size={24} />, type: 'MP' },
     { id: 'stock_pt', title: 'Granel (En Proceso)', sub: 'Líquido en Tanques', icon: <Beaker color="#64748b" size={24} />, type: 'PT' },
+    { id: 'stock_envases', title: 'Envases', sub: 'Tapas, Botellas, Bidones', icon: <Container color="#64748b" size={24} />, type: 'ENVASES' },
     { id: 'stock_final', title: 'Producto Terminado', sub: 'Stock Envasado', icon: <Archive color="#64748b" size={24} />, type: 'FINAL' },
   ];
 
@@ -56,29 +55,7 @@ export default function CompanyDetailScreen({ route, navigation }) {
         showsVerticalScrollIndicator={false} 
         contentContainerStyle={styles.container}
       >
-        <Text style={styles.sectionLabel}>Ingreso Inteligente</Text>
-        
-        {/* BANNER DE INTELIGENCIA ARTIFICIAL */}
-        <TouchableOpacity 
-          style={styles.aiBanner}
-          activeOpacity={0.8}
-          // Al navegar, le pasamos la empresa actual para que la IA ya tenga contexto
-          onPress={() => navigation.navigate('SmartAICargo', { companyName })} 
-        >
-          <View style={styles.aiIconBox}>
-            <BrainCircuit color="#fff" size={28} />
-          </View>
-          <View style={{flex: 1, marginLeft: 15}}>
-            <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
-              <Text style={styles.aiBannerTitle}>Auditoría con IA</Text>
-              <Sparkles color="#fbbf24" size={16} />
-            </View>
-            <Text style={styles.aiBannerSub}>Escanear remitos o cerrar órdenes automáticamente.</Text>
-          </View>
-          <ChevronRight color="#fff" size={20} opacity={0.7} />
-        </TouchableOpacity>
-
-        <Text style={[styles.sectionLabel, { marginTop: 10 }]}>Flujo Operativo Manual</Text>
+        <Text style={styles.sectionLabel}>Flujo Operativo Manual</Text>
         <View style={[styles.grid, isLandscape && styles.gridLandscape]}>
           {menuOptions.map((item) => (
             <TouchableOpacity 

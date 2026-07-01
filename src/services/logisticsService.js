@@ -25,6 +25,9 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
     const inventoryRef = collection(db, "Inventory");
     const itemNameUpper = data.itemName?.toUpperCase();
 
+    // INTERCEPCIÓN CENTRALIZADA: Si es Materia Prima, va al stock global unificado
+    const effectiveCompany = (data.stockType === 'MP') ? 'STOCK_CENTRAL_MP' : company;
+
     // 2. LÓGICA DE INVENTARIO: ¿Suma o Resta?
     if (numericQty > 0) {
       // ---------------------------------------------------
@@ -32,7 +35,7 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
       // ---------------------------------------------------
       const q = query(
         inventoryRef, 
-        where("company", "==", company), 
+        where("company", "==", effectiveCompany), 
         where("batchInternal", "==", data.batchInternal),
         where("itemName", "==", itemNameUpper)
       );
@@ -51,7 +54,7 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
         await addDoc(inventoryRef, {
           ...data,
           itemName: itemNameUpper,
-          company: company,
+          company: effectiveCompany,
           quantity: numericQty,
           stockType: data.stockType || 'MP', 
           status: data.status || 'PENDIENTE', // Vital para que Laboratorio lo vea o lo libere
@@ -76,7 +79,7 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
         // DESCUENTO EXACTO: Va directo al Lote que el usuario eligió en pantalla
         const qExact = query(
           inventoryRef, 
-          where("company", "==", company), 
+          where("company", "==", effectiveCompany), 
           where("itemName", "==", itemNameUpper),
           where("batchInternal", "==", data.batchInternal)
         );
@@ -93,7 +96,7 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
         }
       } else {
         // DESCUENTO FIFO: Se usa para Producción o Retiros casuales donde no importa qué tambor se abre primero.
-        await deductStockFIFO(company, itemNameUpper, absQty);
+        await deductStockFIFO(effectiveCompany, itemNameUpper, absQty);
       }
     }
   } catch (error) {

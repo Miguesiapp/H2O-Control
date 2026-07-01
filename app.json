@@ -2,7 +2,7 @@
   "expo": {
     "name": "H2O-Control-Native",
     "slug": "H2O-Control-Native",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -15,7 +15,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.migue.h2ocontrol",
       "infoPlist": {
-        "NSCameraUsageDescription": "H2O Control necesita acceso a la cámara para el registro biométrico de asistencia."
+        "NSCameraUsageDescription": "H2O Control necesita acceso a la cámara para el registro biométrico de asistencia.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -26,7 +27,8 @@
       },
       "edgeToEdgeEnabled": true,
       "permissions": [
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {

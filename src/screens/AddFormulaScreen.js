@@ -15,7 +15,8 @@ export default function AddFormulaScreen({ navigation }) {
   const [density, setDensity] = useState('');
   
   // Ingredientes abstractos (Sin lotes, solo porcentajes para la Fórmula Maestra)
-  const [ingredients, setIngredients] = useState([{ id: '1', name: '', percentage: '' }]);
+  const [ingredients, setIngredients] = useState([{ id: '1', name: '', amount: '' }]);
+  const [inputMode, setInputMode] = useState('PERCENTAGE'); // 'PERCENTAGE' or 'KILOS'
 
   const toDecimal = (val) => {
     if (!val) return 0;
@@ -28,9 +29,9 @@ export default function AddFormulaScreen({ navigation }) {
       return;
     }
 
-    const hasMissingIngredients = ingredients.some(ing => !ing.name.trim() || !ing.percentage);
+    const hasMissingIngredients = ingredients.some(ing => !ing.name.trim() || !ing.amount);
     if (hasMissingIngredients) {
-      Alert.alert("Datos Incompletos", "Por favor, completa el nombre y porcentaje de todos los ingredientes.");
+      Alert.alert("Datos Incompletos", "Por favor, completa el nombre y cantidad de todos los ingredientes.");
       return;
     }
 
@@ -49,10 +50,19 @@ export default function AddFormulaScreen({ navigation }) {
         companyTarget: companyName.trim().toUpperCase(),
         phObjetivo: phVal,
         densidadObjetivo: densityVal,
-        ingredients: ingredients.map(ing => ({
-          name: ing.name.trim().toUpperCase(),
-          percentage: toDecimal(ing.percentage)
-        })),
+        ingredients: ingredients.map(ing => {
+          let perc = 0;
+          if (inputMode === 'KILOS') {
+             const totalAmount = ingredients.reduce((sum, i) => sum + toDecimal(i.amount), 0);
+             perc = totalAmount > 0 ? (toDecimal(ing.amount) / totalAmount) * 100 : 0;
+          } else {
+             perc = toDecimal(ing.amount);
+          }
+          return {
+            name: ing.name.trim().toUpperCase(),
+            percentage: parseFloat(perc.toFixed(2))
+          };
+        }),
         status: 'ACTIVA', // Clave para que aparezca en el catálogo
         creadaPor: auth.currentUser?.email || 'Sistema',
         fechaCreacion: serverTimestamp()
@@ -70,7 +80,7 @@ export default function AddFormulaScreen({ navigation }) {
   };
 
   const addIngredient = () => {
-    setIngredients([...ingredients, { id: Date.now().toString(), name: '', percentage: '' }]);
+    setIngredients([...ingredients, { id: Date.now().toString(), name: '', amount: '' }]);
   };
 
   const removeIngredient = (id) => {
@@ -172,9 +182,31 @@ export default function AddFormulaScreen({ navigation }) {
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>Composición Química (% p/p)</Text>
+        <Text style={styles.sectionTitle}>Composición Química</Text>
         
-        {ingredients.map((ing, idx) => (
+        {/* Toggle para cambiar entre % y Kilos */}
+        <View style={styles.toggleContainer}>
+          <TouchableOpacity 
+            style={[styles.toggleBtn, inputMode === 'PERCENTAGE' && styles.toggleBtnActive]}
+            onPress={() => setInputMode('PERCENTAGE')}
+          >
+            <Text style={[styles.toggleText, inputMode === 'PERCENTAGE' && styles.toggleTextActive]}>En Porcentaje (%)</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.toggleBtn, inputMode === 'KILOS' && styles.toggleBtnActive]}
+            onPress={() => setInputMode('KILOS')}
+          >
+            <Text style={[styles.toggleText, inputMode === 'KILOS' && styles.toggleTextActive]}>En Kilos (Kg)</Text>
+          </TouchableOpacity>
+        </View>
+
+        {ingredients.map((ing, idx) => {
+          let calculatedPercentage = null;
+          if (inputMode === 'KILOS') {
+            const total = ingredients.reduce((sum, i) => sum + toDecimal(i.amount), 0);
+            calculatedPercentage = total > 0 ? ((toDecimal(ing.amount) / total) * 100).toFixed(2) : 0;
+          }
+          return (
           <View key={ing.id} style={styles.ingredientBlock}>
             <View style={styles.ingRow}>
               <TextInput 
@@ -187,10 +219,10 @@ export default function AddFormulaScreen({ navigation }) {
               />
               <TextInput 
                 style={[styles.input, { flex: 1, marginLeft: 10 }]} 
-                placeholder="Cant (%)" 
+                placeholder={inputMode === 'PERCENTAGE' ? "Cant (%)" : "Cant (Kg)"} 
                 keyboardType="decimal-pad"
-                value={ing.percentage}
-                onChangeText={(val) => updateIngredient(idx, 'percentage', val)}
+                value={ing.amount}
+                onChangeText={(val) => updateIngredient(idx, 'amount', val)}
                 placeholderTextColor="#bbb"
               />
               {ingredients.length > 1 && (
@@ -199,8 +231,13 @@ export default function AddFormulaScreen({ navigation }) {
                 </TouchableOpacity>
               )}
             </View>
+            {inputMode === 'KILOS' && ing.amount !== '' && (
+              <Text style={{ fontSize: 11, color: '#10b981', fontWeight: 'bold', marginTop: 5, marginLeft: 5 }}>
+                Representa: {calculatedPercentage}%
+              </Text>
+            )}
           </View>
-        ))}
+        )})}
 
         <TouchableOpacity style={styles.addBtn} onPress={addIngredient}>
           <Plus color="#2e4a3b" size={20} />
@@ -247,6 +284,12 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row' },
   sectionTitle: { fontSize: 14, fontWeight: '900', color: '#334155', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
   
+  toggleContainer: { flexDirection: 'row', backgroundColor: '#e2e8f0', borderRadius: 10, padding: 4, marginBottom: 15 },
+  toggleBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 },
+  toggleBtnActive: { backgroundColor: '#fff', elevation: 2 },
+  toggleText: { fontSize: 12, fontWeight: '700', color: '#64748b' },
+  toggleTextActive: { color: '#2e4a3b' },
+
   ingredientBlock: { backgroundColor: '#fff', padding: 12, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: '#e2e8f0', elevation: 1 },
   ingRow: { flexDirection: 'row', alignItems: 'center' },
   

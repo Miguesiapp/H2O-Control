@@ -6,8 +6,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import { registerMovement } from '../services/logisticsService'; // ELIMINAMOS deductStockFIFO
-import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box } from 'lucide-react-native';
+import { registerMovement } from '../services/logisticsService'; 
+import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box, Droplet, Building2 } from 'lucide-react-native';
+
+const BIDON_CAPACITIES = ['20', '10', '5', '1'];
+const BIDON_BRANDS = ['H2O', 'AGROCUBE', 'ALIANZA', 'AGROFONTEZUELA'];
+const CAJA_BRANDS = ['H2O', 'AGROCUBE', 'AGROFONTEZUELA', 'GENERICAS'];
 
 export default function PackagingOrderScreen({ route, navigation }) {
   const { companyName } = route.params;
@@ -15,9 +19,12 @@ export default function PackagingOrderScreen({ route, navigation }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [approvedLots, setApprovedLots] = useState([]);
   const [selectedLot, setSelectedLot] = useState(null);
+  
   const [formData, setFormData] = useState({
     presentation: '20', // Litros por bidón
     unitsProduced: '',  // Cantidad de bidones
+    brandBidon: 'H2O',
+    brandCaja: 'H2O', // Solo visible si aplica caja
   });
 
   // 1. Cargar lotes aprobados por Laboratorio y con stock disponible
@@ -27,7 +34,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
         const q = query(
           collection(db, "Inventory"),
           where("company", "==", companyName),
-          where("stockType", "==", "PT"), // Producto Terminado a granel
+          where("stockType", "==", "GRANEL"), // Cambio de PT a GRANEL
           where("status", "==", "APTO"),  // Liberado por laboratorio
           where("quantity", ">", 0)       // Con líquido disponible
         );
@@ -51,6 +58,19 @@ export default function PackagingOrderScreen({ route, navigation }) {
   const remainingLiters = selectedLot ? (selectedLot.quantity - litersToConsume) : 0;
   const isOverdraft = selectedLot && remainingLiters < 0;
 
+  // Lógica de Cajas
+  const appliesBox = presentation === 5 || presentation === 1;
+  let requiredBoxes = 0;
+  let boxFormat = '';
+  
+  if (presentation === 5) {
+    requiredBoxes = Math.ceil(units / 4);
+    boxFormat = 'x5';
+  } else if (presentation === 1) {
+    requiredBoxes = Math.ceil(units / 12);
+    boxFormat = 'x1';
+  }
+
   const handleFinishPackaging = async () => {
     if (!selectedLot || units <= 0) {
       Alert.alert("Atención", "Selecciona un lote e indica la cantidad de unidades obtenidas.");
@@ -64,49 +84,62 @@ export default function PackagingOrderScreen({ route, navigation }) {
 
     try {
       setIsSubmitting(true);
-      const batchId = selectedLot.batchInternal;
+      const batchId = selectedLot.batchInternal; // Hereda el ADN
       const itemName = selectedLot.itemName?.toUpperCase();
       const currentUser = auth.currentUser?.email || 'Sistema';
 
-      // 1. DEDUCCIÓN AUTOMÁTICA DEL LÍQUIDO A GRANEL (PT)
-      // Usamos el motor unificado enviando el valor en negativo
+      // 1. DEDUCCIÓN AUTOMÁTICA DEL LÍQUIDO A GRANEL
       await registerMovement(currentUser, 'CONSUMO_ENVASADO', companyName, {
           itemName: itemName,
           quantity: -Math.abs(litersToConsume), 
-          stockType: 'PT',
+          stockType: 'GRANEL',
           batchInternal: batchId,
           unit: 'Lts'
       });
 
-      // 2. INYECCIÓN DEL PRODUCTO TERMINADO ENVASADO (FINAL)
-      const packagedItemName = `${itemName} - ${presentation}L`;
-      await registerMovement(currentUser, 'INGRESO_OE', companyName, {
-          itemName: packagedItemName,
-          quantity: Math.abs(units), // Se suman las unidades
-          stockType: 'FINAL',
-          batchInternal: batchId, // Mantiene el ADN del lote original
-          unit: 'Uds'
-      });
-
-      // (OPCIONAL EN EL FUTURO) Descuento de envases y etiquetas
-      /*
-      await registerMovement(currentUser, 'CONSUMO_INSUMO', companyName, {
-          itemName: `BIDON ${presentation}L`,
+      // 2. DEDUCCIÓN DE INSUMOS CENTRALES (BIDONES)
+      const bidonName = `BIDON ${presentation}L ${formData.brandBidon}`;
+      await registerMovement(currentUser, 'CONSUMO_INSUMO', 'STOCK_CENTRAL_INSUMOS', {
+          itemName: bidonName,
           quantity: -Math.abs(units),
-          stockType: 'MP',
+          stockType: 'INSUMOS',
           batchInternal: batchId,
           unit: 'Uds'
       });
-      */
+
+      // 3. DEDUCCIÓN DE INSUMOS CENTRALES (CAJAS) SI APLICA
+      if (appliesBox && requiredBoxes > 0) {
+        const cajaName = `CAJA ${boxFormat} ${formData.brandCaja}`;
+        await registerMovement(currentUser, 'CONSUMO_INSUMO', 'STOCK_CENTRAL_INSUMOS', {
+            itemName: cajaName,
+            quantity: -Math.abs(requiredBoxes),
+            stockType: 'INSUMOS',
+            batchInternal: batchId,
+            unit: 'Uds'
+        });
+      }
+
+      // 4. INYECCIÓN DEL PRODUCTO TERMINADO ENVASADO (FINAL)
+      const packagedItemName = `${itemName} - ${presentation}L`;
+      await registerMovement(currentUser, 'INGRESO_OE', companyName, {
+          itemName: packagedItemName,
+          quantity: Math.abs(units),
+          stockType: 'FINAL',
+          batchInternal: batchId,
+          unit: 'Uds',
+          status: 'APTO', // Ya está listo para venta
+          batchProvider: selectedLot.batchProvider || 'S/D', // Heredamos el lote del proveedor de la OP original
+          expiryDate: selectedLot.expiryDate || 'S/V' // Heredamos la fecha de vencimiento de la OP original
+      });
 
       Alert.alert(
-        "Envasado Exitoso", 
-        `Se han ingresado ${units} unidades de ${presentation}L.\nSe descontaron ${litersToConsume} Lts del lote original.`,
+        "Orden Completada", 
+        `Se envasaron exitosamente ${units} unidades de ${presentation}L.\n\nSe descontaron:\n- ${litersToConsume} Lts de Granel\n- ${units} Bidones (${formData.brandBidon})\n${appliesBox ? `- ${requiredBoxes} Cajas (${formData.brandCaja})` : ''}`,
         [{ text: "Entendido", onPress: () => navigation.goBack() }]
       );
     } catch (error) {
       console.error(error);
-      Alert.alert("Error de Sistema", "Fallo en la sincronización de inventarios.");
+      Alert.alert("Error del Sistema", "No se pudo emitir la orden de envasado.");
     } finally {
       setIsSubmitting(false);
     }
@@ -116,126 +149,172 @@ export default function PackagingOrderScreen({ route, navigation }) {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar barStyle="dark-content" />
       
-      {/* HEADER ENTERPRISE */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <ChevronLeft color="#0f172a" size={28} />
         </TouchableOpacity>
-        <View style={{ alignItems: 'center' }}>
+        <View style={{alignItems: 'center'}}>
           <Text style={styles.headerTitle}>Orden de Envasado</Text>
           <Text style={styles.headerSub}>{companyName}</Text>
         </View>
-        <Container color="#0f172a" size={24} />
+        <View style={{ width: 28 }} />
       </View>
 
-      <ScrollView 
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.sectionLabel}>1. Selección de Lote Aprobado</Text>
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         
-        {loading ? (
-          <View style={styles.loadingBox}>
-            <ActivityIndicator size="small" color="#3b82f6" />
-            <Text style={styles.loadingText}>Buscando lotes liberados...</Text>
+        <View style={styles.infoBanner}>
+          <View style={styles.iconBox}>
+            <Container color="#3b82f6" size={24} />
           </View>
-        ) : approvedLots.length > 0 ? (
-          <View style={styles.lotList}>
-            {approvedLots.map(lot => (
-              <TouchableOpacity 
-                key={lot.id} 
-                style={[styles.lotCard, selectedLot?.id === lot.id && styles.lotCardActive]}
-                onPress={() => setSelectedLot(lot)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.lotHeader}>
-                  <CheckCircle2 color={selectedLot?.id === lot.id ? "#10b981" : "#cbd5e1"} size={20} />
-                  <Text style={[styles.lotTitle, selectedLot?.id === lot.id && {color: '#0f172a'}]}>
-                    {lot.itemName}
-                  </Text>
-                  <View style={styles.stockBadge}>
-                    <Text style={styles.stockBadgeText}>{lot.quantity} Lts</Text>
-                  </View>
-                </View>
-                <View style={styles.lotFooter}>
-                  <FlaskConical color="#64748b" size={14} />
-                  <Text style={styles.lotMetaText}>Lote OP: {lot.batchInternal}</Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-        ) : (
-          <View style={styles.emptyWarning}>
-            <AlertCircle color="#f59e0b" size={24} />
-            <Text style={styles.emptyText}>No existen lotes en estado APTO con líquido disponible para esta unidad de negocio.</Text>
-          </View>
-        )}
-
-        <View style={styles.formCard}>
-          <Text style={styles.sectionLabel}>2. Formato de Envasado</Text>
-          <View style={styles.pickerContainer}>
-            {['20', '10', '5', '1'].map(p => (
-              <TouchableOpacity 
-                key={p} 
-                style={[styles.pButton, formData.presentation === p && styles.pButtonActive]}
-                onPress={() => setFormData({...formData, presentation: p})}
-              >
-                <Text style={[styles.pText, formData.presentation === p && styles.pTextActive]}>{p} Lts</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <Text style={styles.sectionLabel}>3. Unidades Obtenidas (Bidones)</Text>
-          <View style={styles.inputWrapper}>
-            <Box color="#94a3b8" size={20} style={{ marginRight: 10 }} />
-            <TextInput 
-              style={styles.input} 
-              placeholder="0" 
-              keyboardType="numeric"
-              value={formData.unitsProduced}
-              onChangeText={(txt) => setFormData({...formData, unitsProduced: txt})}
-              placeholderTextColor="#94a3b8"
-              editable={!!selectedLot}
-            />
-            <Text style={styles.inputSuffix}>Uds.</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.bannerTitle}>Fraccionamiento y Envasado</Text>
+            <Text style={styles.bannerText}>Selecciona el lote de granel (aprobado por calidad) y los insumos utilizados.</Text>
           </View>
         </View>
 
-        {/* ASISTENTE DE CÁLCULO (H2O Neural UI) */}
-        {selectedLot && units > 0 && (
-          <View style={[styles.calcBox, isOverdraft && styles.calcBoxError]}>
-            <View style={styles.calcRow}>
-              <Text style={styles.calcLabel}>Consumo de Granel:</Text>
-              <Text style={[styles.calcValue, isOverdraft && {color: '#ef4444'}]}>{litersToConsume} Lts</Text>
+        {/* 1. SELECCIÓN DE LOTE GRANEL */}
+        <Text style={styles.sectionTitle}>1. Lote de Granel Aprobado</Text>
+        <View style={styles.card}>
+          {loading ? (
+            <ActivityIndicator color="#3b82f6" size="large" style={{ marginVertical: 20 }} />
+          ) : approvedLots.length === 0 ? (
+            <View style={styles.emptyBox}>
+              <AlertCircle color="#94a3b8" size={32} style={{marginBottom: 10}}/>
+              <Text style={styles.emptyText}>No hay lotes de GRANEL aprobados disponibles en esta empresa.</Text>
             </View>
-            <View style={styles.calcDivider} />
-            <View style={styles.calcRow}>
-              <Text style={styles.calcLabel}>Stock Restante en Lote:</Text>
-              <Text style={[styles.calcValue, isOverdraft && {color: '#ef4444'}]}>{remainingLiters} Lts</Text>
-            </View>
-            {isOverdraft && (
-              <Text style={styles.errorText}>⚠️ El consumo supera el líquido disponible.</Text>
-            )}
-          </View>
-        )}
-
-        <TouchableOpacity 
-          style={[styles.saveButton, (!selectedLot || units <= 0 || isOverdraft) && styles.buttonDisabled]} 
-          onPress={handleFinishPackaging}
-          disabled={!selectedLot || units <= 0 || isOverdraft || isSubmitting}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator color="#fff" size="small" />
           ) : (
-            <>
-              <Save color="#fff" size={20} />
-              <Text style={styles.saveButtonText}>Confirmar y Actualizar Stock</Text>
-            </>
+            approvedLots.map((lot) => (
+              <TouchableOpacity
+                key={lot.id}
+                style={[styles.lotCard, selectedLot?.id === lot.id && styles.lotCardSelected]}
+                onPress={() => setSelectedLot(lot)}
+              >
+                <View style={styles.lotHeader}>
+                  <Text style={[styles.lotName, selectedLot?.id === lot.id && styles.lotNameSelected]}>
+                    {lot.itemName}
+                  </Text>
+                  {selectedLot?.id === lot.id && <CheckCircle2 color="#3b82f6" size={20} />}
+                </View>
+                <Text style={styles.lotText}>Lote Interno: {lot.batchInternal}</Text>
+                <Text style={styles.lotText}>Disponible: {lot.quantity.toFixed(2)} Lts</Text>
+              </TouchableOpacity>
+            ))
           )}
-        </TouchableOpacity>
-        
-        <View style={{ height: 40 }} />
+        </View>
+
+        {/* 2. PARÁMETROS DE ENVASADO E INSUMOS */}
+        {selectedLot && (
+          <>
+            <Text style={styles.sectionTitle}>2. Insumos Utilizados</Text>
+            <View style={styles.card}>
+              
+              <Text style={styles.label}>Capacidad del Bidón</Text>
+              <View style={styles.chipRow}>
+                {BIDON_CAPACITIES.map(cap => (
+                  <TouchableOpacity 
+                    key={cap} 
+                    style={[styles.chip, formData.presentation === cap && styles.chipActive]}
+                    onPress={() => setFormData({...formData, presentation: cap})}
+                  >
+                    <Droplet color={formData.presentation === cap ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
+                    <Text style={[styles.chipText, formData.presentation === cap && styles.chipTextActive]}>{cap}L</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.label}>Marca del Bidón</Text>
+              <View style={styles.chipRow}>
+                {BIDON_BRANDS.map(brand => (
+                  <TouchableOpacity 
+                    key={brand} 
+                    style={[styles.chip, formData.brandBidon === brand && styles.chipActive]}
+                    onPress={() => setFormData({...formData, brandBidon: brand})}
+                  >
+                    <Building2 color={formData.brandBidon === brand ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
+                    <Text style={[styles.chipText, formData.brandBidon === brand && styles.chipTextActive]}>{brand}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Unidades (Bidones) a Envasar</Text>
+                <View style={styles.inputWrapper}>
+                  <Container color="#94a3b8" size={20} style={styles.inputIcon} />
+                  <TextInput 
+                    style={styles.input} 
+                    placeholder="Ej: 160" 
+                    keyboardType="numeric"
+                    value={formData.unitsProduced}
+                    onChangeText={(txt) => setFormData({...formData, unitsProduced: txt})}
+                  />
+                </View>
+              </View>
+
+              {appliesBox && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.label}>Marca de las Cajas ({boxFormat})</Text>
+                  <View style={styles.chipRow}>
+                    {CAJA_BRANDS.map(brand => (
+                      <TouchableOpacity 
+                        key={brand} 
+                        style={[styles.chip, formData.brandCaja === brand && styles.chipActive]}
+                        onPress={() => setFormData({...formData, brandCaja: brand})}
+                      >
+                        <Box color={formData.brandCaja === brand ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
+                        <Text style={[styles.chipText, formData.brandCaja === brand && styles.chipTextActive]}>{brand}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <Text style={styles.calcHelper}>
+                    Se descontarán {requiredBoxes} cajas automáticamente.
+                  </Text>
+                </>
+              )}
+
+            </View>
+
+            {/* 3. RESUMEN Y CONFIRMACIÓN */}
+            <Text style={styles.sectionTitle}>3. Impacto de Stock</Text>
+            <View style={styles.impactCard}>
+              <View style={styles.impactRow}>
+                <Text style={styles.impactLabel}>Granel a Consumir:</Text>
+                <Text style={[styles.impactValue, isOverdraft && {color: '#ef4444'}]}>
+                  -{litersToConsume} Lts
+                </Text>
+              </View>
+              <View style={styles.impactRow}>
+                <Text style={styles.impactLabel}>Saldo Final en Lote:</Text>
+                <Text style={[styles.impactValue, isOverdraft && {color: '#ef4444'}]}>
+                  {remainingLiters.toFixed(2)} Lts
+                </Text>
+              </View>
+              
+              <View style={[styles.divider, { backgroundColor: '#e2e8f0' }]} />
+              
+              <View style={styles.impactRow}>
+                <Text style={styles.impactLabel}>Prod. Terminado a Generar:</Text>
+                <Text style={[styles.impactValue, {color: '#10b981'}]}>
+                  +{units} Bidones de {presentation}L
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity 
+              style={[styles.submitBtn, (isSubmitting || isOverdraft || units <= 0) && { opacity: 0.5 }]}
+              disabled={isSubmitting || isOverdraft || units <= 0}
+              onPress={handleFinishPackaging}
+            >
+              {isSubmitting ? <ActivityIndicator color="#fff" size="small" /> : (
+                <>
+                  <CheckCircle2 color="#fff" size={24} />
+                  <Text style={styles.submitText}>CONFIRMAR OE</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </>
+        )}
+        <View style={{height: 50}} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -245,53 +324,53 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f8fafc' },
   header: { 
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
-    paddingHorizontal: 20, paddingVertical: 15, backgroundColor: '#fff', 
-    borderBottomWidth: 1, borderBottomColor: '#e2e8f0', elevation: 2
+    paddingHorizontal: 20, paddingVertical: 15, backgroundColor: '#fff',
+    borderBottomWidth: 1, borderBottomColor: '#e2e8f0', elevation: 2 
   },
   backBtn: { padding: 5 },
   headerTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a' },
-  headerSub: { fontSize: 11, color: '#64748b', textTransform: 'uppercase', fontWeight: '800', letterSpacing: 0.5 },
+  headerSub: { fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '700' },
   
   container: { padding: 20 },
-  sectionLabel: { fontSize: 13, fontWeight: '800', color: '#334155', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
+  sectionTitle: { fontSize: 13, fontWeight: '800', color: '#334155', marginBottom: 12, marginLeft: 5, textTransform: 'uppercase', letterSpacing: 0.5 },
   
-  loadingBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#eff6ff', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: '#bfdbfe' },
-  loadingText: { marginLeft: 10, color: '#1e3a8a', fontWeight: '600', fontSize: 13 },
+  infoBanner: { flexDirection: 'row', backgroundColor: '#eff6ff', padding: 15, borderRadius: 16, marginBottom: 25, borderWidth: 1, borderColor: '#bfdbfe', alignItems: 'center' },
+  iconBox: { backgroundColor: '#fff', padding: 10, borderRadius: 12, marginRight: 15, shadowColor: '#3b82f6', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
+  bannerTitle: { fontSize: 15, fontWeight: '800', color: '#1e3a8a', marginBottom: 4 },
+  bannerText: { fontSize: 12, color: '#3b82f6', lineHeight: 18, fontWeight: '500' },
   
-  emptyWarning: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fffbeb', padding: 20, borderRadius: 16, marginBottom: 20, borderWidth: 1, borderColor: '#fde68a' },
-  emptyText: { flex: 1, marginLeft: 15, color: '#b45309', fontSize: 13, fontWeight: '600', lineHeight: 18 },
-
-  lotList: { gap: 10, marginBottom: 25 },
-  lotCard: { backgroundColor: '#fff', padding: 15, borderRadius: 14, borderWidth: 1, borderColor: '#e2e8f0', elevation: 1 },
-  lotCardActive: { borderColor: '#10b981', backgroundColor: '#ecfdf5' },
-  lotHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  lotTitle: { flex: 1, fontSize: 15, fontWeight: '800', color: '#475569', marginLeft: 10 },
-  stockBadge: { backgroundColor: '#f1f5f9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  stockBadgeText: { fontSize: 11, fontWeight: '800', color: '#334155' },
-  lotFooter: { flexDirection: 'row', alignItems: 'center', marginLeft: 30, gap: 6 },
-  lotMetaText: { fontSize: 11, color: '#64748b', fontWeight: '500' },
-
-  formCard: { backgroundColor: '#fff', padding: 20, borderRadius: 20, elevation: 2, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 10, borderWidth: 1, borderColor: '#e2e8f0' },
+  card: { backgroundColor: '#fff', padding: 20, borderRadius: 20, marginBottom: 25, borderWidth: 1, borderColor: '#e2e8f0', elevation: 1 },
+  label: { fontSize: 11, fontWeight: '800', color: '#64748b', marginBottom: 8, marginTop: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
   
-  pickerContainer: { flexDirection: 'row', gap: 10, marginBottom: 25 },
-  pButton: { flex: 1, paddingVertical: 14, backgroundColor: '#f1f5f9', borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0' },
-  pButtonActive: { backgroundColor: '#0f172a', borderColor: '#0f172a' },
-  pText: { fontWeight: '800', color: '#64748b', fontSize: 14 },
-  pTextActive: { color: '#f8fafc' },
+  emptyBox: { alignItems: 'center', padding: 20 },
+  emptyText: { color: '#64748b', textAlign: 'center', fontWeight: '500' },
+
+  lotCard: { backgroundColor: '#f8fafc', borderWidth: 2, borderColor: '#e2e8f0', borderRadius: 16, padding: 15, marginBottom: 10 },
+  lotCardSelected: { borderColor: '#3b82f6', backgroundColor: '#eff6ff' },
+  lotHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
+  lotName: { fontSize: 15, fontWeight: '800', color: '#334155' },
+  lotNameSelected: { color: '#1e3a8a' },
+  lotText: { fontSize: 12, color: '#64748b', fontWeight: '600', marginBottom: 2 },
   
-  inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, paddingHorizontal: 15 },
-  input: { flex: 1, paddingVertical: 15, fontSize: 20, color: '#0f172a', fontWeight: '900' },
-  inputSuffix: { fontSize: 14, fontWeight: '800', color: '#94a3b8' },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 15 },
+  chip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f1f5f9', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#e2e8f0' },
+  chipActive: { backgroundColor: '#0f172a', borderColor: '#0f172a' },
+  chipText: { fontSize: 12, fontWeight: '700', color: '#64748b' },
+  chipTextActive: { color: '#fff' },
 
-  calcBox: { backgroundColor: '#f8fafc', padding: 15, borderRadius: 12, marginTop: 20, borderWidth: 1, borderColor: '#e2e8f0' },
-  calcBoxError: { backgroundColor: '#fef2f2', borderColor: '#fca5a5' },
-  calcRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  calcLabel: { fontSize: 12, color: '#475569', fontWeight: '600' },
-  calcValue: { fontSize: 14, fontWeight: '900', color: '#0f172a' },
-  calcDivider: { height: 1, backgroundColor: '#e2e8f0', marginVertical: 8 },
-  errorText: { color: '#ef4444', fontSize: 11, fontWeight: '800', marginTop: 10, textAlign: 'right' },
+  inputGroup: { marginTop: 10 },
+  inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 15 },
+  inputIcon: { marginRight: 10 },
+  input: { flex: 1, paddingVertical: 14, color: '#0f172a', fontSize: 16, fontWeight: '600' },
+  
+  divider: { height: 1, backgroundColor: '#f1f5f9', marginVertical: 15 },
+  calcHelper: { fontSize: 12, color: '#10b981', fontWeight: '700', fontStyle: 'italic' },
 
-  saveButton: { backgroundColor: '#10b981', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 18, borderRadius: 14, marginTop: 30, gap: 10, elevation: 4 },
-  buttonDisabled: { backgroundColor: '#cbd5e1', elevation: 0 },
-  saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '900', letterSpacing: 0.5 }
+  impactCard: { backgroundColor: '#f8fafc', padding: 20, borderRadius: 20, marginBottom: 25, borderWidth: 1, borderColor: '#e2e8f0' },
+  impactRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  impactLabel: { fontSize: 13, color: '#64748b', fontWeight: '700' },
+  impactValue: { fontSize: 14, fontWeight: '800', color: '#334155' },
+
+  submitBtn: { backgroundColor: '#10b981', flexDirection: 'row', padding: 18, borderRadius: 16, justifyContent: 'center', alignItems: 'center', elevation: 4 },
+  submitText: { color: '#fff', fontSize: 16, fontWeight: '900', letterSpacing: 1, marginLeft: 10 }
 });

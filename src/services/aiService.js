@@ -1,10 +1,7 @@
 // src/services/aiService.js
 
-// Obtenemos la clave de forma segura desde el archivo .env
-const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
-
-// URL base de la API de Gemini 3.1 Flash-Lite (Súper rápido y soporta texto, visión y JSON)
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-Flash-Lite:generateContent?key=${GEMINI_API_KEY}`;
+// URL de tu Bóveda Segura en Firebase (Cloud Function)
+const GEMINI_URL = 'https://us-central1-h2o-control-a153b.cloudfunctions.net/geminiProxy';
 
 const SYSTEM_PROMPT_BASE = `Eres H2O Neural, el asistente de IA colaborativo, empático y servicial de H2O Control.
 Tu tono es educado y profesional, pero relajado y amigable, no eres un robot aburrido. Estás aquí para facilitar la vida del equipo de planta.
@@ -21,9 +18,9 @@ Tu tono es educado y profesional, pero relajado y amigable, no eres un robot abu
 - Materias Primas: DOSS es exactamente lo mismo que DIOCTIL.
 - XTM es el mismo producto que MARISCAL (distinto nombre según cliente).
 - DROP es el mismo producto que TOKE FULL.
-- AGROTURBO es el mismo producto que KINKHO PH.
-- TUTOR es el mismo producto que HARD.
-- TOKE es el mismo producto que COMBATE.
+- TUTOR es el mismo producto que KINKHO PH, VITTA IONIC y HARD.
+- ACTION es lo mismo que UNIQUE, SHIRIKON SILIC y TOKE ULTRA.
+- TOKE PLUS es el mismo producto que COMBATE.
 - Ácido Clorhídrico = Ph Control = Percyde Activador.
 
 *REGLA EVOLUTIVA*: Si en la conversación el usuario te dice "Oye, a partir de ahora llamaremos X a Y", acéptalo con gusto y utilízalo en esa sesión.
@@ -53,7 +50,7 @@ Cuando se te pida auditar un remito o texto estructurado, responde ÚNICAMENTE c
 }`;
 
 /**
- * 🧠 CEREBRO DE TEXTO (GEMINI)
+ * 🧠 CEREBRO DE TEXTO
  */
 export const analyzeSystemIntelligence = async (text, contextCompany = null, contextMode = null) => {
   try {
@@ -61,10 +58,12 @@ export const analyzeSystemIntelligence = async (text, contextCompany = null, con
     if (contextCompany) dynamicPrompt += `\nCONTEXTO: Empresa seleccionada '${contextCompany}'.`;
     if (contextMode) dynamicPrompt += `\nCONTEXTO: Operación '${contextMode}'.`;
 
+    // Combinamos las reglas del sistema directamente con el texto del usuario
+    const fullPrompt = dynamicPrompt + "\n\n=== TEXTO A ANALIZAR ===\n" + text;
+
     const payload = {
-      systemInstruction: { parts: [{ text: dynamicPrompt }] },
-      contents: [{ role: "user", parts: [{ text }] }],
-      generationConfig: { responseMimeType: "application/json" } // Forzamos JSON
+      contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
+      generationConfig: { responseMimeType: "application/json" }
     };
 
     const response = await fetch(GEMINI_URL, {
@@ -74,19 +73,18 @@ export const analyzeSystemIntelligence = async (text, contextCompany = null, con
     });
 
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error?.message || "Error en Gemini API");
-    
-    // Gemini devuelve el texto dentro de la estructura de candidates
+    if (!response.ok) throw new Error(data.error?.message || data.error || "Error en el servidor proxy");
+
     const jsonString = data.candidates[0].content.parts[0].text;
     return JSON.parse(jsonString);
   } catch (error) {
-    console.error("Error en IA Texto (Gemini):", error);
+    console.error("Error en IA Texto (Proxy):", error);
     throw error;
   }
 };
 
 /**
- * 👁️ CEREBRO DE VISIÓN MULTIMODAL (GEMINI)
+ * 👁️ CEREBRO DE VISIÓN MULTIMODAL
  */
 export const analyzeLogisticsImage = async (base64Image, contextCompany = null, contextMode = null) => {
   try {
@@ -94,21 +92,23 @@ export const analyzeLogisticsImage = async (base64Image, contextCompany = null, 
     if (contextCompany) dynamicPrompt += `\nCONTEXTO: Empresa seleccionada '${contextCompany}'.`;
     if (contextMode) dynamicPrompt += `\nCONTEXTO: Operación '${contextMode}'.`;
 
+    const cleanBase64 = base64Image.replace(/^data:image\/\w+;base64,/, '');
+    const fullPrompt = dynamicPrompt + "\n\nINSTRUCCIÓN: Analiza la imagen adjunta de este remito/documento y extrae los datos en el formato JSON estricto que se te indicó arriba.";
+
     const payload = {
-      systemInstruction: { parts: [{ text: dynamicPrompt }] },
       contents: [{
         role: "user",
         parts: [
-          { text: "Analiza la imagen adjunta de este remito/documento y extrae los datos en el formato JSON estricto que se te indicó." },
+          { text: fullPrompt },
           {
             inlineData: {
               mimeType: "image/jpeg",
-              data: base64Image
+              data: cleanBase64
             }
           }
         ]
       }],
-      generationConfig: { responseMimeType: "application/json" } // Forzamos JSON
+      generationConfig: { responseMimeType: "application/json" }
     };
 
     const response = await fetch(GEMINI_URL, {
@@ -118,22 +118,22 @@ export const analyzeLogisticsImage = async (base64Image, contextCompany = null, 
     });
 
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error?.message || "Error en Gemini Vision");
-    
+    if (!response.ok) throw new Error(data.error?.message || data.error || "Error en el servidor proxy de Visión");
+
     const jsonString = data.candidates[0].content.parts[0].text;
     return JSON.parse(jsonString);
   } catch (error) {
-    console.error("Error en IA Visión (Gemini):", error);
+    console.error("Error en IA Visión (Proxy):", error);
     throw error;
   }
 };
 
 /**
- * 🤖 CEREBRO CONVERSACIONAL Y EMPÁTICO (H2O Neural Chat con Gemini)
+ * 🤖 CEREBRO CONVERSACIONAL Y EMPÁTICO (H2O Neural Chat)
  */
 export const chatWithLogisticsAI = async (userMessage, history, plantContext) => {
   try {
-    const formulasResumen = plantContext.formulas.map(f => 
+    const formulasResumen = plantContext.formulas.map(f =>
       `${f.productName} (Densidad: ${f.densidadObjetivo}): ${f.ingredients.map(i => `${i.name} ${i.percentage}%`).join(', ')}`
     ).join(' | ');
 
@@ -154,18 +154,25 @@ INSTRUCCIONES PARA EL CHAT:
 Eres H2O Neural. Habla directamente con el operario. Si te preguntan si alcanza para fabricar "X" cantidad de producto, haz las matemáticas: (Litros * Densidad = Masa Total). Multiplica la Masa Total por los porcentajes de la receta, y cruza el resultado considerando el 'Stock Físico Disponible' y los SINÓNIMOS del diccionario (si piden DOSS y hay Dioctil, es lo mismo). 
 Responde con calidez y servicialidad. Si te enseñan un nuevo sinónimo, agradécelo y úsalo. Si no tienes un dato, sé honesto. (NOTA: Responde en texto plano, no uses JSON aquí).`;
 
-    // Formateamos el historial para Gemini (requiere roles 'user' y 'model')
-    const geminiHistory = history.map(msg => ({
-      role: msg.sender === 'ai' ? 'model' : 'user',
-      parts: [{ text: msg.text }]
-    }));
-    
-    // Agregamos el mensaje actual
+    // 1. Inyectamos el prompt como si fuera el primer mensaje del historial
+    const geminiHistory = [
+      { role: "user", parts: [{ text: CHAT_PROMPT }] },
+      { role: "model", parts: [{ text: "Entendido. A partir de ahora actuaré estrictamente bajo estas reglas e integraré el contexto de la planta a mis respuestas." }] }
+    ];
+
+    // 2. Añadimos el historial previo
+    history.forEach(msg => {
+      geminiHistory.push({
+        role: msg.sender === 'ai' ? 'model' : 'user',
+        parts: [{ text: msg.text }]
+      });
+    });
+
+    // 3. Añadimos el mensaje actual del usuario
     geminiHistory.push({ role: "user", parts: [{ text: userMessage }] });
 
     const payload = {
-      systemInstruction: { parts: [{ text: CHAT_PROMPT }] },
-      contents: geminiHistory,
+      contents: geminiHistory
     };
 
     const response = await fetch(GEMINI_URL, {
@@ -175,11 +182,11 @@ Responde con calidez y servicialidad. Si te enseñan un nuevo sinónimo, agradé
     });
 
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error?.message);
-    
+    if (!response.ok) throw new Error(data.error?.message || data.error || "Error en AI Chat proxy");
+
     return data.candidates[0].content.parts[0].text;
   } catch (error) {
-    console.error("Error en AI Chat (Gemini):", error);
+    console.error("Error en AI Chat (Proxy):", error);
     throw error;
   }
 };
