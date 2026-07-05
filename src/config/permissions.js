@@ -11,6 +11,7 @@ export const ROLES = {
     'miguesilva.1985@gmail.com',
     'miguesilva.1985@outlook.es',
     'bduville@h2ocontrol.com.ar',
+    'tester@h2ocontrol.com',
   ],
   
   // Creadores de Órdenes (Producción/Gerencia): Pueden crear OP, OE, OD
@@ -20,12 +21,14 @@ export const ROLES = {
     'miguesilva.1985@gmail.com',
     'miguesilva.1985@outlook.es',
     'jmalvasio@h2ocontrol.com.ar',
+    'tester@h2ocontrol.com',
   ],
 
   // Administradores Globales
   ADMINS: [
     'miguesilva.1985@outlook.es',
     'miguesilva.1985@gmail.com',
+    'tester@h2ocontrol.com',
   ]
 };
 

@@ -34,7 +34,8 @@ service cloud.firestore {
         request.auth.token.email == 'jmalvasio@h2ocontrol.com.ar' || 
         request.auth.token.email == 'produccion@h2ocontrol.com.ar' ||
         request.auth.token.email == 'miguesilva.1985@gmail.com' ||
-        request.auth.token.email == 'miguesilva.1985@outlook.es'
+        request.auth.token.email == 'miguesilva.1985@outlook.es' ||
+        request.auth.token.email == 'tester@h2ocontrol.com'
       );
     }
 
@@ -42,7 +43,8 @@ service cloud.firestore {
     function isAdmin() {
       return request.auth != null && (
         request.auth.token.email == 'miguesilva.1985@outlook.es' ||
-        request.auth.token.email == 'miguesilva.1985@gmail.com'
+        request.auth.token.email == 'miguesilva.1985@gmail.com' ||
+        request.auth.token.email == 'tester@h2ocontrol.com'
       );
     }
 
@@ -54,7 +56,8 @@ service cloud.firestore {
         request.auth.token.email == 'g.haritchet@gmail.com' ||
         request.auth.token.email == 'miguesilva.1985@gmail.com' ||
         request.auth.token.email == 'miguesilva.1985@outlook.es' ||
-        request.auth.token.email == 'bduville@h2ocontrol.com.ar'
+        request.auth.token.email == 'bduville@h2ocontrol.com.ar' ||
+        request.auth.token.email == 'tester@h2ocontrol.com'
       );
     }
 
