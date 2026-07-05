@@ -8,7 +8,7 @@ import { db, auth } from '../config/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ChevronLeft, Save, Plus, Beaker, Trash2, BrainCircuit, Sparkles, FileText } from 'lucide-react-native';
 import AutocompleteInput from '../components/AutocompleteInput';
-import { RAW_MATERIALS_LIST, PRODUCTS_MADRE_LIST } from '../config/constants';
+import { RAW_MATERIALS_LIST, PRODUCTS_MADRE_LIST, PRODUCTS_FINAL_LIST } from '../config/constants';
 
 export default function AddFormulaScreen({ navigation }) {
   const [productName, setProductName] = useState('');
@@ -137,7 +137,7 @@ export default function AddFormulaScreen({ navigation }) {
             <View style={{ flex: 1, marginRight: 10 }}>
               <Text style={styles.label}>Nombre del Producto</Text>
               <AutocompleteInput 
-                data={PRODUCTS_MADRE_LIST.sort()}
+                data={[...PRODUCTS_MADRE_LIST, ...PRODUCTS_FINAL_LIST].sort()}
                 value={productName}
                 onChangeText={setProductName}
                 placeholder="Ej: GRANEL BUFFER"

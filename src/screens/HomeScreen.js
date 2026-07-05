@@ -301,12 +301,24 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.qualityCardText}>BBS Calidad</Text>
             </TouchableOpacity>
 
+            <TouchableOpacity style={styles.qualityCard} onPress={() => navigation.navigate('Formulation')}>
+              <View style={[styles.qualityIconBox, { backgroundColor: '#fdf4ff' }]}>
+                <FlaskConical color="#c026d3" size={24} />
+              </View>
+              <Text style={styles.qualityCardText}>H2O Laboratorio</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.row}>
+
             <TouchableOpacity style={styles.qualityCard} onPress={() => navigation.navigate('StaffAttendance')}>
               <View style={[styles.qualityIconBox, { backgroundColor: '#f0f9ff' }]}>
                 <UserCheck color="#0ea5e9" size={24} />
               </View>
               <Text style={styles.qualityCardText}>Tótem Asistencia</Text>
             </TouchableOpacity>
+
+            <View style={{ flex: 1 }} />
           </View>
         </View>
 
