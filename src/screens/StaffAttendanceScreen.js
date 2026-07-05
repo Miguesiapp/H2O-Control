@@ -1,17 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, Alert, 
-  ActivityIndicator, ScrollView, useWindowDimensions, Image, StatusBar
+  ActivityIndicator, ScrollView, useWindowDimensions, Image, StatusBar, TextInput, Modal
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { db, storage, auth } from '../config/firebase';
-import { collection, addDoc, serverTimestamp, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { 
   UserCheck, UserX, Camera, ShieldCheck, UserPlus, 
-  RotateCcw, Save, Lock, Smartphone, Monitor, ChevronLeft 
+  RotateCcw, Save, Lock, Monitor, ChevronLeft, UserCircle 
 } from 'lucide-react-native';
 
 export default function StaffAttendanceScreen({ navigation }) {
@@ -24,6 +24,12 @@ export default function StaffAttendanceScreen({ navigation }) {
   const [tempPhoto, setTempPhoto] = useState(null); 
   const cameraRef = useRef(null);
 
+  const [staffProfiles, setStaffProfiles] = useState([]);
+  const [selectedOperario, setSelectedOperario] = useState(null);
+  const [newOperarioName, setNewOperarioName] = useState('');
+  const [showSelectModal, setShowSelectModal] = useState(false);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+
   const ALLOWED_EMAILS = [
     'produccion@h2ocontrol.com.ar', 
     'bduville@h2ocontrol.com.ar', 
@@ -35,9 +41,16 @@ export default function StaffAttendanceScreen({ navigation }) {
 
   useEffect(() => {
     if (hasAccess) {
-      activateKeepAwakeAsync(); // Mantiene la pantalla encendida para el Tótem
+      activateKeepAwakeAsync(); 
+      const q = query(collection(db, "StaffProfiles"), orderBy("name"));
+      const unsub = onSnapshot(q, (snap) => {
+        setStaffProfiles(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      });
+      return () => {
+        deactivateKeepAwake();
+        unsub();
+      };
     }
-    return () => deactivateKeepAwake();
   }, [hasAccess]);
 
   if (!hasAccess) {
@@ -58,7 +71,18 @@ export default function StaffAttendanceScreen({ navigation }) {
     );
   }
 
-  const handleAction = async (actionType) => {
+  const openSelection = (actionType) => {
+    if (staffProfiles.length === 0) {
+      Alert.alert("Sin Perfiles", "No hay operarios registrados. Primero deben registrar su perfil.");
+      return;
+    }
+    setType(actionType);
+    setShowSelectModal(true);
+  };
+
+  const handleAction = async (actionType, operarioName) => {
+    setShowSelectModal(false);
+    setShowRegisterModal(false);
     if (!permission?.granted) {
       const res = await requestPermission();
       if (!res.granted) {
@@ -66,7 +90,13 @@ export default function StaffAttendanceScreen({ navigation }) {
         return;
       }
     }
+    setSelectedOperario(operarioName);
     setType(actionType);
+  };
+
+  const startRegistration = () => {
+    setNewOperarioName('');
+    setShowRegisterModal(true);
   };
 
   const processPhoto = async () => {
@@ -93,23 +123,34 @@ export default function StaffAttendanceScreen({ navigation }) {
   const finalizeRegistration = async (base64Data) => {
     setLoading(true);
     try {
-      const path = type === 'REGISTRO' ? 'staff_profiles' : 'attendance';
-      const fileName = `${path}/${type}_${auth.currentUser?.uid}_${Date.now()}.jpg`;
-      const storageRef = ref(storage, fileName);
-      
-      await uploadString(storageRef, base64Data, 'base64');
-      const photoUrl = await getDownloadURL(storageRef);
+      let photoUrl = null;
+
+      if (type === 'REGISTRO') {
+        const path = 'staff_profiles';
+        const fileName = `${path}/${type}_${auth.currentUser?.uid}_${Date.now()}.jpg`;
+        const storageRef = ref(storage, fileName);
+        
+        await uploadString(storageRef, base64Data, 'base64');
+        photoUrl = await getDownloadURL(storageRef);
+
+        await addDoc(collection(db, "StaffProfiles"), {
+          name: selectedOperario,
+          photoUrl: photoUrl,
+          registeredAt: serverTimestamp()
+        });
+      }
 
       await addDoc(collection(db, "StaffLogs"), {
         type: type,
+        operario: selectedOperario,
         timestamp: serverTimestamp(),
-        photoUrl: photoUrl,
+        photoUrl: photoUrl, 
         userEmail: auth.currentUser?.email,
         deviceName: width > 800 ? "Terminal_Tablet_Fija" : "Terminal_Movil_Admin"
       });
 
       Alert.alert("Operación Exitosa", `Se registró su ${type} correctamente.`, [
-        { text: "CERRAR", onPress: () => setType(null) }
+        { text: "CERRAR", onPress: () => { setType(null); setSelectedOperario(null); } }
       ]);
       setTempPhoto(null);
     } catch (error) {
@@ -119,7 +160,7 @@ export default function StaffAttendanceScreen({ navigation }) {
     }
   };
 
-  if (!type) {
+  if (!type || showSelectModal || showRegisterModal) {
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="dark-content" />
@@ -137,29 +178,29 @@ export default function StaffAttendanceScreen({ navigation }) {
           <View style={[styles.menuGrid, isLandscape && { flexDirection: 'row' }]}>
             <TouchableOpacity 
               style={[styles.bigBtn, { borderBottomColor: '#10b981' }]} 
-              onPress={() => handleAction('CHECK IN')}
+              onPress={() => openSelection('CHECK IN')}
             >
               <View style={[styles.iconCircle, { backgroundColor: '#ecfdf5' }]}>
                 <UserCheck color="#10b981" size={40} />
               </View>
               <Text style={styles.btnTitle}>CHECK IN</Text>
-              <Text style={styles.btnSub}>Check In Biométrico</Text>
+              <Text style={styles.btnSub}>Ingreso Biométrico</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
               style={[styles.bigBtn, { borderBottomColor: '#ef4444' }]} 
-              onPress={() => handleAction('CHECK OUT')}
+              onPress={() => openSelection('CHECK OUT')}
             >
               <View style={[styles.iconCircle, { backgroundColor: '#fef2f2' }]}>
                 <UserX color="#ef4444" size={40} />
               </View>
               <Text style={styles.btnTitle}>CHECK OUT</Text>
-              <Text style={styles.btnSub}>Check Out Seguro</Text>
+              <Text style={styles.btnSub}>Egreso Biométrico</Text>
             </TouchableOpacity>
           </View>
 
           <View style={styles.footerActions}>
-            <TouchableOpacity style={styles.secondaryBtn} onPress={() => handleAction('REGISTRO')}>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={startRegistration}>
               <UserPlus color="#64748b" size={20} />
               <Text style={styles.secondaryBtnText}>REGISTRO DE PERFIL NUEVO</Text>
             </TouchableOpacity>
@@ -174,6 +215,64 @@ export default function StaffAttendanceScreen({ navigation }) {
             <Text style={styles.backBtnText}>SALIR DE MODO TÓTEM</Text>
           </TouchableOpacity>
         </ScrollView>
+
+        {/* MODAL SELECCIONAR PERFIL */}
+        <Modal visible={showSelectModal} transparent={true} animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>¿Quién eres?</Text>
+              <Text style={styles.modalSub}>Selecciona tu perfil para {type}</Text>
+              <ScrollView style={{maxHeight: 400}}>
+                {staffProfiles.map(p => (
+                  <TouchableOpacity 
+                    key={p.id} 
+                    style={styles.profileRow}
+                    onPress={() => handleAction(type, p.name)}
+                  >
+                    {p.photoUrl ? (
+                      <Image source={{ uri: p.photoUrl }} style={styles.profileAvatar} />
+                    ) : (
+                      <UserCircle color="#64748b" size={40} />
+                    )}
+                    <Text style={styles.profileName}>{p.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <TouchableOpacity style={styles.cancelModalBtn} onPress={() => { setShowSelectModal(false); setType(null); }}>
+                <Text style={styles.cancelModalText}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* MODAL NUEVO PERFIL */}
+        <Modal visible={showRegisterModal} transparent={true} animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Nuevo Operario</Text>
+              <Text style={styles.modalSub}>Ingresa el nombre completo</Text>
+              <TextInput 
+                style={styles.inputModal}
+                placeholder="Ej: Migue Silva"
+                value={newOperarioName}
+                onChangeText={setNewOperarioName}
+                autoCapitalize="words"
+              />
+              <TouchableOpacity 
+                style={styles.actionModalBtn} 
+                onPress={() => {
+                  if(!newOperarioName.trim()) { Alert.alert("Error", "Ingresa un nombre"); return;}
+                  handleAction('REGISTRO', newOperarioName.trim());
+                }}
+              >
+                <Text style={styles.whiteText}>Iniciar Escaneo Facial</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.cancelModalBtn} onPress={() => { setShowRegisterModal(false); setType(null); }}>
+                <Text style={styles.cancelModalText}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     );
   }
@@ -207,13 +306,13 @@ export default function StaffAttendanceScreen({ navigation }) {
       <CameraView ref={cameraRef} style={StyleSheet.absoluteFillObject} facing="front" />
       <View style={styles.cameraOverlay}>
         <View style={styles.cameraHeader}>
-          <Text style={styles.cameraStatus}>SISTEMA DE CAPTURA: {type}</Text>
+          <Text style={styles.cameraStatus}>{type}: {selectedOperario}</Text>
         </View>
         
         <View style={styles.faceGuide} />
         
         <View style={styles.cameraFooter}>
-          <TouchableOpacity style={styles.camCancelBtn} onPress={() => setType(null)}>
+          <TouchableOpacity style={styles.camCancelBtn} onPress={() => { setType(null); setSelectedOperario(null); }}>
             <Text style={styles.whiteText}>CANCELAR</Text>
           </TouchableOpacity>
           
@@ -245,7 +344,7 @@ const styles = StyleSheet.create({
   heroText: { fontSize: 13, fontWeight: '700', color: '#047857' },
 
   menuGrid: { gap: 20, width: '100%' },
-  bigBtn: { flex: 1, backgroundColor: '#fff', padding: 30, borderRadius: 24, alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0', borderBottomWidth: 6, elevation: 4, shadowColor: '#000', shadowOpacity: 0.05 },
+  bigBtn: { flex: 1, backgroundColor: '#fff', padding: 30, borderRadius: 24, alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0', borderBottomWidth: 6, elevation: 4 },
   iconCircle: { width: 80, height: 80, borderRadius: 30, justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
   btnTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a' },
   btnSub: { fontSize: 12, color: '#94a3b8', fontWeight: '600', marginTop: 4 },
@@ -256,6 +355,19 @@ const styles = StyleSheet.create({
 
   backBtn: { marginTop: 40, padding: 10 },
   backBtnText: { color: '#94a3b8', fontWeight: '800', fontSize: 11, letterSpacing: 1 },
+
+  // MODAL
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.7)', justifyContent: 'center', padding: 20 },
+  modalContent: { backgroundColor: '#fff', borderRadius: 24, padding: 25, elevation: 10 },
+  modalTitle: { fontSize: 20, fontWeight: '900', color: '#0f172a', textAlign: 'center' },
+  modalSub: { fontSize: 13, color: '#64748b', textAlign: 'center', marginBottom: 20 },
+  profileRow: { flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  profileAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#f1f5f9' },
+  profileName: { marginLeft: 15, fontSize: 16, fontWeight: '800', color: '#1e293b' },
+  cancelModalBtn: { marginTop: 15, padding: 15, alignItems: 'center' },
+  cancelModalText: { color: '#94a3b8', fontWeight: '800', fontSize: 14 },
+  inputModal: { backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 15, fontSize: 16, marginBottom: 20 },
+  actionModalBtn: { backgroundColor: '#10b981', padding: 16, borderRadius: 12, alignItems: 'center' },
 
   cameraContainer: { flex: 1, backgroundColor: '#000' },
   cameraOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'space-between', padding: 40, alignItems: 'center' },

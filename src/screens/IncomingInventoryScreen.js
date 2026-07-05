@@ -1,25 +1,22 @@
 import React, { useState } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, TextInput, 
-  TouchableOpacity, Alert, StatusBar, ActivityIndicator 
+  TouchableOpacity, Alert, StatusBar, ActivityIndicator, Switch
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth } from '../config/firebase';
 import { registerMovement } from '../services/logisticsService';
-import { ChevronLeft, Save, PackagePlus, FileText, Calendar, Building2, Truck, Droplet, Box, Circle, ClipboardList } from 'lucide-react-native';
+import { ChevronLeft, Save, PackagePlus, FileText, Calendar, Building2, Truck, Droplet, Box, Circle, ClipboardList, Database, ArrowDownCircle, ArrowUpCircle } from 'lucide-react-native';
+import AutocompleteInput from '../components/AutocompleteInput';
+import { RAW_MATERIALS_LIST, PROVIDERS_LIST, ETIQUETA_CAPACITIES, BIDON_CAPACITIES, CAJA_FORMATS } from '../config/constants';
+import { printSingleLabel } from '../services/labelService';
 
-const BIDON_CAPACITIES = ['20L', '10L', '5L', '1L'];
-const BIDON_BRANDS = ['H2O', 'AGROCUBE', 'ALIANZA', 'AGROFONTEZUELA'];
-
-const CAJA_FORMATS = ['x5', 'x1'];
-const CAJA_BRANDS = ['H2O', 'AGROCUBE', 'AGROFONTEZUELA', 'GENERICAS'];
-
-export default function IncomingInventoryScreen({ route, navigation }) {
-  const { companyName } = route.params;
-  const isMP = companyName === 'STOCK_CENTRAL_MP';
-  
+export default function IncomingInventoryScreen({ navigation }) {
+  const [inventoryType, setInventoryType] = useState('MP'); // 'MP' | 'INSUMOS'
+  const [operationType, setOperationType] = useState(null); // null | 'INGRESO' | 'EGRESO'
+  const [unitType, setUnitType] = useState('Kilos'); // 'Kilos' | 'Litros'
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [category, setCategory] = useState(isMP ? 'Materia Prima' : 'Bidones'); 
+  const [category, setCategory] = useState('Bidones'); 
   
   const [formData, setFormData] = useState({
     itemName: '',
@@ -28,9 +25,8 @@ export default function IncomingInventoryScreen({ route, navigation }) {
     batchProvider: '',
     expiryDate: '',
     observations: '',
-    capacity: '20L',
-    brand: 'H2O',
-    format: 'x5'
+    capacity: '20L', 
+    format: 'x5'     
   });
 
   const generateUniqueBatch = () => {
@@ -40,38 +36,57 @@ export default function IncomingInventoryScreen({ route, navigation }) {
   };
 
   const handleSave = async () => {
-    const qtyNormalized = Number(formData.quantity.replace(',', '.'));
+    let qtyNormalized = Number(formData.quantity.replace(',', '.'));
+    const isMP = inventoryType === 'MP';
+    const isEgreso = operationType === 'EGRESO';
+
+    if (!operationType) {
+      Alert.alert("Atención", "Debes seleccionar si es un Alta o Baja por ajuste.");
+      return;
+    }
+
+    if (isNaN(qtyNormalized) || qtyNormalized <= 0) {
+      Alert.alert("Datos Inválidos", "La cantidad debe ser mayor a 0.");
+      return;
+    }
+
+    if (isEgreso) {
+      qtyNormalized = -Math.abs(qtyNormalized); // Convert to negative for FIFO deduction
+      if (!formData.observations.trim()) {
+        Alert.alert("Justificación Requerida", "Debes ingresar el motivo de la baja en observaciones.");
+        return;
+      }
+    }
 
     if (isMP) {
-      if (!formData.itemName.trim() || isNaN(qtyNormalized) || qtyNormalized <= 0 || !formData.batchProvider.trim() || !formData.expiryDate.trim()) {
-        Alert.alert("Datos Incompletos", "Nombre, Cantidad, Lote del Proveedor y Vencimiento son obligatorios para Materia Prima.");
+      if (!formData.itemName.trim()) {
+         Alert.alert("Datos Incompletos", "El nombre de la Materia Prima es obligatorio.");
+         return;
+      }
+      if (!isEgreso && (!formData.batchProvider.trim() || !formData.expiryDate.trim())) {
+        Alert.alert("Datos Incompletos", "Lote del Proveedor y Vencimiento son obligatorios para Ingreso de Materia Prima.");
         return;
       }
     } else {
-      if (isNaN(qtyNormalized) || qtyNormalized <= 0) {
-        Alert.alert("Datos Incompletos", "La cantidad ingresada debe ser mayor a 0.");
-        return;
-      }
-      if ((category === 'Etiquetas' || category === 'Tapas') && !formData.itemName.trim()) {
-        Alert.alert("Datos Incompletos", "El nombre de la etiqueta/tapa es obligatorio.");
+      if (category === 'Etiquetas' && !formData.itemName.trim()) {
+        Alert.alert("Datos Incompletos", "El nombre del producto para la etiqueta es obligatorio.");
         return;
       }
     }
 
     try {
       setIsSubmitting(true);
-      const batchInternal = generateUniqueBatch(); 
+      const batchInternal = isEgreso ? 'BAJA-AJUSTE' : generateUniqueBatch(); 
       
       let finalItemName = formData.itemName.trim().toUpperCase();
       let finalUnit = 'Uds';
       
       if (!isMP) {
-        if (category === 'Bidones') finalItemName = `BIDON ${formData.capacity} ${formData.brand}`;
-        if (category === 'Cajas') finalItemName = `CAJA ${formData.format} ${formData.brand}`;
-        if (category === 'Etiquetas') finalItemName = `ETIQUETA ${formData.itemName.trim().toUpperCase()}`;
-        if (category === 'Tapas') finalItemName = `TAPA ${formData.itemName.trim().toUpperCase()}`;
+        if (category === 'Bidones') finalItemName = `BIDON ${formData.capacity}`;
+        if (category === 'Cajas') finalItemName = `CAJA ${formData.format}`;
+        if (category === 'Etiquetas') finalItemName = `ETIQUETA ${formData.capacity} ${formData.itemName.trim().toUpperCase()}`;
       } else {
-        finalUnit = 'Kg/Lts';
+        finalUnit = unitType === 'Kilos' ? 'Kg' : 'Lts';
       }
       
       const movementData = {
@@ -81,35 +96,72 @@ export default function IncomingInventoryScreen({ route, navigation }) {
         providerName: formData.providerName.trim() || 'S/D',
         expiryDate: formData.expiryDate.trim() || 'S/V',
         observations: formData.observations.trim(),
-        category: category,
+        category: isMP ? 'Materia Prima' : category,
         stockType: isMP ? 'MP' : 'INSUMOS',
         batchInternal: batchInternal, 
         unit: finalUnit,
-        status: isMP ? 'PENDIENTE' : 'APTO' 
+        status: isMP && !isEgreso ? 'PENDIENTE' : 'APTO' 
       };
+
+      const companyDest = isMP ? 'STOCK_CENTRAL_MP' : 'STOCK_CENTRAL_INSUMOS';
+      
+      let actionName = '';
+      if (isEgreso) {
+        actionName = 'BAJA_POR_AJUSTE';
+      } else {
+        actionName = isMP ? 'INGRESO_MANUAL_MATERIA_PRIMA' : `INGRESO_MANUAL_${category.toUpperCase().replace(/ /g, '_')}`;
+      }
 
       await registerMovement(
         auth.currentUser?.email || 'Sistema',
-        `INGRESO_MANUAL_${category.toUpperCase().replace(/ /g, '_')}`,
-        companyName,
+        actionName,
+        companyDest,
         movementData
       );
 
-      Alert.alert(
-        "Alta de Stock Exitosa", 
-        `Se registró correctamente el ingreso.\nLote interno: ${batchInternal}`,
-        [{ text: "Entendido", onPress: () => navigation.goBack() }]
-      );
+      if (isEgreso) {
+        Alert.alert(
+          "Baja Registrada", 
+          `Se descontaron ${Math.abs(qtyNormalized)} ${finalUnit} de ${finalItemName}.`,
+          [{ text: "Entendido", onPress: () => navigation.goBack() }]
+        );
+      } else {
+        Alert.alert(
+          "Alta de Stock Exitosa",
+          `Lote asignado: ${batchInternal}\n¿Desea imprimir etiqueta de identificación (Zebra)?`,
+          [
+            { text: "No, gracias", style: "cancel", onPress: () => navigation.goBack() },
+            { text: "Imprimir Etiqueta", onPress: async () => {
+                try {
+                  await printSingleLabel({
+                    type: isMP ? 'MP' : 'INSUMOS',
+                    name: finalItemName,
+                    batch: isMP ? (formData.batchProvider.trim() || batchInternal) : batchInternal,
+                    expiration: formData.expiryDate.trim() || 'N/A',
+                    quantity: qtyNormalized,
+                    unit: finalUnit
+                  });
+                } catch (e) {
+                  Alert.alert("Error de Impresión", "No se pudo generar la etiqueta.");
+                } finally {
+                  navigation.goBack();
+                }
+              }
+            }
+          ]
+        );
+      }
 
     } catch (error) {
       console.error(error);
-      Alert.alert("Error de Sistema", "No se pudo sincronizar el ingreso con el servidor.");
+      Alert.alert("Error de Sistema", "No se pudo procesar el movimiento.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const categories = isMP ? ['Materia Prima'] : ['Bidones', 'Cajas', 'Etiquetas', 'Tapas'];
+  const INSUMOS_CATEGORIES = ['Bidones', 'Cajas', 'Etiquetas'];
+  const isEgreso = operationType === 'EGRESO';
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -120,19 +172,56 @@ export default function IncomingInventoryScreen({ route, navigation }) {
           <ChevronLeft color="#0f172a" size={28} />
         </TouchableOpacity>
         <View style={{alignItems: 'center'}}>
-            <Text style={styles.headerTitle}>Ingreso Manual</Text>
-            <Text style={styles.headerSub}>{isMP ? 'Materia Prima' : 'Insumos'}</Text>
+            <Text style={styles.headerTitle}>Gestión de Stock</Text>
+            <Text style={styles.headerSub}>Movimientos Manuales</Text>
         </View>
         <PackagePlus color="#0f172a" size={24} />
       </View>
 
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         
-        {!isMP && (
+        {/* Toggle INGRESO / EGRESO */}
+        <View style={styles.opToggleContainer}>
+          <TouchableOpacity 
+            style={[styles.opToggleBtn, operationType === 'INGRESO' && styles.opToggleBtnIngreso]}
+            onPress={() => setOperationType('INGRESO')}
+          >
+            <ArrowUpCircle color={operationType === 'INGRESO' ? '#fff' : '#64748b'} size={18} style={{marginRight: 6}} />
+            <Text style={[styles.opToggleText, operationType === 'INGRESO' && styles.opToggleTextActive]}>ALTA POR AJUSTE</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.opToggleBtn, operationType === 'EGRESO' && styles.opToggleBtnEgreso]}
+            onPress={() => setOperationType('EGRESO')}
+          >
+            <ArrowDownCircle color={operationType === 'EGRESO' ? '#fff' : '#64748b'} size={18} style={{marginRight: 6}} />
+            <Text style={[styles.opToggleText, operationType === 'EGRESO' && styles.opToggleTextActive]}>BAJA POR AJUSTE</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.masterToggleContainer}>
+          <TouchableOpacity 
+            style={[styles.masterToggleBtn, inventoryType === 'MP' && styles.masterToggleBtnActive]}
+            onPress={() => setInventoryType('MP')}
+          >
+            <Database color={inventoryType === 'MP' ? '#fff' : '#64748b'} size={18} style={{marginRight: 6}} />
+            <Text style={[styles.masterToggleText, inventoryType === 'MP' && styles.masterToggleTextActive]}>MATERIA PRIMA GRAL</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.masterToggleBtn, inventoryType === 'INSUMOS' && styles.masterToggleBtnActiveInsumos]}
+            onPress={() => setInventoryType('INSUMOS')}
+          >
+            <Box color={inventoryType === 'INSUMOS' ? '#fff' : '#64748b'} size={18} style={{marginRight: 6}} />
+            <Text style={[styles.masterToggleText, inventoryType === 'INSUMOS' && styles.masterToggleTextActive]}>STOCK GENERAL INSUMOS</Text>
+          </TouchableOpacity>
+        </View>
+
+        {inventoryType === 'INSUMOS' && (
           <>
-            <Text style={styles.sectionTitle}>Tipo de Insumo</Text>
+            <Text style={styles.sectionTitle}>Categoría de Insumo</Text>
             <View style={styles.categoryRow}>
-              {categories.map(cat => (
+              {INSUMOS_CATEGORIES.map(cat => (
                 <TouchableOpacity 
                   key={cat} 
                   activeOpacity={0.7}
@@ -147,26 +236,40 @@ export default function IncomingInventoryScreen({ route, navigation }) {
         )}
 
         <View style={styles.card}>
-          {(category === 'Materia Prima' || category === 'Etiquetas' || category === 'Tapas') && (
+          {(inventoryType === 'MP' || (inventoryType === 'INSUMOS' && category === 'Etiquetas')) && (
             <>
-              <Text style={styles.label}>Descripción / Producto</Text>
-              <View style={styles.inputWrapper}>
-                <FileText color="#94a3b8" size={18} style={styles.inputIcon} />
-                <TextInput 
-                  style={styles.input} 
-                  placeholder={isMP ? "Ej: ÁCIDO SULFÚRICO" : "Ej: ACTION 5L"} 
-                  placeholderTextColor="#94a3b8"
-                  value={formData.itemName}
-                  onChangeText={(txt) => setFormData({...formData, itemName: txt})}
-                  autoCapitalize="characters"
-                />
+              <Text style={styles.label}>{inventoryType === 'MP' ? 'Descripción de Materia Prima' : 'Producto al que corresponde la Etiqueta'}</Text>
+              <AutocompleteInput
+                data={inventoryType === 'MP' ? RAW_MATERIALS_LIST : []} // En etiquetas podría sugerir productos
+                value={formData.itemName}
+                onChangeText={(txt) => setFormData({...formData, itemName: txt})}
+                placeholder={inventoryType === 'MP' ? "Ej: ÁCIDO SULFÚRICO" : "Ej: ACTION"}
+                icon={<FileText color="#94a3b8" size={18} />}
+              />
+            </>
+          )}
+
+          {inventoryType === 'INSUMOS' && category === 'Etiquetas' && (
+            <>
+              <Text style={styles.label}>Capacidad de la Etiqueta</Text>
+              <View style={styles.chipRow}>
+                {ETIQUETA_CAPACITIES.map(cap => (
+                  <TouchableOpacity 
+                    key={cap} 
+                    style={[styles.chip, formData.capacity === cap && styles.chipActive]}
+                    onPress={() => setFormData({...formData, capacity: cap})}
+                  >
+                    <Droplet color={formData.capacity === cap ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
+                    <Text style={[styles.chipText, formData.capacity === cap && styles.chipTextActive]}>{cap}</Text>
+                  </TouchableOpacity>
+                ))}
               </View>
             </>
           )}
 
-          {category === 'Bidones' && (
+          {inventoryType === 'INSUMOS' && category === 'Bidones' && (
             <>
-              <Text style={styles.label}>Capacidad</Text>
+              <Text style={styles.label}>Capacidad del Bidón</Text>
               <View style={styles.chipRow}>
                 {BIDON_CAPACITIES.map(cap => (
                   <TouchableOpacity 
@@ -179,26 +282,12 @@ export default function IncomingInventoryScreen({ route, navigation }) {
                   </TouchableOpacity>
                 ))}
               </View>
-              
-              <Text style={styles.label}>Marca / Empresa</Text>
-              <View style={styles.chipRow}>
-                {BIDON_BRANDS.map(brand => (
-                  <TouchableOpacity 
-                    key={brand} 
-                    style={[styles.chip, formData.brand === brand && styles.chipActive]}
-                    onPress={() => setFormData({...formData, brand: brand})}
-                  >
-                    <Building2 color={formData.brand === brand ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
-                    <Text style={[styles.chipText, formData.brand === brand && styles.chipTextActive]}>{brand}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
             </>
           )}
 
-          {category === 'Cajas' && (
+          {inventoryType === 'INSUMOS' && category === 'Cajas' && (
             <>
-              <Text style={styles.label}>Formato</Text>
+              <Text style={styles.label}>Formato de Caja</Text>
               <View style={styles.chipRow}>
                 {CAJA_FORMATS.map(fmt => (
                   <TouchableOpacity 
@@ -211,86 +300,94 @@ export default function IncomingInventoryScreen({ route, navigation }) {
                   </TouchableOpacity>
                 ))}
               </View>
-              
-              <Text style={styles.label}>Marca / Empresa</Text>
-              <View style={styles.chipRow}>
-                {CAJA_BRANDS.map(brand => (
-                  <TouchableOpacity 
-                    key={brand} 
-                    style={[styles.chip, formData.brand === brand && styles.chipActive]}
-                    onPress={() => setFormData({...formData, brand: brand})}
-                  >
-                    <Building2 color={formData.brand === brand ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
-                    <Text style={[styles.chipText, formData.brand === brand && styles.chipTextActive]}>{brand}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
             </>
           )}
 
-          <Text style={styles.label}>Cantidad a Ingresar</Text>
-          <View style={styles.inputWrapper}>
-            <Circle color="#94a3b8" size={18} style={styles.inputIcon} />
-            <TextInput 
-              style={styles.input} 
-              placeholder={isMP ? "Cantidad (Lts o Kg)" : "Cantidad en Unidades"}
-              keyboardType="numeric"
-              placeholderTextColor="#94a3b8"
-              value={formData.quantity}
-              onChangeText={(txt) => setFormData({...formData, quantity: txt})}
-            />
+          <Text style={styles.label}>Cantidad a {isEgreso ? 'Descontar' : 'Ingresar'}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={[styles.inputWrapper, { flex: 1, marginBottom: 0 }, isEgreso && { borderColor: '#fca5a5', backgroundColor: '#fef2f2' }]}>
+              <Circle color={isEgreso ? "#ef4444" : "#94a3b8"} size={18} style={styles.inputIcon} />
+              <TextInput 
+                style={styles.input} 
+                placeholder="Cantidad"
+                keyboardType="numeric"
+                placeholderTextColor="#94a3b8"
+                value={formData.quantity}
+                onChangeText={(txt) => setFormData({...formData, quantity: txt})}
+              />
+            </View>
+
+            {inventoryType === 'MP' && (
+              <View style={{ flexDirection: 'row', marginLeft: 10, backgroundColor: '#f1f5f9', borderRadius: 12, padding: 4 }}>
+                <TouchableOpacity 
+                  style={[{ paddingVertical: 10, paddingHorizontal: 15, borderRadius: 8 }, unitType === 'Kilos' && { backgroundColor: '#0f172a' }]} 
+                  onPress={() => setUnitType('Kilos')}
+                >
+                  <Text style={[{ fontSize: 13, fontWeight: '700', color: '#64748b' }, unitType === 'Kilos' && { color: '#fff' }]}>Kilos</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[{ paddingVertical: 10, paddingHorizontal: 15, borderRadius: 8 }, unitType === 'Litros' && { backgroundColor: '#0f172a' }]} 
+                  onPress={() => setUnitType('Litros')}
+                >
+                  <Text style={[{ fontSize: 13, fontWeight: '700', color: '#64748b' }, unitType === 'Litros' && { color: '#fff' }]}>Litros</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>Trazabilidad de Origen</Text>
-        <View style={styles.card}>
-          <Text style={styles.label}>Razón Social Proveedor</Text>
-          <View style={styles.inputWrapper}>
-            <Building2 color="#94a3b8" size={18} style={styles.inputIcon} />
-            <TextInput 
-              style={styles.input} 
-              placeholder="Ej: Químicos del Sur S.A." 
-              placeholderTextColor="#94a3b8"
-              value={formData.providerName}
-              onChangeText={(txt) => setFormData({...formData, providerName: txt})}
-            />
-          </View>
+        {!isEgreso && (
+          <>
+            <Text style={styles.sectionTitle}>Trazabilidad de Origen</Text>
+            <View style={styles.card}>
+              <Text style={styles.label}>Razón Social Proveedor</Text>
+              <AutocompleteInput
+                data={PROVIDERS_LIST}
+                value={formData.providerName}
+                onChangeText={(txt) => setFormData({...formData, providerName: txt})}
+                placeholder="Ej: Químicos del Sur S.A."
+                icon={<Building2 color="#94a3b8" size={18} />}
+              />
 
-          <View style={styles.row}>
-            <View style={{flex: 1, marginRight: 10}}>
-              <Text style={styles.label}>Lote Proveedor {isMP && '*'}</Text>
-              <View style={styles.inputWrapper}>
-                <Truck color="#94a3b8" size={18} style={styles.inputIcon} />
-                <TextInput 
-                  style={styles.input} 
-                  placeholder="BCK-990" 
-                  placeholderTextColor="#94a3b8"
-                  value={formData.batchProvider}
-                  onChangeText={(txt) => setFormData({...formData, batchProvider: txt})}
-                />
+              <View style={styles.row}>
+                <View style={{flex: 1, marginRight: 10}}>
+                  <Text style={styles.label}>Lote Proveedor {inventoryType === 'MP' && '*'}</Text>
+                  <View style={styles.inputWrapper}>
+                    <Truck color="#94a3b8" size={18} style={styles.inputIcon} />
+                    <TextInput 
+                      style={styles.input} 
+                      placeholder="BCK-990" 
+                      placeholderTextColor="#94a3b8"
+                      value={formData.batchProvider}
+                      onChangeText={(txt) => setFormData({...formData, batchProvider: txt})}
+                    />
+                  </View>
+                </View>
+                <View style={{flex: 1}}>
+                  <Text style={styles.label}>Vencimiento {inventoryType === 'MP' && '*'}</Text>
+                  <View style={styles.inputWrapper}>
+                    <Calendar color="#94a3b8" size={18} style={styles.inputIcon} />
+                    <TextInput 
+                      style={styles.input} 
+                      placeholder="MM/AAAA" 
+                      placeholderTextColor="#94a3b8"
+                      value={formData.expiryDate}
+                      onChangeText={(txt) => setFormData({...formData, expiryDate: txt})}
+                    />
+                  </View>
+                </View>
               </View>
             </View>
-            <View style={{flex: 1}}>
-              <Text style={styles.label}>Vencimiento {isMP && '*'}</Text>
-              <View style={styles.inputWrapper}>
-                <Calendar color="#94a3b8" size={18} style={styles.inputIcon} />
-                <TextInput 
-                  style={styles.input} 
-                  placeholder="MM/AAAA" 
-                  placeholderTextColor="#94a3b8"
-                  value={formData.expiryDate}
-                  onChangeText={(txt) => setFormData({...formData, expiryDate: txt})}
-                />
-              </View>
-            </View>
-          </View>
-          
-          <Text style={styles.label}>Observaciones Adicionales</Text>
+          </>
+        )}
+        
+        <View style={styles.card}>
+          <Text style={styles.label}>Observaciones / Justificación {isEgreso && '*'}</Text>
           <View style={[styles.inputWrapper, { height: 80, alignItems: 'flex-start', paddingTop: 10 }]}>
             <ClipboardList color="#94a3b8" size={18} style={styles.inputIcon} />
             <TextInput 
               style={[styles.input, { height: 60, textAlignVertical: 'top' }]} 
-              placeholder="Estado del remito, chofer, novedades..." 
+              placeholder={isEgreso ? "Ej: Muestra enviada a cliente..." : "Estado del remito, chofer..."} 
               placeholderTextColor="#94a3b8"
               multiline
               value={formData.observations}
@@ -300,7 +397,7 @@ export default function IncomingInventoryScreen({ route, navigation }) {
         </View>
 
         <TouchableOpacity 
-          style={[styles.saveButton, isSubmitting && { opacity: 0.7 }]} 
+          style={[styles.saveButton, isEgreso && { backgroundColor: '#ef4444', shadowColor: '#ef4444' }, isSubmitting && { opacity: 0.7 }]} 
           onPress={handleSave}
           disabled={isSubmitting}
         >
@@ -309,7 +406,7 @@ export default function IncomingInventoryScreen({ route, navigation }) {
           ) : (
             <>
               <Save color="#fff" size={20} />
-              <Text style={styles.saveButtonText}>Confirmar Ingreso</Text>
+              <Text style={styles.saveButtonText}>{isEgreso ? 'Confirmar Baja' : 'Confirmar Ingreso'}</Text>
             </>
           )}
         </TouchableOpacity>
@@ -332,17 +429,31 @@ const styles = StyleSheet.create({
   headerSub: { fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '700' },
   
   container: { padding: 20 },
+
+  opToggleContainer: { flexDirection: 'row', gap: 10, marginBottom: 15 },
+  opToggleBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0' },
+  opToggleBtnIngreso: { backgroundColor: '#10b981', borderColor: '#10b981' },
+  opToggleBtnEgreso: { backgroundColor: '#ef4444', borderColor: '#ef4444' },
+  opToggleText: { fontSize: 12, fontWeight: '900', color: '#64748b' },
+  opToggleTextActive: { color: '#fff' },
+
+  masterToggleContainer: { flexDirection: 'column', gap: 10, marginBottom: 25 },
+  masterToggleBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', paddingVertical: 15, borderRadius: 14, borderWidth: 1, borderColor: '#e2e8f0', elevation: 1 },
+  masterToggleBtnActive: { backgroundColor: '#3b82f6', borderColor: '#3b82f6' },
+  masterToggleBtnActiveInsumos: { backgroundColor: '#8b5cf6', borderColor: '#8b5cf6' },
+  masterToggleText: { fontSize: 13, fontWeight: '900', color: '#64748b', letterSpacing: 0.5 },
+  masterToggleTextActive: { color: '#fff' },
   
   sectionTitle: { fontSize: 13, fontWeight: '800', color: '#334155', marginBottom: 12, marginLeft: 5, textTransform: 'uppercase', letterSpacing: 0.5 },
   
   categoryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 25 },
   catButton: { 
-    flex: 1, minWidth: '45%', backgroundColor: '#fff', paddingVertical: 14, 
-    borderRadius: 14, borderWidth: 1, borderColor: '#e2e8f0', alignItems: 'center',
+    flex: 1, minWidth: '30%', backgroundColor: '#fff', paddingVertical: 12, 
+    borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', alignItems: 'center',
     elevation: 1 
   },
-  catButtonActive: { backgroundColor: '#3b82f6', borderColor: '#3b82f6' },
-  catText: { fontSize: 13, fontWeight: '800', color: '#64748b' },
+  catButtonActive: { backgroundColor: '#0f172a', borderColor: '#0f172a' },
+  catText: { fontSize: 12, fontWeight: '800', color: '#64748b' },
   catTextActive: { color: '#fff' },
 
   card: { backgroundColor: '#fff', padding: 20, borderRadius: 20, marginBottom: 25, borderWidth: 1, borderColor: '#e2e8f0', elevation: 1 },

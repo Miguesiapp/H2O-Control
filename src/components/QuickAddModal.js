@@ -77,7 +77,7 @@ export default function QuickAddModal({ visible, onClose, companyName }) {
           <View style={styles.header}>
             <View style={styles.headerTitleBox}>
               <PackagePlus color="#10b981" size={24} />
-              <Text style={styles.title}>Alta de Inventario</Text>
+              <Text style={styles.title}>Alta por ajuste</Text>
             </View>
             <View style={styles.badge}>
               <Text style={styles.badgeText}>{companyName}</Text>

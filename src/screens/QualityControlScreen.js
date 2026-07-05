@@ -6,20 +6,27 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db, auth } from '../config/firebase';
 import { collection, query, where, onSnapshot, updateDoc, doc } from 'firebase/firestore';
-import { ChevronLeft, CheckCircle, XCircle, Beaker, ClipboardCheck, AlertCircle, FileSignature } from 'lucide-react-native';
+import { ChevronLeft, CheckCircle, XCircle, Beaker, ClipboardCheck, AlertCircle, FileSignature, Database, Container } from 'lucide-react-native';
 
 export default function QualityControlScreen({ navigation }) {
+  const [activeTab, setActiveTab] = useState('MP'); // 'MP' o 'GRANEL'
   const [pendingLots, setPendingLots] = useState([]);
   const [analysis, setAnalysis] = useState({ ph: '', density: '', obs: '' });
   const [selectedLot, setSelectedLot] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // ESCUCHA OPTIMIZADA: Solo trae los lotes que necesitan revisión
+    setLoading(true);
+    setSelectedLot(null);
+    setAnalysis({ ph: '', density: '', obs: '' });
+
+    const targetStockType = activeTab === 'MP' ? 'MP' : 'GRANEL';
+    const targetStatus = activeTab === 'MP' ? 'PENDIENTE' : 'PENDIENTE_LABORATORIO';
+
     const q = query(
       collection(db, "Inventory"), 
-      where("stockType", "in", ["GRANEL", "MP"]),
-      where("status", "in", ["PENDIENTE", "PENDIENTE_LABORATORIO"])
+      where("stockType", "==", targetStockType),
+      where("status", "==", targetStatus)
     );
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -27,7 +34,7 @@ export default function QualityControlScreen({ navigation }) {
       setPendingLots(data);
       setLoading(false);
       
-      // Si el lote seleccionado se procesó (ya no está en PENDIENTE), limpia el formulario
+      // Si el lote seleccionado se procesó (ya no está), limpia el formulario
       if (selectedLot && !data.find(d => d.id === selectedLot.id)) {
         setSelectedLot(null);
       }
@@ -38,17 +45,15 @@ export default function QualityControlScreen({ navigation }) {
     });
     
     return () => unsubscribe();
-  }, [selectedLot]);
+  }, [activeTab]); // Dependencia clave para recargar la escucha al cambiar de pestaña
 
   const handleAuthorize = async (lot, status) => {
-    // REGLA DE NEGOCIO (15-20 Usuarios): Todos pueden firmar, pero queda registrado QUIÉN lo hizo.
     const userEmail = auth.currentUser?.email || 'Usuario Desconocido';
 
-    // Normalización de decimales (Cambia comas por puntos)
     const phVal = analysis.ph.replace(',', '.');
     const densityVal = analysis.density.replace(',', '.');
 
-    if (status === 'APTO' && lot.stockType === 'GRANEL' && (!phVal || !densityVal)) {
+    if (status === 'APTO' && activeTab === 'GRANEL' && (!phVal || !densityVal)) {
       Alert.alert("Protocolo Incompleto", "Los valores de pH y Densidad son obligatorios para la liberación de GRANEL.");
       return;
     }
@@ -63,14 +68,9 @@ export default function QualityControlScreen({ navigation }) {
         authorizedAt: new Date().toISOString()
       });
 
-      // ------------------------------------------------------------------
-      // AQUÍ DISPARAREMOS LA NOTIFICACIÓN PARA TODA LA PLANTA
-      // Ejemplo: si status === 'APTO' -> "El Lote de ACTION está listo para envasar".
-      // ------------------------------------------------------------------
-      
       Alert.alert(
         status === 'APTO' ? "Lote Liberado" : "Lote Rechazado", 
-        `El código ${lot.batchInternal} ha sido actualizado a estado ${status} bajo la firma de ${userEmail}.`
+        `El lote ${lot.batchInternal} ha sido actualizado a estado ${status} bajo la firma de ${userEmail}.`
       );
       
       setSelectedLot(null);
@@ -89,7 +89,7 @@ export default function QualityControlScreen({ navigation }) {
       <View style={styles.lotHeader}>
         <View style={styles.titleRow}>
            <View style={[styles.iconBox, selectedLot?.id === item.id && { backgroundColor: '#e2e8f0' }]}>
-             <Beaker size={18} color="#475569" />
+             {activeTab === 'MP' ? <Database size={18} color="#475569" /> : <Beaker size={18} color="#475569" />}
            </View>
            <Text style={styles.lotTitle}>{item.itemName}</Text>
         </View>
@@ -98,8 +98,8 @@ export default function QualityControlScreen({ navigation }) {
         </View>
       </View>
       <View style={styles.lotFooter}>
-        <Text style={styles.lotSub}>ID: <Text style={styles.lotSubBold}>{item.batchInternal}</Text></Text>
-        <Text style={styles.lotSub}>VOL: <Text style={styles.lotSubBold}>{item.quantity} Lts</Text></Text>
+        <Text style={styles.lotSub}>Lote: <Text style={styles.lotSubBold}>{item.batchInternal}</Text></Text>
+        <Text style={styles.lotSub}>Volumen: <Text style={styles.lotSubBold}>{item.quantity} {item.unit}</Text></Text>
       </View>
     </TouchableOpacity>
   );
@@ -108,7 +108,6 @@ export default function QualityControlScreen({ navigation }) {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar barStyle="dark-content" />
       
-      {/* HEADER ENTERPRISE */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <ChevronLeft color="#0f172a" size={28} />
@@ -120,9 +119,27 @@ export default function QualityControlScreen({ navigation }) {
         <ClipboardCheck color="#0f172a" size={24} />
       </View>
 
+      {/* SISTEMA DE PESTAÑAS (TABS) */}
+      <View style={styles.tabContainer}>
+        <TouchableOpacity 
+          style={[styles.tabBtn, activeTab === 'MP' && styles.tabBtnActive]}
+          onPress={() => setActiveTab('MP')}
+        >
+          <Database color={activeTab === 'MP' ? '#fff' : '#64748b'} size={18} />
+          <Text style={[styles.tabText, activeTab === 'MP' && styles.tabTextActive]}>MATERIA PRIMA</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.tabBtn, activeTab === 'GRANEL' && styles.tabBtnActive]}
+          onPress={() => setActiveTab('GRANEL')}
+        >
+          <Container color={activeTab === 'GRANEL' ? '#fff' : '#64748b'} size={18} />
+          <Text style={[styles.tabText, activeTab === 'GRANEL' && styles.tabTextActive]}>GRANEL PRODUCIDO</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* ZONA SUPERIOR: LISTA DE PENDIENTES */}
       <View style={styles.topSection}>
-        <Text style={styles.sectionTitle}>En Cuarentena (Esperando Análisis)</Text>
+        <Text style={styles.sectionTitle}>En Cuarentena ({activeTab})</Text>
         
         {loading ? (
           <ActivityIndicator color="#3b82f6" style={{ marginTop: 40 }} />
@@ -137,7 +154,7 @@ export default function QualityControlScreen({ navigation }) {
         ) : (
           <View style={styles.emptyWarning}>
             <CheckCircle color="#10b981" size={32} />
-            <Text style={styles.emptyText}>No hay lotes en cuarentena. La línea de producción está al día.</Text>
+            <Text style={styles.emptyText}>No hay lotes en cuarentena. La línea de {activeTab} está al día.</Text>
           </View>
         )}
       </View>
@@ -239,6 +256,12 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a' },
   headerSub: { fontSize: 11, color: '#64748b', textTransform: 'uppercase', fontWeight: '800', letterSpacing: 0.5 },
   
+  tabContainer: { flexDirection: 'row', padding: 10, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
+  tabBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 12, gap: 8 },
+  tabBtnActive: { backgroundColor: '#3b82f6' },
+  tabText: { fontSize: 13, fontWeight: '800', color: '#64748b', letterSpacing: 0.5 },
+  tabTextActive: { color: '#fff' },
+
   topSection: { flex: 1 },
   sectionTitle: { fontSize: 12, fontWeight: '800', color: '#64748b', marginHorizontal: 20, marginTop: 15, textTransform: 'uppercase', letterSpacing: 1 },
   listContainer: { padding: 20, paddingBottom: 10 },

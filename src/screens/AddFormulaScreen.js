@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, TextInput, 
-  TouchableOpacity, Alert, StatusBar 
+  TouchableOpacity, Alert, StatusBar, KeyboardAvoidingView, Platform 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db, auth } from '../config/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { ChevronLeft, Save, Plus, Beaker, Trash2, BrainCircuit, Sparkles } from 'lucide-react-native';
+import { ChevronLeft, Save, Plus, Beaker, Trash2, BrainCircuit, Sparkles, FileText } from 'lucide-react-native';
+import AutocompleteInput from '../components/AutocompleteInput';
+import { RAW_MATERIALS_LIST, PRODUCTS_MADRE_LIST } from '../config/constants';
 
 export default function AddFormulaScreen({ navigation }) {
   const [productName, setProductName] = useState('');
-  const [companyName, setCompanyName] = useState('H2O Control'); 
   const [ph, setPh] = useState('');
   const [density, setDensity] = useState('');
   
@@ -44,25 +45,38 @@ export default function AddFormulaScreen({ navigation }) {
         return;
       }
 
+      // Validación del 100%
+      let totalPercentage = 0;
+      const parsedIngredients = ingredients.map(ing => {
+        let perc = 0;
+        if (inputMode === 'KILOS') {
+            const totalAmount = ingredients.reduce((sum, i) => sum + toDecimal(i.amount), 0);
+            perc = totalAmount > 0 ? (toDecimal(ing.amount) / totalAmount) * 100 : 0;
+        } else {
+            perc = toDecimal(ing.amount);
+        }
+        const finalPerc = parseFloat(perc.toFixed(2));
+        totalPercentage += finalPerc;
+        return {
+          name: ing.name.trim().toUpperCase(),
+          percentage: finalPerc
+        };
+      });
+
+      if (Math.abs(totalPercentage - 100) > 0.1) {
+        Alert.alert(
+          "Error de Formulación", 
+          `La receta no suma 100%.\nSuma actual: ${totalPercentage.toFixed(2)}%\nDiferencia: ${(100 - totalPercentage).toFixed(2)}%`
+        );
+        return;
+      }
+
       // Guardamos la RECETA MAESTRA en Firebase
       await addDoc(collection(db, "Formulas_Maestras"), {
         productName: productName.trim().toUpperCase(),
-        companyTarget: companyName.trim().toUpperCase(),
         phObjetivo: phVal,
         densidadObjetivo: densityVal,
-        ingredients: ingredients.map(ing => {
-          let perc = 0;
-          if (inputMode === 'KILOS') {
-             const totalAmount = ingredients.reduce((sum, i) => sum + toDecimal(i.amount), 0);
-             perc = totalAmount > 0 ? (toDecimal(ing.amount) / totalAmount) * 100 : 0;
-          } else {
-             perc = toDecimal(ing.amount);
-          }
-          return {
-            name: ing.name.trim().toUpperCase(),
-            percentage: parseFloat(perc.toFixed(2))
-          };
-        }),
+        ingredients: parsedIngredients,
         status: 'ACTIVA', // Clave para que aparezca en el catálogo
         creadaPor: auth.currentUser?.email || 'Sistema',
         fechaCreacion: serverTimestamp()
@@ -110,48 +124,25 @@ export default function AddFormulaScreen({ navigation }) {
         <Beaker color="#2e4a3b" size={24} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        
-        {/* BOTÓN PREPARATORIO DE CARGA CON IA */}
-        <TouchableOpacity 
-          style={styles.aiBanner}
-          activeOpacity={0.8}
-          onPress={() => Alert.alert("Próximamente", "Aquí se abrirá la cámara para leer la receta en papel y autocompletar los campos.")} 
-        >
-          <View style={styles.aiIconBox}>
-            <BrainCircuit color="#fff" size={24} />
-          </View>
-          <View style={{flex: 1, marginLeft: 15}}>
-            <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
-              <Text style={styles.aiBannerTitle}>Escanear Receta con IA</Text>
-              <Sparkles color="#fbbf24" size={14} />
-            </View>
-            <Text style={styles.aiBannerSub}>Sube una foto y la IA extraerá los componentes automáticamente.</Text>
-          </View>
-        </TouchableOpacity>
-
-        <Text style={styles.sectionTitle}>Parámetros Generales</Text>
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+      >
+        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          
+          <Text style={styles.sectionTitle}>Parámetros Generales</Text>
         <View style={styles.card}>
           <View style={styles.row}>
-            <View style={{ flex: 2, marginRight: 10 }}>
+            <View style={{ flex: 1, marginRight: 10 }}>
               <Text style={styles.label}>Nombre del Producto</Text>
-              <TextInput 
-                style={styles.input} 
-                placeholder="Ej: ACTION / SHOCK" 
-                value={productName} 
+              <AutocompleteInput 
+                data={PRODUCTS_MADRE_LIST.sort()}
+                value={productName}
                 onChangeText={setProductName}
-                placeholderTextColor="#999"
-                autoCapitalize="characters"
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Empresa</Text>
-              <TextInput 
-                style={styles.input} 
-                placeholder="Ej: BioAcker" 
-                value={companyName} 
-                onChangeText={setCompanyName}
-                placeholderTextColor="#999"
+                placeholder="Ej: GRANEL BUFFER"
+                icon={<FileText color="#94a3b8" size={18} />}
+                containerStyle={{ zIndex: 1001 }}
               />
             </View>
           </View>
@@ -209,14 +200,15 @@ export default function AddFormulaScreen({ navigation }) {
           return (
           <View key={ing.id} style={styles.ingredientBlock}>
             <View style={styles.ingRow}>
-              <TextInput 
-                style={[styles.input, { flex: 2 }]} 
-                placeholder="Materia Prima (Ej: Ácido)" 
-                value={ing.name}
-                onChangeText={(val) => updateIngredient(idx, 'name', val)}
-                placeholderTextColor="#bbb"
-                autoCapitalize="characters"
-              />
+              <View style={{ flex: 2 }}>
+                <AutocompleteInput 
+                  data={[...RAW_MATERIALS_LIST, ...PRODUCTS_MADRE_LIST].sort()}
+                  value={ing.name}
+                  onChangeText={(val) => updateIngredient(idx, 'name', val)}
+                  placeholder="Materia Prima o Granel"
+                  icon={<FileText color="#94a3b8" size={18} />}
+                />
+              </View>
               <TextInput 
                 style={[styles.input, { flex: 1, marginLeft: 10 }]} 
                 placeholder={inputMode === 'PERCENTAGE' ? "Cant (%)" : "Cant (Kg)"} 
@@ -244,13 +236,14 @@ export default function AddFormulaScreen({ navigation }) {
           <Text style={styles.addBtnText}>Añadir Materia Prima</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-          <Save color="#fff" size={20} />
-          <Text style={styles.saveButtonText}>Guardar Fórmula Maestra</Text>
-        </TouchableOpacity>
-        
-        <View style={{ height: 40 }} />
-      </ScrollView>
+          <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+            <Save color="#fff" size={20} />
+            <Text style={styles.saveButtonText}>Guardar Fórmula Maestra</Text>
+          </TouchableOpacity>
+          
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -279,8 +272,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff', padding: 18, borderRadius: 15, elevation: 2, 
     borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 20
   },
-  label: { fontSize: 11, fontWeight: '800', color: '#475569', marginTop: 10, marginBottom: 5, textTransform: 'uppercase' },
-  input: { backgroundColor: '#f8fafc', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', color: '#1e293b', fontWeight: '600' },
+  label: { fontSize: 12, fontWeight: '700', color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.5 },
+  input: { backgroundColor: '#f8fafc', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', color: '#1e293b', fontSize: 15, fontWeight: '600' },
+  
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 15 },
+  chip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f1f5f9', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#e2e8f0' },
+  chipActive: { backgroundColor: '#0f172a', borderColor: '#0f172a' },
+  chipText: { fontSize: 12, fontWeight: '700', color: '#64748b' },
+  chipTextActive: { color: '#fff' },
+  
   row: { flexDirection: 'row' },
   sectionTitle: { fontSize: 14, fontWeight: '900', color: '#334155', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
   

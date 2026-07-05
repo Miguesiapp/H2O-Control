@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
-import { createUserWithEmailAndPassword, deleteUser } from 'firebase/auth'; 
+import { createUserWithEmailAndPassword, deleteUser, updateProfile } from 'firebase/auth'; 
 import { setDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { ChevronLeft, User, Mail, Lock, ShieldCheck, UserPlus } from 'lucide-react-native';
 
@@ -35,6 +35,9 @@ export default function RegisterScreen({ navigation }) {
       // 1. Registro en Auth
       const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
       const user = userCredential.user;
+
+      // Actualizar el perfil del usuario en Auth
+      await updateProfile(user, { displayName: cleanName });
 
       try {
         // 2. Creación de Perfil Corporativo en Firestore

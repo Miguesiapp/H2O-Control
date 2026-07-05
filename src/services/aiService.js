@@ -190,3 +190,43 @@ Responde con calidez y servicialidad. Si te enseñan un nuevo sinónimo, agradé
     throw error;
   }
 };
+
+/**
+ * 📊 AUDITORÍA MENSUAL (Generación de Párrafo de Resumen para PDF)
+ */
+export const generateAuditSummary = async (movements, filterName, monthYear) => {
+  try {
+    // Resumimos los movimientos para que no excedan el límite de tokens
+    const briefMovements = movements.map(m => 
+      `[${m.formattedDate}] ${m.action}: ${m.quantity} ${m.unit} de ${m.itemName}`
+    ).join('\n');
+
+    const prompt = `Eres H2O Neural, el asistente de planta. 
+Analiza los siguientes movimientos operativos del mes de ${monthYear}, filtrados por la categoría: "${filterName}".
+Tu objetivo es redactar un párrafo gerencial breve (máximo 4-5 líneas) y profesional que resuma la actividad.
+Menciona si hubo una alta intensidad de entradas/salidas, resalta el producto con más movimientos o cualquier anomalía aparente (ej. egresos inusualmente grandes). Sé conciso y directo, orientado a la dirección de la empresa.
+
+MOVIMIENTOS:
+${briefMovements.substring(0, 15000)} // Límite de texto por seguridad
+
+REGLA: Responde SOLO con el párrafo redactado, sin saludos ni introducciones extras.`;
+
+    const payload = {
+      contents: [{ role: "user", parts: [{ text: prompt }] }]
+    };
+
+    const response = await fetch(GEMINI_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message || data.error || "Error en AI Audit proxy");
+
+    return data.candidates[0].content.parts[0].text.trim();
+  } catch (error) {
+    console.error("Error en AI Audit Summary:", error);
+    return "La auditoría automática de IA no está disponible en este momento. Revisa el listado de movimientos para analizar el balance general del mes.";
+  }
+};

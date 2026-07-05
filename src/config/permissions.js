@@ -1,0 +1,46 @@
+// permissions.js
+// Archivo centralizado para manejo de roles y permisos en la aplicación.
+
+// 1. Roles Definidos
+export const ROLES = {
+  // BBS Calidad: Pueden firmar análisis de calidad
+  QUALITY_CONTROL: [
+    'juanpae.mdp@gmail.com',
+    'francovanuccilemmi@gmail.com',
+    'g.haritchet@gmail.com',
+    'miguesilva.1985@gmail.com',
+    'miguesilva.1985@outlook.es',
+    'bduville@h2ocontrol.com.ar',
+  ],
+  
+  // Creadores de Órdenes (Producción/Gerencia): Pueden crear OP, OE, OD
+  ORDER_CREATORS: [
+    'produccion@h2ocontrol.com.ar',
+    'bduville@h2ocontrol.com.ar',
+    'miguesilva.1985@gmail.com',
+    'miguesilva.1985@outlook.es',
+    'jmalvasio@h2ocontrol.com.ar',
+  ],
+
+  // Administradores Globales
+  ADMINS: [
+    'miguesilva.1985@outlook.es',
+    'miguesilva.1985@gmail.com',
+  ]
+};
+
+// 2. Funciones de Verificación
+export const canAccessQualityControl = (email) => {
+  if (!email) return false;
+  return ROLES.QUALITY_CONTROL.includes(email.toLowerCase());
+};
+
+export const canCreateOrders = (email) => {
+  if (!email) return false;
+  return ROLES.ORDER_CREATORS.includes(email.toLowerCase());
+};
+
+export const isAdmin = (email) => {
+  if (!email) return false;
+  return ROLES.ADMINS.includes(email.toLowerCase());
+};

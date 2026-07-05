@@ -159,3 +159,68 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
     throw error;
   }
 };
+
+// ============================================================================
+// FUNCIÓN 3: CREAR ÓRDENES DE TRABAJO (Tickets)
+// ============================================================================
+export const createOrder = async (orderType, data, userEmail) => {
+  try {
+    const docRef = await addDoc(collection(db, "Orders"), {
+      type: orderType, // 'OP', 'OE', 'OD'
+      status: 'ENVIADO',
+      data: data,
+      createdBy: userEmail,
+      createdAt: serverTimestamp(),
+      lastUpdated: serverTimestamp()
+    });
+
+    // Guardar traza en auditoría
+    await addDoc(collection(db, "AuditLog"), {
+      user: userEmail,
+      action: `CREACION_ORDEN_${orderType}`,
+      orderId: docRef.id,
+      timestamp: serverTimestamp(),
+    });
+
+    return docRef.id;
+  } catch (error) {
+    console.error("Error al crear Orden:", error);
+    throw error;
+  }
+};
+
+// ============================================================================
+// FUNCIÓN 4: ACTUALIZAR ESTADO DE ÓRDENES
+// ============================================================================
+export const updateOrderStatus = async (orderId, newStatus, userEmail) => {
+  try {
+    const updateData = {
+      status: newStatus,
+      lastUpdated: serverTimestamp(),
+    };
+
+    if (newStatus === 'EN_PROCESO') {
+      updateData.acceptedBy = userEmail;
+      updateData.acceptedAt = serverTimestamp();
+    } else if (newStatus === 'FINALIZADO') {
+      updateData.finalizedBy = userEmail;
+      updateData.finalizedAt = serverTimestamp();
+    }
+
+    await updateDoc(doc(db, "Orders", orderId), updateData);
+
+    // Guardar traza
+    await addDoc(collection(db, "AuditLog"), {
+      user: userEmail,
+      action: `CAMBIO_ESTADO_ORDEN`,
+      orderId: orderId,
+      newStatus: newStatus,
+      timestamp: serverTimestamp(),
+    });
+
+    return true;
+  } catch (error) {
+    console.error("Error al actualizar Orden:", error);
+    throw error;
+  }
+};

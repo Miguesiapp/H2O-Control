@@ -1,18 +1,38 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, 
-  StatusBar, KeyboardAvoidingView, Platform, ActivityIndicator 
+  StatusBar, KeyboardAvoidingView, Platform, ActivityIndicator, Animated 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase'; 
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { getDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore'; 
-import { Droplets, Lock, Mail, ChevronRight, ShieldCheck } from 'lucide-react-native';
+import { Lock, Mail, ChevronRight, ShieldCheck } from 'lucide-react-native';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Animaciones
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        friction: 5,
+        tension: 40,
+        useNativeDriver: true,
+      })
+    ]).start();
+  }, []);
 
   const handleLogin = async () => {
     const cleanEmail = email.trim().toLowerCase();
@@ -66,16 +86,16 @@ export default function LoginScreen({ navigation }) {
         style={styles.container}
       >
         {/* CABECERA CORPORATIVA */}
-        <View style={styles.brandSection}>
-          <View style={styles.logoBadge}>
-            <Droplets color="#0f172a" size={45} />
+        <Animated.View style={[styles.brandSection, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+          <View style={styles.logoCircle}>
+            <Text style={styles.logoTitle}>H2O</Text>
+            <Text style={styles.logoSub}>CONTROL</Text>
           </View>
-          <Text style={styles.brandTitle}>H2O CONTROL</Text>
           <Text style={styles.brandSub}>AGRICULTURA SUSTENTABLE</Text>
-        </View>
+        </Animated.View>
 
         {/* TARJETA DE LOGIN */}
-        <View style={styles.card}>
+        <Animated.View style={[styles.card, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
           <Text style={styles.label}>Inicio de Sesión</Text>
           
           <View style={styles.inputBox}>
@@ -120,7 +140,7 @@ export default function LoginScreen({ navigation }) {
               </>
             )}
           </TouchableOpacity>
-        </View>
+        </Animated.View>
 
         {/* ACCESO PARA NUEVOS EMPLEADOS */}
         <TouchableOpacity 
@@ -141,36 +161,43 @@ export default function LoginScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0f172a' },
+  safe: { flex: 1, backgroundColor: '#004ca8' },
   container: { flex: 1, justifyContent: 'center', padding: 25 },
   
   brandSection: { alignItems: 'center', marginBottom: 45 },
-  logoBadge: { 
-    width: 85, 
-    height: 85, 
-    backgroundColor: '#fff', 
-    borderRadius: 24, 
-    justifyContent: 'center', 
+  logoCircle: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 2,
+    borderColor: '#ffffff',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 15,
-    elevation: 15,
-    shadowColor: '#38bdf8',
-    shadowOpacity: 0.3,
-    shadowRadius: 15
+    backgroundColor: 'transparent',
+    marginBottom: 15
   },
-  brandTitle: { fontSize: 32, fontWeight: '900', color: '#fff', letterSpacing: 1 },
-  brandSub: { fontSize: 10, color: '#94a3b8', fontWeight: '800', letterSpacing: 3, marginTop: 4 },
+  logoTitle: {
+    fontSize: 40,
+    fontWeight: '900',
+    color: '#ffffff',
+    marginBottom: -4,
+  },
+  logoSub: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#ffffff',
+    letterSpacing: 3,
+    marginLeft: 3,
+  },
+  brandSub: { 
+    fontSize: 11, 
+    color: 'rgba(255,255,255,0.7)', 
+    letterSpacing: 2, 
+    fontWeight: '600' 
+  },
   
-  card: { 
-    backgroundColor: '#fff', 
-    padding: 25, 
-    borderRadius: 28, 
-    elevation: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 20
-  },
-  label: { fontSize: 12, fontWeight: '800', color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 25 },
+  card: { backgroundColor: '#ffffff', padding: 25, borderRadius: 24, elevation: 10, shadowColor: '#000', shadowOffset: {width: 0, height: 10}, shadowOpacity: 0.1, shadowRadius: 20 },
+  label: { fontSize: 18, fontWeight: '900', color: '#1e293b', marginBottom: 20, textAlign: 'center' },
   
   inputBox: { 
     flexDirection: 'row', 

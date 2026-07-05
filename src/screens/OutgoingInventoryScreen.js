@@ -1,34 +1,118 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, TextInput, 
-  TouchableOpacity, Alert, StatusBar, ActivityIndicator 
+  TouchableOpacity, Alert, StatusBar, ActivityIndicator, FlatList, Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { registerMovement } from '../services/logisticsService';
-// Cambié Barcode por Hash para eliminar la idea visual del escáner
-import { ChevronLeft, Truck, Send, PackageMinus, MapPin, Hash, ClipboardType } from 'lucide-react-native';
+import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
+import { registerMovement, createOrder, updateOrderStatus } from '../services/logisticsService';
+import { ChevronLeft, Truck, Send, PackageMinus, MapPin, Hash, ClipboardType, Plus, ClipboardList, CheckSquare, CheckCircle2, Play, Droplet } from 'lucide-react-native';
+import AutocompleteInput from '../components/AutocompleteInput';
+import { canCreateOrders } from '../config/permissions';
+
+const BIDON_CAPACITIES = ['20', '10', '5', '1'];
 
 export default function OutgoingInventoryScreen({ route, navigation }) {
   const { companyName } = route.params;
+  const [viewMode, setViewMode] = useState('LIST'); // 'LIST' | 'CREATE'
+
+  // ======================================================================
+  // ESTADOS DE LA VISTA LISTA
+  // ======================================================================
+  const [orders, setOrders] = useState([]);
+  const [loadingOrders, setLoadingOrders] = useState(true);
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [orderModalVisible, setOrderModalVisible] = useState(false);
+  const [processingOrder, setProcessingOrder] = useState(false);
+
+  useEffect(() => {
+    // Escuchar órdenes de tipo OD (Orden de Despacho)
+    const q = query(
+      collection(db, "Orders"),
+      where("type", "==", "OD")
+    );
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      data.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+      const companyOrders = data.filter(o => o.data?.company === companyName);
+      setOrders(companyOrders);
+      setLoadingOrders(false);
+      
+      if (selectedOrder) {
+        const updated = companyOrders.find(o => o.id === selectedOrder.id);
+        if (updated) setSelectedOrder(updated);
+        else setOrderModalVisible(false);
+      }
+    }, (error) => {
+      console.error(error);
+      setLoadingOrders(false);
+    });
+    return () => unsubscribe();
+  }, [companyName, selectedOrder]);
+
+  // ======================================================================
+  // ESTADOS DE LA VISTA CREACIÓN
+  // ======================================================================
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [availableProducts, setAvailableProducts] = useState([]);
+  const [availableBatches, setAvailableBatches] = useState([]);
+  const [allFinalStock, setAllFinalStock] = useState([]);
+  
   const [formData, setFormData] = useState({
     productName: '',
+    presentation: '20',
     quantity: '',
     batchInternal: '', 
     destination: '', 
     transportName: '' 
   });
 
-  const handleDispatch = async () => {
+  useEffect(() => {
+    const fetchStock = async () => {
+      try {
+        const inventoryRef = collection(db, 'Inventory');
+        const qStock = query(
+          inventoryRef, 
+          where('company', '==', companyName),
+          where('stockType', '==', 'FINAL'),
+          where('quantity', '>', 0)
+        );
+        const snap = await getDocs(qStock);
+        const stockItems = snap.docs.map(doc => doc.data());
+        
+        setAllFinalStock(stockItems);
+        
+        const products = [...new Set(stockItems.map(item => item.itemName.split(' - ')[0]))].sort();
+        setAvailableProducts(products);
+      } catch (error) {
+        console.error("Error cargando stock", error);
+      }
+    };
+    if (viewMode === 'CREATE') {
+      fetchStock();
+    }
+  }, [companyName, viewMode]);
+
+  useEffect(() => {
+    if (formData.productName && formData.presentation) {
+      const targetItemName = `${formData.productName.toUpperCase()} - ${formData.presentation}L`;
+      const batches = allFinalStock
+        .filter(item => item.itemName.toUpperCase() === targetItemName)
+        .map(item => item.batchInternal);
+      setAvailableBatches([...new Set(batches)]);
+    } else {
+      setAvailableBatches([]);
+    }
+  }, [formData.productName, formData.presentation, allFinalStock]);
+
+  const handleCreateOrder = async () => {
     const qtyNormalized = Number(formData.quantity.replace(',', '.'));
 
     if (!formData.productName.trim() || isNaN(qtyNormalized) || qtyNormalized <= 0 || !formData.batchInternal.trim()) {
       Alert.alert("Atención", "Verifica que el Producto, el Lote y una cantidad válida mayor a 0 estén ingresados.");
       return;
     }
-
     if (!formData.destination.trim() || !formData.transportName.trim()) {
       Alert.alert("Faltan Datos", "Por normativas de trazabilidad, debes ingresar el destino y el transporte.");
       return;
@@ -36,10 +120,11 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
 
     try {
       setIsSubmitting(true);
-      const itemName = formData.productName.trim().toUpperCase();
+      const itemName = `${formData.productName.trim().toUpperCase()} - ${formData.presentation}L`;
       const batchId = formData.batchInternal.trim().toUpperCase();
+      const currentUser = auth.currentUser?.email || 'Sistema';
 
-      // 1. VERIFICACIÓN PREVIA DE STOCK EN FIREBASE
+      // 1. VERIFICACIÓN PREVIA DE STOCK
       const inventoryRef = collection(db, 'Inventory');
       const qStock = query(
         inventoryRef, 
@@ -48,15 +133,17 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
         where('batchInternal', '==', batchId),
         where('stockType', '==', 'FINAL')
       );
-      
       const stockSnap = await getDocs(qStock);
       
       let currentStock = 0;
+      let batchProvider = 'S/D';
+      
       if (!stockSnap.empty) {
-        currentStock = stockSnap.docs[0].data().quantity || 0;
+        const itemDoc = stockSnap.docs[0].data();
+        currentStock = itemDoc.quantity || 0;
+        batchProvider = itemDoc.batchProvider || 'S/D';
       }
 
-      // Si no hay stock suficiente, frenamos el despacho
       if (currentStock < qtyNormalized) {
          Alert.alert(
            "Stock Insuficiente", 
@@ -66,32 +153,98 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
          return;
       }
 
-      // 2. REGISTRAR EL EGRESO (Descuenta el stock automáticamente al usar valor negativo)
+      // 2. REGISTRAR EL EGRESO (RESERVA FÍSICA INMEDIATA)
       await registerMovement(
-        auth.currentUser?.email || 'Sistema',
+        currentUser,
         'EGRESO_DESPACHO_CLIENTE',
         companyName,
         {
           itemName: itemName,
-          quantity: -Math.abs(qtyNormalized), // Forzamos el negativo para restar del inventario
+          quantity: -Math.abs(qtyNormalized), 
           batchInternal: batchId,
+          loteProveedor: batchProvider,
           details: `Destino: ${formData.destination.trim()} | Transporte: ${formData.transportName.trim()}`,
-          stockType: 'FINAL', // Se despacha Producto Terminado (Envasado)
+          stockType: 'FINAL', 
           unit: 'Uds'
         }
       );
 
+      // 3. CREAR EL TICKET OD
+      const orderData = {
+        itemName: itemName,
+        quantity: qtyNormalized,
+        batchInternal: batchId,
+        destination: formData.destination.trim(),
+        transportName: formData.transportName.trim(),
+        batchProvider: batchProvider,
+        company: companyName,
+        unit: 'Uds'
+      };
+
+      await createOrder('OD', orderData, currentUser);
+
       Alert.alert(
-        "Despacho Registrado Exitosamente", 
-        `Se han descontado ${qtyNormalized} unidades del lote ${batchId}.\nEl registro ha sido guardado en la auditoría general.`,
-        [{ text: "Entendido", onPress: () => navigation.goBack() }]
+        "Orden de Despacho Emitida", 
+        `Se ha reservado stock y enviado a la cola de despacho.\nLote: ${batchId}\nCantidad: ${qtyNormalized} Uds.`,
+        [{ text: "Entendido", onPress: () => {
+          setViewMode('LIST');
+          setFormData({
+            productName: '',
+            presentation: '20',
+            quantity: '',
+            batchInternal: '', 
+            destination: '', 
+            transportName: '' 
+          });
+        }}]
       );
       
     } catch (error) {
       console.error(error);
-      Alert.alert("Error de Sistema", "No se pudo procesar la salida de mercadería.");
+      Alert.alert("Error de Sistema", "No se pudo emitir la orden de despacho.");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // ======================================================================
+  // FUNCIONES DE ESTADO DE ÓRDEN
+  // ======================================================================
+  const handleAcceptOrder = async () => {
+    if (!selectedOrder) return;
+    try {
+      setProcessingOrder(true);
+      const currentUser = auth.currentUser?.email || 'Sistema';
+      await updateOrderStatus(selectedOrder.id, 'EN_PROCESO', currentUser);
+      Alert.alert("Carga Iniciada", "El transporte está siendo cargado.");
+    } catch (error) {
+      Alert.alert("Error", "No se pudo actualizar la orden.");
+    } finally {
+      setProcessingOrder(false);
+    }
+  };
+
+  const handleFinalizeOrder = async () => {
+    if (!selectedOrder) return;
+    try {
+      setProcessingOrder(true);
+      const currentUser = auth.currentUser?.email || 'Sistema';
+      await updateOrderStatus(selectedOrder.id, 'FINALIZADO', currentUser);
+      Alert.alert("Despacho Finalizado", "El transporte ha partido con la mercadería.");
+      setOrderModalVisible(false);
+    } catch (error) {
+      Alert.alert("Error", "No se pudo finalizar el despacho.");
+    } finally {
+      setProcessingOrder(false);
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'ENVIADO': return '#ef4444'; // Rojo para despacho pendiente
+      case 'EN_PROCESO': return '#f59e0b';
+      case 'FINALIZADO': return '#10b981';
+      default: return '#64748b';
     }
   };
 
@@ -99,118 +252,233 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar barStyle="dark-content" />
       
-      {/* HEADER ENTERPRISE */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity 
+          onPress={() => viewMode === 'CREATE' ? setViewMode('LIST') : navigation.goBack()} 
+          style={styles.backBtn}
+        >
           <ChevronLeft color="#0f172a" size={28} />
         </TouchableOpacity>
         <View style={{alignItems: 'center'}}>
-          <Text style={styles.headerTitle}>Orden de Despacho</Text>
-          <Text style={styles.headerSub}>{companyName} • Salida Física</Text>
+          <Text style={styles.headerTitle}>Órdenes de Despacho</Text>
+          <Text style={styles.headerSub}>{companyName}</Text>
         </View>
         <Truck color="#0f172a" size={24} />
       </View>
 
-      <ScrollView 
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        {/* BANNER DE ADVERTENCIA */}
-        <View style={styles.infoBanner}>
-          <Text style={styles.bannerText}>
-            Toda salida de mercadería queda vinculada al usuario <Text style={{fontWeight: '800'}}>{auth.currentUser?.email}</Text> para auditoría.
-          </Text>
-        </View>
-
-        <Text style={styles.sectionTitle}>Identificación de Mercadería</Text>
-        <View style={styles.card}>
-          <Text style={styles.label}>Producto a Despachar (Envasado)</Text>
-          <View style={styles.inputWrapper}>
-            <PackageMinus color="#94a3b8" size={18} style={styles.inputIcon} />
-            <TextInput 
-              style={styles.input} 
-              placeholder="Ej: ACTION - 20L" 
-              placeholderTextColor="#94a3b8"
-              value={formData.productName}
-              onChangeText={(txt) => setFormData({...formData, productName: txt})}
-              autoCapitalize="characters"
+      {viewMode === 'LIST' ? (
+        <View style={styles.container}>
+          {canCreateOrders(auth.currentUser?.email) && (
+            <TouchableOpacity style={[styles.newOrderBtn, { backgroundColor: '#ef4444' }]} onPress={() => setViewMode('CREATE')}>
+              <Plus color="#fff" size={20} />
+              <Text style={styles.newOrderBtnText}>NUEVA OD</Text>
+            </TouchableOpacity>
+          )}
+          
+          <Text style={styles.sectionTitle}>Órdenes Recientes</Text>
+          
+          {loadingOrders ? (
+            <ActivityIndicator color="#ef4444" style={{ marginTop: 40 }} />
+          ) : orders.length === 0 ? (
+            <View style={styles.emptyBox}>
+              <ClipboardList color="#cbd5e1" size={48} />
+              <Text style={styles.emptyText}>No hay órdenes de despacho registradas.</Text>
+            </View>
+          ) : (
+            <FlatList 
+              data={orders}
+              keyExtractor={item => item.id}
+              showsVerticalScrollIndicator={false}
+              renderItem={({item}) => (
+                <TouchableOpacity 
+                  style={styles.orderCard}
+                  onPress={() => {
+                    setSelectedOrder(item);
+                    setOrderModalVisible(true);
+                  }}
+                >
+                  <View style={styles.orderCardHeader}>
+                    <Text style={styles.orderCardTitle}>{item.data.itemName}</Text>
+                    <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
+                      <Text style={styles.statusText}>{item.status}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.orderCardSub}>Lote: {item.data.batchInternal}</Text>
+                  <Text style={styles.orderCardSub}>Destino: <Text style={{fontWeight: '700', color: '#0f172a'}}>{item.data.destination}</Text></Text>
+                  <Text style={styles.orderCardSub}>Cantidad: <Text style={{fontWeight: '700', color: '#ef4444'}}>{item.data.quantity} {item.data.unit}</Text></Text>
+                </TouchableOpacity>
+              )}
             />
+          )}
+        </View>
+      ) : (
+        <ScrollView 
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* BANNER DE ADVERTENCIA */}
+          <View style={styles.infoBanner}>
+            <Text style={styles.bannerText}>
+              Toda salida de mercadería queda vinculada al usuario <Text style={{fontWeight: '800'}}>{auth.currentUser?.email}</Text> para auditoría.
+            </Text>
           </View>
 
-          <View style={styles.row}>
-            <View style={{ flex: 1, marginRight: 10 }}>
-              <Text style={styles.label}>Cant. Unidades</Text>
-              <TextInput 
-                style={styles.inputPlain} 
-                placeholder="Ej: 48" 
-                keyboardType="numeric"
-                placeholderTextColor="#94a3b8"
-                value={formData.quantity}
-                onChangeText={(txt) => setFormData({...formData, quantity: txt})}
-              />
+          <Text style={styles.sectionTitle}>Identificación de Mercadería</Text>
+          <View style={styles.card}>
+            <Text style={styles.label}>Producto a Despachar</Text>
+            <AutocompleteInput 
+              data={availableProducts}
+              value={formData.productName}
+              onChangeText={(txt) => setFormData({...formData, productName: txt, batchInternal: ''})}
+              placeholder="Ej: ACTION"
+              icon={<PackageMinus color="#94a3b8" size={18} />}
+            />
+
+            <Text style={styles.label}>Presentación (Litros)</Text>
+            <View style={styles.chipRow}>
+              {BIDON_CAPACITIES.map(cap => (
+                <TouchableOpacity 
+                  key={cap} 
+                  style={[styles.chip, formData.presentation === cap && styles.chipActive]}
+                  onPress={() => setFormData({...formData, presentation: cap, batchInternal: ''})}
+                >
+                  <Droplet color={formData.presentation === cap ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
+                  <Text style={[styles.chipText, formData.presentation === cap && styles.chipTextActive]}>{cap}L</Text>
+                </TouchableOpacity>
+              ))}
             </View>
-            <View style={{ flex: 1.5 }}>
-              <Text style={styles.label}>Lote de Salida</Text>
-              <View style={styles.inputWrapper}>
-                <Hash color="#94a3b8" size={18} style={styles.inputIcon} />
+
+            <View style={styles.row}>
+              <View style={{ flex: 1, marginRight: 10 }}>
+                <Text style={styles.label}>Cant. Unidades</Text>
                 <TextInput 
-                  style={[styles.input, {fontSize: 13}]} 
-                  placeholder="Ej: OP-20260411-1234" 
+                  style={styles.inputPlain} 
+                  placeholder="Ej: 48" 
+                  keyboardType="numeric"
                   placeholderTextColor="#94a3b8"
+                  value={formData.quantity}
+                  onChangeText={(txt) => setFormData({...formData, quantity: txt})}
+                />
+              </View>
+              <View style={{ flex: 1.5 }}>
+                <Text style={styles.label}>Lote de Salida</Text>
+                <AutocompleteInput 
+                  data={availableBatches}
                   value={formData.batchInternal}
                   onChangeText={(txt) => setFormData({...formData, batchInternal: txt})}
-                  autoCapitalize="characters"
+                  placeholder="Ej: OP-20260411-1234"
+                  icon={<Hash color="#94a3b8" size={18} />}
                 />
               </View>
             </View>
           </View>
-        </View>
 
-        <Text style={styles.sectionTitle}>Datos de Logística</Text>
-        <View style={styles.card}>
-          <Text style={styles.label}>Cliente / Punto de Entrega</Text>
-          <View style={styles.inputWrapper}>
-            <MapPin color="#94a3b8" size={18} style={styles.inputIcon} />
-            <TextInput 
-              style={styles.input} 
-              placeholder="Ej: BioAcker Córdoba" 
-              placeholderTextColor="#94a3b8"
-              value={formData.destination}
-              onChangeText={(txt) => setFormData({...formData, destination: txt})}
-            />
+          <Text style={styles.sectionTitle}>Datos de Logística</Text>
+          <View style={styles.card}>
+            <Text style={styles.label}>Cliente / Punto de Entrega</Text>
+            <View style={styles.inputWrapper}>
+              <MapPin color="#94a3b8" size={18} style={styles.inputIcon} />
+              <TextInput 
+                style={styles.input} 
+                placeholder="Ej: BioAcker Córdoba" 
+                placeholderTextColor="#94a3b8"
+                value={formData.destination}
+                onChangeText={(txt) => setFormData({...formData, destination: txt})}
+              />
+            </View>
+
+            <Text style={styles.label}>Datos del Transporte / Chofer</Text>
+            <View style={styles.inputWrapper}>
+              <ClipboardType color="#94a3b8" size={18} style={styles.inputIcon} />
+              <TextInput 
+                style={styles.input} 
+                placeholder="Ej: Transporte Andreani / Patente AB123CD" 
+                placeholderTextColor="#94a3b8"
+                value={formData.transportName}
+                onChangeText={(txt) => setFormData({...formData, transportName: txt})}
+              />
+            </View>
           </View>
 
-          <Text style={styles.label}>Datos del Transporte / Chofer</Text>
-          <View style={styles.inputWrapper}>
-            <ClipboardType color="#94a3b8" size={18} style={styles.inputIcon} />
-            <TextInput 
-              style={styles.input} 
-              placeholder="Ej: Transporte Andreani / Patente AB123CD" 
-              placeholderTextColor="#94a3b8"
-              value={formData.transportName}
-              onChangeText={(txt) => setFormData({...formData, transportName: txt})}
-            />
+          <TouchableOpacity 
+            style={[styles.dispatchButton, isSubmitting && { opacity: 0.7 }]} 
+            onPress={handleCreateOrder}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <>
+                <Send color="#fff" size={20} />
+                <Text style={styles.dispatchButtonText}>Confirmar y Emitir OD</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      )}
+
+      {/* MODAL DETALLES DE ORDEN */}
+      <Modal visible={orderModalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOrderModalVisible(false)}>
+        <SafeAreaView style={{flex: 1, backgroundColor: '#f8fafc'}}>
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => setOrderModalVisible(false)} style={styles.backBtn}>
+              <ChevronLeft color="#0f172a" size={28} />
+            </TouchableOpacity>
+            <View style={{alignItems: 'center'}}>
+              <Text style={styles.headerTitle}>Detalle de OD</Text>
+              <Text style={styles.headerSub}>{selectedOrder?.data?.batchInternal}</Text>
+            </View>
+            <View style={{ width: 28 }} />
           </View>
-        </View>
+          <ScrollView style={{flex: 1, padding: 20}}>
+            <View style={styles.card}>
+              <Text style={{fontSize: 20, fontWeight: '900', color: '#0f172a', marginBottom: 5}}>{selectedOrder?.data?.itemName}</Text>
+              <View style={[styles.statusBadge, { alignSelf: 'flex-start', backgroundColor: getStatusColor(selectedOrder?.status), marginBottom: 15 }]}>
+                 <Text style={styles.statusText}>{selectedOrder?.status}</Text>
+              </View>
+              <Text style={{fontSize: 14, color: '#475569', marginBottom: 5}}>Cantidad: <Text style={{fontWeight: '800', color: '#0f172a'}}>{selectedOrder?.data?.quantity} {selectedOrder?.data?.unit}</Text></Text>
+              <Text style={{fontSize: 14, color: '#475569', marginBottom: 15}}>Lote de Origen: <Text style={{fontWeight: '800', color: '#0f172a'}}>{selectedOrder?.data?.batchInternal}</Text></Text>
+              
+              <Text style={{fontSize: 14, fontWeight: '800', color: '#334155', marginBottom: 10, textTransform: 'uppercase'}}>Datos de Envío</Text>
+              <View style={{backgroundColor: '#f1f5f9', padding: 10, borderRadius: 8, marginBottom: 8}}>
+                <Text style={{fontSize: 12, color: '#64748b'}}>Destino</Text>
+                <Text style={{fontSize: 14, fontWeight: '800', color: '#1e293b'}}>{selectedOrder?.data?.destination}</Text>
+              </View>
+              <View style={{backgroundColor: '#f1f5f9', padding: 10, borderRadius: 8, marginBottom: 8}}>
+                <Text style={{fontSize: 12, color: '#64748b'}}>Transporte</Text>
+                <Text style={{fontSize: 14, fontWeight: '800', color: '#1e293b'}}>{selectedOrder?.data?.transportName}</Text>
+              </View>
+            </View>
 
-        <TouchableOpacity 
-          style={[styles.dispatchButton, isSubmitting && { opacity: 0.7 }]} 
-          onPress={handleDispatch}
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <>
-              <Send color="#fff" size={20} />
-              <Text style={styles.dispatchButtonText}>Confirmar y Descontar Stock</Text>
-            </>
-          )}
-        </TouchableOpacity>
+            {selectedOrder?.status === 'ENVIADO' && (
+              <TouchableOpacity style={[styles.mainButton, {backgroundColor: '#f59e0b'}]} onPress={handleAcceptOrder} disabled={processingOrder}>
+                {processingOrder ? <ActivityIndicator color="#fff" /> : (
+                  <>
+                    <CheckSquare color="#fff" size={20} />
+                    <Text style={styles.mainButtonText}>Iniciar Carga</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
 
-        <View style={{ height: 40 }} />
-      </ScrollView>
+            {selectedOrder?.status === 'EN_PROCESO' && (
+              <TouchableOpacity style={[styles.mainButton, {backgroundColor: '#10b981'}]} onPress={handleFinalizeOrder} disabled={processingOrder}>
+                {processingOrder ? <ActivityIndicator color="#fff" /> : (
+                  <>
+                    <Truck color="#fff" size={20} />
+                    <Text style={styles.mainButtonText}>Confirmar Salida</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
+            <View style={{height: 40}}/>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -228,6 +496,16 @@ const styles = StyleSheet.create({
   
   container: { padding: 20 },
   
+  newOrderBtn: { backgroundColor: '#ef4444', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderRadius: 14, marginBottom: 25 },
+  newOrderBtnText: { color: '#fff', fontWeight: '800', fontSize: 15, marginLeft: 8, letterSpacing: 0.5 },
+
+  orderCard: { backgroundColor: '#fff', padding: 18, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: '#e2e8f0', elevation: 1 },
+  orderCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
+  orderCardTitle: { fontSize: 16, fontWeight: '900', color: '#1e293b', flex: 1, marginRight: 10 },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  statusText: { color: '#fff', fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.5 },
+  orderCardSub: { fontSize: 12, color: '#64748b', marginBottom: 4 },
+
   infoBanner: { backgroundColor: '#fef2f2', padding: 15, borderRadius: 12, marginBottom: 20, borderWidth: 1, borderColor: '#fca5a5' },
   bannerText: { color: '#b91c1c', fontSize: 12, textAlign: 'center', lineHeight: 18 },
 
@@ -240,6 +518,12 @@ const styles = StyleSheet.create({
   },
   label: { fontSize: 11, fontWeight: '800', color: '#64748b', marginBottom: 8, textTransform: 'uppercase' },
   
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 15 },
+  chip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f1f5f9', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#e2e8f0' },
+  chipActive: { backgroundColor: '#0f172a', borderColor: '#0f172a' },
+  chipText: { fontSize: 12, fontWeight: '700', color: '#64748b' },
+  chipTextActive: { color: '#fff' },
+
   inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, paddingHorizontal: 12, marginBottom: 15 },
   inputIcon: { marginRight: 8 },
   input: { flex: 1, paddingVertical: 14, fontSize: 15, color: '#0f172a', fontWeight: '600' },
@@ -252,5 +536,9 @@ const styles = StyleSheet.create({
     padding: 18, borderRadius: 14, marginTop: 10, gap: 10, elevation: 4, 
     shadowColor: '#ef4444', shadowOpacity: 0.3, shadowRadius: 8 
   },
-  dispatchButtonText: { color: '#fff', fontSize: 16, fontWeight: '900', letterSpacing: 0.5 }
+  dispatchButtonText: { color: '#fff', fontSize: 16, fontWeight: '900', letterSpacing: 0.5 },
+  mainButton: { backgroundColor: '#10b981', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 18, borderRadius: 14, marginTop: 20, gap: 10, elevation: 4 },
+  mainButtonText: { color: '#fff', fontSize: 16, fontWeight: '900', letterSpacing: 1, marginLeft: 10 },
+  emptyBox: { alignItems: 'center', padding: 20, paddingVertical: 50 },
+  emptyText: { color: '#64748b', textAlign: 'center', fontWeight: '500', marginTop: 15 },
 });

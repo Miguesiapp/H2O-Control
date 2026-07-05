@@ -1,26 +1,44 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, StatusBar, Platform } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, StatusBar, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { db } from '../config/firebase'; // Ya no requerimos 'auth' si no bloqueamos por usuario
+import { db } from '../config/firebase';
 import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
-import { ChevronLeft, Clock, ArrowDownToLine, ArrowUpFromLine, Activity, User, ArrowRightLeft } from 'lucide-react-native';
+import { ChevronLeft, Clock, ArrowDownToLine, ArrowUpFromLine, Activity, User, ArrowRightLeft, Filter, ChevronDown, ChevronUp, FileText } from 'lucide-react-native';
+import { generateAuditSummary } from '../services/aiService';
+import { generateAndSharePDF } from '../services/reportService';
+
+const FILTER_TABS = [
+  { id: 'ALL', label: 'Todos' },
+  { id: 'MP', label: 'Ingresos MP' },
+  { id: 'OP', label: 'Producción (OP)' },
+  { id: 'OE', label: 'Envasado (OE)' },
+  { id: 'OD', label: 'Despachos (OD)' }
+];
 
 export default function HistoryScreen({ navigation }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activeFilter, setActiveFilter] = useState('ALL');
+  const [expandedMonths, setExpandedMonths] = useState({});
+  const [generatingPdfFor, setGeneratingPdfFor] = useState(null);
 
   useEffect(() => {
     // Escucha en tiempo real de la colección AuditLog
-    const q = query(collection(db, 'AuditLog'), orderBy('timestamp', 'desc'), limit(100));
+    const q = query(collection(db, 'AuditLog'), orderBy('timestamp', 'desc'), limit(300)); // Ampliamos límite para ver más meses
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const logDocs = snapshot.docs.map(doc => {
         const data = doc.data();
+        const dateObj = data.timestamp?.toDate ? data.timestamp.toDate() : new Date();
+        const monthYear = dateObj.toLocaleString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase();
+        
         return {
           id: doc.id,
           ...data,
-          // Manejo seguro de fechas de Firestore (por si el serverTimestamp aún está pendiente)
-          formattedDate: data.timestamp?.toDate ? data.timestamp.toDate().toLocaleString() : 'Justo ahora'
+          dateObj,
+          monthYear,
+          // Manejo seguro de fechas de Firestore
+          formattedDate: dateObj.toLocaleString()
         };
       });
       setHistory(logDocs);
@@ -53,15 +71,75 @@ export default function HistoryScreen({ navigation }) {
     return { color: '#64748b', bg: '#f1f5f9', icon: Clock }; // Gris por defecto
   };
 
-  const renderLog = ({ item }) => {
+  const filteredHistory = history.filter(item => {
+    if (activeFilter === 'ALL') return true;
+    const act = (item.action || '').toUpperCase();
+    
+    if (activeFilter === 'MP') return act.includes('INGRESO_COMPRA') || act.includes('INGRESO_MANUAL') || act.includes('CARGA_INICIAL');
+    if (activeFilter === 'OP') return act.includes('OP') || act.includes('PRODUCCION');
+    if (activeFilter === 'OE') return act.includes('OE') || act.includes('ENVASADO') || act.includes('CONSUMO');
+    if (activeFilter === 'OD') return act.includes('EGRESO_DESPACHO') || act.includes('RETIRO') || act.includes('OD');
+    
+    return true;
+  });
+
+  // AGRUPACIÓN POR MES
+  const groupedData = filteredHistory.reduce((acc, item) => {
+    if (!acc[item.monthYear]) {
+      acc[item.monthYear] = [];
+    }
+    acc[item.monthYear].push(item);
+    return acc;
+  }, {});
+
+  const sections = Object.keys(groupedData).map(key => ({
+    title: key,
+    data: groupedData[key]
+  }));
+
+  // Expandir automáticamente el primer mes al cargar si no hay nada expandido
+  useEffect(() => {
+    if (sections.length > 0 && Object.keys(expandedMonths).length === 0) {
+      setExpandedMonths({ [sections[0].title]: true });
+    }
+  }, [sections, expandedMonths]);
+
+  const toggleMonth = (month) => {
+    setExpandedMonths(prev => ({
+      ...prev,
+      [month]: !prev[month]
+    }));
+  };
+
+  const handleExportPDF = async (monthTitle, monthData) => {
+    try {
+      setGeneratingPdfFor(monthTitle);
+      
+      const filterLabel = FILTER_TABS.find(t => t.id === activeFilter)?.label || 'Todos';
+      
+      // 1. Obtener auditoría de IA
+      const aiSummary = await generateAuditSummary(monthData, filterLabel, monthTitle);
+      
+      // 2. Generar y compartir PDF
+      await generateAndSharePDF(monthTitle, filterLabel, aiSummary, monthData);
+      
+    } catch (error) {
+      alert("Hubo un error al generar el PDF. Revisa tu conexión a internet.");
+      console.error(error);
+    } finally {
+      setGeneratingPdfFor(null);
+    }
+  };
+
+  const renderLog = (item, isLast) => {
     const theme = getActionTheme(item.action);
     const IconComponent = theme.icon;
     const isNegative = Number(item.quantity) < 0;
 
     return (
-      <View style={styles.logCard}>
+      <View style={styles.logCard} key={item.id}>
         <View style={styles.logLeft}>
-          <View style={styles.timelineLine} />
+          {!isLast && <View style={styles.timelineLine} />}
           <View style={[styles.iconBox, { backgroundColor: theme.bg, borderColor: theme.color }]}>
             <IconComponent color={theme.color} size={16} />
           </View>
@@ -90,9 +168,59 @@ export default function HistoryScreen({ navigation }) {
               <User color="#94a3b8" size={12} />
               <Text style={styles.logUser}>{item.user || 'Sistema'}</Text>
             </View>
-            <Text style={styles.logBatch}>Lote: {item.batchInternal || 'N/A'}</Text>
+            
+            <View style={{alignItems: 'flex-end'}}>
+               {item.batchInternal && <Text style={styles.logBatch}>Lote Int: {item.batchInternal}</Text>}
+               {item.loteProveedor && <Text style={[styles.logBatch, {marginTop: 4, backgroundColor: '#fef3c7', color: '#b45309'}]}>Lote Prov: {item.loteProveedor}</Text>}
+            </View>
           </View>
         </View>
+      </View>
+    );
+  };
+
+  const renderSection = ({ item: section }) => {
+    const isExpanded = expandedMonths[section.title];
+    
+    return (
+      <View style={styles.sectionContainer}>
+        <TouchableOpacity 
+          style={styles.monthHeader} 
+          onPress={() => toggleMonth(section.title)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.monthTitle}>{section.title}</Text>
+          <View style={styles.monthBadge}>
+            <Text style={styles.monthBadgeText}>{section.data.length} reg.</Text>
+            {isExpanded ? <ChevronUp color="#64748b" size={20} /> : <ChevronDown color="#64748b" size={20} />}
+          </View>
+        </TouchableOpacity>
+
+        {isExpanded && (
+          <View style={styles.monthContent}>
+            
+            {/* Botón de Exportar a PDF */}
+            <TouchableOpacity 
+              style={styles.pdfButton}
+              onPress={() => handleExportPDF(section.title, section.data)}
+              disabled={generatingPdfFor === section.title}
+            >
+              {generatingPdfFor === section.title ? (
+                <>
+                  <ActivityIndicator size="small" color="#fff" style={{marginRight: 8}} />
+                  <Text style={styles.pdfButtonText}>Auditando con IA y Generando PDF...</Text>
+                </>
+              ) : (
+                <>
+                  <FileText color="#fff" size={16} style={{marginRight: 8}} />
+                  <Text style={styles.pdfButtonText}>Exportar Reporte PDF</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            {section.data.map((log, index) => renderLog(log, index === section.data.length - 1))}
+          </View>
+        )}
       </View>
     );
   };
@@ -110,14 +238,26 @@ export default function HistoryScreen({ navigation }) {
           <Text style={styles.headerTitle}>Auditoría Inalterable</Text>
           <Text style={styles.headerSub}>Registro de Movimientos Globales</Text>
         </View>
-        <View style={{ width: 28 }} />
+        <Filter color="#475569" size={24} style={{ marginRight: 5 }} />
       </View>
 
       <View style={styles.container}>
-        <View style={styles.infoBanner}>
-          <Text style={styles.bannerText}>
-            Últimos 100 movimientos de la planta. Para un análisis detallado o impresión de PDF, utilice el <Text style={{fontWeight: '800'}}>Centro de Inteligencia</Text>.
-          </Text>
+        
+        {/* TABS DE FILTRO */}
+        <View style={styles.filterContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+            {FILTER_TABS.map(tab => (
+              <TouchableOpacity
+                key={tab.id}
+                style={[styles.filterTab, activeFilter === tab.id && styles.filterTabActive]}
+                onPress={() => setActiveFilter(tab.id)}
+              >
+                <Text style={[styles.filterTabText, activeFilter === tab.id && styles.filterTabTextActive]}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
 
         {loading ? (
@@ -127,15 +267,15 @@ export default function HistoryScreen({ navigation }) {
           </View>
         ) : (
           <FlatList
-            data={history}
-            keyExtractor={item => item.id}
+            data={sections}
+            keyExtractor={item => item.title}
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}
-            renderItem={renderLog}
+            renderItem={renderSection}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
                 <Clock color="#cbd5e1" size={48} />
-                <Text style={styles.emptyText}>No hay registros de auditoría recientes.</Text>
+                <Text style={styles.emptyText}>No se encontraron registros para este filtro.</Text>
               </View>
             }
           />
@@ -156,23 +296,52 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '900', color: '#f8fafc' },
   headerSub: { fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1, fontWeight: '700' },
   
-  container: { flex: 1, backgroundColor: '#f8fafc', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 20 },
+  container: { flex: 1, backgroundColor: '#f8fafc', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 10 },
   
-  infoBanner: { backgroundColor: '#e2e8f0', padding: 12, borderRadius: 12, marginHorizontal: 20, marginBottom: 15 },
-  bannerText: { color: '#475569', fontSize: 11, textAlign: 'center', lineHeight: 16 },
+  filterContainer: { borderBottomWidth: 1, borderBottomColor: '#e2e8f0', backgroundColor: '#f8fafc', borderTopLeftRadius: 24, borderTopRightRadius: 24 },
+  filterScroll: { paddingHorizontal: 15, paddingVertical: 12, gap: 8 },
+  filterTab: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', elevation: 1 },
+  filterTabActive: { backgroundColor: '#0f172a', borderColor: '#0f172a' },
+  filterTabText: { fontSize: 12, fontWeight: '800', color: '#64748b' },
+  filterTabTextActive: { color: '#fff' },
 
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: 15, color: '#475569', fontWeight: '700', fontSize: 13 },
   
-  list: { paddingHorizontal: 20, paddingBottom: 50 },
+  list: { paddingHorizontal: 20, paddingBottom: 50, paddingTop: 15 },
   
-  // TIMELINE CARD DESIGN
-  logCard: { flexDirection: 'row', marginBottom: 5 },
-  logLeft: { width: 30, alignItems: 'center', marginRight: 15 },
+  sectionContainer: { marginBottom: 15 },
+  monthHeader: { 
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
+    backgroundColor: '#fff', padding: 15, borderRadius: 16, 
+    borderWidth: 1, borderColor: '#e2e8f0', elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5
+  },
+  monthTitle: { fontSize: 15, fontWeight: '900', color: '#0f172a', letterSpacing: 0.5 },
+  monthBadge: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  monthBadgeText: { fontSize: 12, color: '#64748b', marginRight: 5, fontWeight: '600' },
+  monthContent: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
+  
+  pdfButton: {
+    backgroundColor: '#004ca8',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginBottom: 20,
+    elevation: 3,
+    shadowColor: '#004ca8',
+    shadowOpacity: 0.3,
+    shadowRadius: 5
+  },
+  pdfButtonText: { color: '#ffffff', fontWeight: 'bold', fontSize: 14 },
+
+  logCard: { flexDirection: 'row', marginBottom: 15 },
+  logLeft: { width: 30, alignItems: 'center', marginRight: 10 },
   timelineLine: { position: 'absolute', top: 30, bottom: -20, width: 2, backgroundColor: '#e2e8f0' },
   iconBox: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center', borderWidth: 2, marginTop: 10, zIndex: 2 },
   
-  logRight: { flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 15, marginTop: 10, marginBottom: 5, borderWidth: 1, borderColor: '#e2e8f0', elevation: 1, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 5 },
+  logRight: { flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 15, marginTop: 10, marginBottom: 5, borderWidth: 1, borderColor: '#e2e8f0', elevation: 1 },
   
   logHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   logAction: { fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.5 },

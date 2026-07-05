@@ -10,6 +10,7 @@ import { ChevronLeft, Calculator, AlertCircle, CheckCircle2, ShoppingCart, Targe
 
 // IMPORTAMOS EL DICCIONARIO CENTRALIZADO DESDE EL SERVICIO
 import { EQUIVALENCIES } from '../services/formulaService';
+import AutocompleteInput from '../components/AutocompleteInput';
 
 export default function QuarterlyCalculatorScreen({ navigation }) {
   const [formulas, setFormulas] = useState([]);
@@ -139,23 +140,20 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
             </Text>
           </View>
         ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.formulaList}>
-            {formulas.map(f => (
-              <TouchableOpacity 
-                key={f.id} 
-                activeOpacity={0.7}
-                style={[styles.formulaChip, selectedFormula?.id === f.id && styles.formulaChipActive]}
-                onPress={() => setSelectedFormula(f)}
-              >
-                <View style={styles.chipIconBox}>
-                  <Beaker color={selectedFormula?.id === f.id ? "#fff" : "#64748b"} size={16} />
-                </View>
-                <Text style={[styles.formulaChipText, selectedFormula?.id === f.id && styles.formulaChipTextActive]}>
-                  {f.productName}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+          <AutocompleteInput
+            data={formulas.map(f => f.productName)}
+            value={selectedFormula?.productName || ''}
+            onChangeText={(txt) => {
+              const matched = formulas.find(f => f.productName.toUpperCase() === txt.trim().toUpperCase());
+              if (matched) {
+                setSelectedFormula(matched);
+              } else {
+                setSelectedFormula({ productName: txt }); // temporary hold
+              }
+            }}
+            placeholder="Ej: ACTION"
+            icon={<Beaker color="#94a3b8" size={18} />}
+          />
         )}
 
         <Text style={styles.label}>2. Volumen Deseado (Litros)</Text>
