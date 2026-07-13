@@ -330,6 +330,11 @@ export default function HomeScreen({ navigation }) {
               <Calculator color="#334155" size={20} />
               <Text style={styles.adminSmallCardText}>Calculadora</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity style={styles.adminSmallCard} onPress={() => navigation.navigate('InventoryAdjustment')}>
+              <Keyboard color="#334155" size={20} />
+              <Text style={styles.adminSmallCardText}>Ajuste Stock</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -380,8 +385,8 @@ export default function HomeScreen({ navigation }) {
             >
               <Keyboard color="#0f172a" size={20} />
               <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text style={styles.modalBtnSecondaryText}>Carga Manual / Ajustes</Text>
-                <Text style={styles.modalBtnSecondarySub}>Altas y Bajas manuales</Text>
+                <Text style={styles.modalBtnSecondaryText}>Carga Manual</Text>
+                <Text style={styles.modalBtnSecondarySub}>Ingresos manuales por compra</Text>
               </View>
             </TouchableOpacity>
           </View>

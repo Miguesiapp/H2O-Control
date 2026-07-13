@@ -11,9 +11,9 @@ import AutocompleteInput from '../components/AutocompleteInput';
 import { RAW_MATERIALS_LIST, PROVIDERS_LIST, ETIQUETA_CAPACITIES, BIDON_CAPACITIES, CAJA_FORMATS } from '../config/constants';
 import { printSingleLabel } from '../services/labelService';
 
-export default function IncomingInventoryScreen({ navigation }) {
-  const [inventoryType, setInventoryType] = useState('MP'); // 'MP' | 'INSUMOS'
-  const operationType = 'INGRESO'; // FIXED to normal input
+export default function InventoryAdjustmentScreen({ navigation }) {
+  const [inventoryType, setInventoryType] = useState('MP'); // 'MP' | 'INSUMOS' | 'PT'
+  const [operationType, setOperationType] = useState(null); // null | 'INGRESO' | 'EGRESO'
   const [unitType, setUnitType] = useState('Kilos'); // 'Kilos' | 'Litros'
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [category, setCategory] = useState('Bidones'); 
@@ -36,12 +36,27 @@ export default function IncomingInventoryScreen({ navigation }) {
   };
 
   const handleSave = async () => {
+    if (!operationType) {
+      Alert.alert("Atención", "Debes seleccionar si es un Alta o Baja por ajuste.");
+      return;
+    }
+
     let qtyNormalized = Number(formData.quantity.replace(',', '.'));
     const isMP = inventoryType === 'MP';
+    const isPT = inventoryType === 'PT';
+    const isEgreso = operationType === 'EGRESO';
 
     if (isNaN(qtyNormalized) || qtyNormalized <= 0) {
       Alert.alert("Datos Inválidos", "La cantidad debe ser mayor a 0.");
       return;
+    }
+
+    if (isEgreso) {
+      qtyNormalized = -Math.abs(qtyNormalized); // Convert to negative for FIFO deduction
+      if (!formData.observations.trim()) {
+        Alert.alert("Justificación Requerida", "Debes ingresar el motivo de la baja en observaciones.");
+        return;
+      }
     }
 
     if (isMP) {
@@ -49,7 +64,7 @@ export default function IncomingInventoryScreen({ navigation }) {
          Alert.alert("Datos Incompletos", "El nombre de la Materia Prima es obligatorio.");
          return;
       }
-      if (!formData.batchProvider.trim() || !formData.expiryDate.trim()) {
+      if (!isEgreso && (!formData.batchProvider.trim() || !formData.expiryDate.trim())) {
         Alert.alert("Datos Incompletos", "Lote del Proveedor y Vencimiento son obligatorios para Ingreso de Materia Prima.");
         return;
       }
@@ -62,12 +77,14 @@ export default function IncomingInventoryScreen({ navigation }) {
 
     try {
       setIsSubmitting(true);
-      const batchInternal = generateUniqueBatch(); 
+      const batchInternal = isEgreso ? 'BAJA-AJUSTE' : generateUniqueBatch(); 
       
       let finalItemName = formData.itemName.trim().toUpperCase();
       let finalUnit = 'Uds';
       
-      if (!isMP) {
+      if (isPT) {
+        finalUnit = unitType === 'Kilos' ? 'Kg' : (unitType === 'Litros' ? 'Lts' : 'Uds');
+      } else if (!isMP) {
         if (category === 'Bidones') finalItemName = `BIDON ${formData.capacity}`;
         if (category === 'Cajas') finalItemName = `CAJA ${formData.format}`;
         if (category === 'Etiquetas') finalItemName = `ETIQUETA ${formData.capacity} ${formData.itemName.trim().toUpperCase()}`;
@@ -82,15 +99,25 @@ export default function IncomingInventoryScreen({ navigation }) {
         providerName: formData.providerName.trim() || 'S/D',
         expiryDate: formData.expiryDate.trim() || 'S/V',
         observations: formData.observations.trim(),
-        category: isMP ? 'Materia Prima' : category,
-        stockType: isMP ? 'MP' : 'INSUMOS',
+        category: isMP ? 'Materia Prima' : (isPT ? 'Producto Terminado' : category),
+        stockType: isMP ? 'MP' : (isPT ? 'FINAL' : 'INSUMOS'),
         batchInternal: batchInternal, 
         unit: finalUnit,
-        status: isMP ? 'PENDIENTE' : 'APTO'
+        status: isMP && !isEgreso ? 'PENDIENTE' : 'APTO'
       };
 
-      const companyDest = isMP ? 'STOCK_CENTRAL_MP' : 'STOCK_CENTRAL_INSUMOS';
-      const actionName = isMP ? 'INGRESO_MANUAL_MATERIA_PRIMA' : `INGRESO_MANUAL_${category.toUpperCase().replace(/ /g, '_')}`;
+      let companyDest = 'STOCK_CENTRAL_INSUMOS';
+      if (isMP) companyDest = 'STOCK_CENTRAL_MP';
+      if (isPT) companyDest = 'H2O';
+      
+      let actionName = '';
+      if (isEgreso) {
+        actionName = 'BAJA_POR_AJUSTE';
+      } else {
+        if (isMP) actionName = 'ALTA_POR_AJUSTE_MATERIA_PRIMA';
+        else if (isPT) actionName = 'ALTA_POR_AJUSTE_PRODUCTO_TERMINADO';
+        else actionName = `ALTA_POR_AJUSTE_${category.toUpperCase().replace(/ /g, '_')}`;
+      }
 
       await registerMovement(
         auth.currentUser?.email || 'Sistema',
@@ -99,6 +126,13 @@ export default function IncomingInventoryScreen({ navigation }) {
         movementData
       );
 
+      if (isEgreso) {
+        Alert.alert(
+          "Baja Registrada", 
+          `Se descontaron ${Math.abs(qtyNormalized)} ${finalUnit} de ${finalItemName}.`,
+          [{ text: "Entendido", onPress: () => navigation.goBack() }]
+        );
+      } else {
         Alert.alert(
           "Alta de Stock Exitosa",
           `Lote asignado: ${batchInternal}\n¿Desea imprimir etiqueta de identificación (Zebra)?`,
@@ -123,6 +157,7 @@ export default function IncomingInventoryScreen({ navigation }) {
             }
           ]
         );
+      }
 
     } catch (error) {
       console.error(error);
@@ -133,6 +168,7 @@ export default function IncomingInventoryScreen({ navigation }) {
   };
 
   const INSUMOS_CATEGORIES = ['Bidones', 'Cajas', 'Etiquetas'];
+  const isEgreso = operationType === 'EGRESO';
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -144,20 +180,47 @@ export default function IncomingInventoryScreen({ navigation }) {
         </TouchableOpacity>
         <View style={{alignItems: 'center'}}>
             <Text style={styles.headerTitle}>Gestión de Stock</Text>
-            <Text style={styles.headerSub}>Movimientos Manuales</Text>
+            <Text style={styles.headerSub}>Ajustes de Inventario</Text>
         </View>
         <PackagePlus color="#0f172a" size={24} />
       </View>
 
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         
+        {/* Toggle INGRESO / EGRESO */}
+        <View style={styles.opToggleContainer}>
+          <TouchableOpacity 
+            style={[styles.opToggleBtn, operationType === 'INGRESO' && styles.opToggleBtnIngreso]}
+            onPress={() => setOperationType('INGRESO')}
+          >
+            <ArrowUpCircle color={operationType === 'INGRESO' ? '#fff' : '#64748b'} size={18} style={{marginRight: 6}} />
+            <Text style={[styles.opToggleText, operationType === 'INGRESO' && styles.opToggleTextActive]}>ALTA POR AJUSTE</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.opToggleBtn, operationType === 'EGRESO' && styles.opToggleBtnEgreso]}
+            onPress={() => setOperationType('EGRESO')}
+          >
+            <ArrowDownCircle color={operationType === 'EGRESO' ? '#fff' : '#64748b'} size={18} style={{marginRight: 6}} />
+            <Text style={[styles.opToggleText, operationType === 'EGRESO' && styles.opToggleTextActive]}>BAJA POR AJUSTE</Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.masterToggleContainer}>
           <TouchableOpacity 
             style={[styles.masterToggleBtn, inventoryType === 'MP' && styles.masterToggleBtnActive]}
             onPress={() => setInventoryType('MP')}
           >
             <Database color={inventoryType === 'MP' ? '#fff' : '#64748b'} size={18} style={{marginRight: 6}} />
-            <Text style={[styles.masterToggleText, inventoryType === 'MP' && styles.masterToggleTextActive]}>MATERIA PRIMA GRAL</Text>
+            <Text style={[styles.masterToggleText, inventoryType === 'MP' && styles.masterToggleTextActive]}>MP</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.masterToggleBtn, inventoryType === 'PT' && { backgroundColor: '#10b981', borderColor: '#10b981' }]}
+            onPress={() => setInventoryType('PT')}
+          >
+            <PackagePlus color={inventoryType === 'PT' ? '#fff' : '#64748b'} size={18} style={{marginRight: 6}} />
+            <Text style={[styles.masterToggleText, inventoryType === 'PT' && styles.masterToggleTextActive]}>PT</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -165,7 +228,7 @@ export default function IncomingInventoryScreen({ navigation }) {
             onPress={() => setInventoryType('INSUMOS')}
           >
             <Box color={inventoryType === 'INSUMOS' ? '#fff' : '#64748b'} size={18} style={{marginRight: 6}} />
-            <Text style={[styles.masterToggleText, inventoryType === 'INSUMOS' && styles.masterToggleTextActive]}>STOCK GENERAL INSUMOS</Text>
+            <Text style={[styles.masterToggleText, inventoryType === 'INSUMOS' && styles.masterToggleTextActive]}>INSUMOS</Text>
           </TouchableOpacity>
         </View>
 
@@ -188,11 +251,11 @@ export default function IncomingInventoryScreen({ navigation }) {
         )}
 
         <View style={styles.card}>
-          {(inventoryType === 'MP' || (inventoryType === 'INSUMOS' && category === 'Etiquetas')) && (
+          {(inventoryType === 'MP' || inventoryType === 'PT' || (inventoryType === 'INSUMOS' && category === 'Etiquetas')) && (
             <>
-              <Text style={styles.label}>{inventoryType === 'MP' ? 'Descripción de Materia Prima' : 'Producto al que corresponde la Etiqueta'}</Text>
+              <Text style={styles.label}>{inventoryType === 'MP' ? 'Descripción de Materia Prima' : (inventoryType === 'PT' ? 'Descripción del Producto Terminado' : 'Producto al que corresponde la Etiqueta')}</Text>
               <AutocompleteInput
-                data={inventoryType === 'MP' ? RAW_MATERIALS_LIST : []} // En etiquetas podría sugerir productos
+                data={inventoryType === 'MP' ? RAW_MATERIALS_LIST : []} // En etiquetas o PT podría sugerir productos
                 value={formData.itemName}
                 onChangeText={(txt) => setFormData({...formData, itemName: txt})}
                 placeholder={inventoryType === 'MP' ? "Ej: ÁCIDO SULFÚRICO" : "Ej: ACTION"}
@@ -255,10 +318,10 @@ export default function IncomingInventoryScreen({ navigation }) {
             </>
           )}
 
-          <Text style={styles.label}>Cantidad a Ingresar</Text>
+          <Text style={styles.label}>Cantidad a {isEgreso ? 'Descontar' : 'Ingresar'}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <View style={[styles.inputWrapper, { flex: 1, marginBottom: 0 }]}>
-              <Circle color="#94a3b8" size={18} style={styles.inputIcon} />
+            <View style={[styles.inputWrapper, { flex: 1, marginBottom: 0 }, isEgreso && { borderColor: '#fca5a5', backgroundColor: '#fef2f2' }]}>
+              <Circle color={isEgreso ? "#ef4444" : "#94a3b8"} size={18} style={styles.inputIcon} />
               <TextInput 
                 style={styles.input} 
                 placeholder="Cantidad"
@@ -288,7 +351,9 @@ export default function IncomingInventoryScreen({ navigation }) {
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>Trazabilidad de Origen</Text>
+        {!isEgreso && (
+          <>
+            <Text style={styles.sectionTitle}>Trazabilidad de Origen</Text>
             <View style={styles.card}>
               <Text style={styles.label}>Razón Social Proveedor</Text>
               <AutocompleteInput
@@ -328,13 +393,16 @@ export default function IncomingInventoryScreen({ navigation }) {
                 </View>
               </View>
             </View>
+          </>
+        )}
+        
         <View style={styles.card}>
-          <Text style={styles.label}>Observaciones / Justificación</Text>
+          <Text style={styles.label}>Observaciones / Justificación {isEgreso && '*'}</Text>
           <View style={[styles.inputWrapper, { height: 80, alignItems: 'flex-start', paddingTop: 10 }]}>
             <ClipboardList color="#94a3b8" size={18} style={styles.inputIcon} />
             <TextInput 
               style={[styles.input, { height: 60, textAlignVertical: 'top' }]} 
-              placeholder="Estado del remito, chofer..." 
+              placeholder={isEgreso ? "Ej: Muestra enviada a cliente..." : "Estado del remito, chofer..."} 
               placeholderTextColor="#94a3b8"
               multiline
               value={formData.observations}
@@ -344,7 +412,7 @@ export default function IncomingInventoryScreen({ navigation }) {
         </View>
 
         <TouchableOpacity 
-          style={[styles.saveButton, isSubmitting && { opacity: 0.7 }]} 
+          style={[styles.saveButton, isEgreso && { backgroundColor: '#ef4444', shadowColor: '#ef4444' }, isSubmitting && { opacity: 0.7 }]} 
           onPress={handleSave}
           disabled={isSubmitting}
         >
@@ -353,7 +421,7 @@ export default function IncomingInventoryScreen({ navigation }) {
           ) : (
             <>
               <Save color="#fff" size={20} />
-              <Text style={styles.saveButtonText}>Confirmar Ingreso</Text>
+              <Text style={styles.saveButtonText}>{isEgreso ? 'Confirmar Baja' : 'Confirmar Ingreso'}</Text>
             </>
           )}
         </TouchableOpacity>

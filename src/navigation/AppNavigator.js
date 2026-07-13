@@ -12,6 +12,7 @@ import StockView from '../screens/StockView';
 
 // 3. Operaciones Logísticas de Movimiento
 import IncomingInventoryScreen from '../screens/IncomingInventoryScreen';
+import InventoryAdjustmentScreen from '../screens/InventoryAdjustmentScreen';
 import OutgoingInventoryScreen from '../screens/OutgoingInventoryScreen';
 import ProductionOrderScreen from '../screens/ProductionOrderScreen';
 import PackagingOrderScreen from '../screens/PackagingOrderScreen';
@@ -68,6 +69,7 @@ export default function AppNavigator({ user }) {
       
       {/* SECCIÓN: OPERACIONES DE PLANTA (TRANSFERENCIAS) */}
       <Stack.Screen name="IncomingInventory" component={IncomingInventoryScreen} />
+      <Stack.Screen name="InventoryAdjustment" component={InventoryAdjustmentScreen} />
       <Stack.Screen name="OutgoingInventory" component={OutgoingInventoryScreen} />
       <Stack.Screen name="ProductionOrder" component={ProductionOrderScreen} />
       <Stack.Screen name="PackagingOrder" component={PackagingOrderScreen} />
