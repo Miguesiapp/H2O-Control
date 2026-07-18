@@ -62,7 +62,6 @@ export default function ProductionOrderScreen({ route, navigation }) {
   // ======================================================================
   const [productName, setProductName] = useState('');
   const [targetQuantity, setTargetQuantity] = useState('');
-  const [batchProvider, setBatchProvider] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
   
   const [isCalculating, setIsCalculating] = useState(false);
@@ -210,14 +209,30 @@ export default function ProductionOrderScreen({ route, navigation }) {
 
       // 1. DESCONTA INMEDIATAMENTE LAS MATERIAS PRIMAS (Reserva física)
       for (const req of requirements.needs) {
-        await registerMovement(currentUser, 'RETIRO_PRODUCCION', req.isGranel ? 'H2O' : companyName, {
-          itemName: req.name,
-          quantity: -Math.abs(req.required), 
-          stockType: req.isGranel ? 'GRANEL' : 'MP',
-          batchInternal: batchId,
-          loteProveedor: batchProvider.trim() || 'S/D', 
-          unit: 'Kg/Lts'
-        });
+        if (req.batchesToConsume && req.batchesToConsume.length > 0) {
+          for (const b of req.batchesToConsume) {
+            await registerMovement(currentUser, 'RETIRO_PRODUCCION', req.isGranel ? 'H2O' : companyName, {
+              itemName: req.name,
+              quantity: -Math.abs(b.consumed), 
+              stockType: req.isGranel ? 'GRANEL' : 'MP',
+              batchInternal: b.batchInternal,
+              loteProveedor: b.batchProvider, 
+              unit: 'Kg/Lts',
+              details: `OP ${batchId}`
+            });
+          }
+        } else {
+          // Fallback para faltantes forzados
+          await registerMovement(currentUser, 'RETIRO_PRODUCCION', req.isGranel ? 'H2O' : companyName, {
+            itemName: req.name,
+            quantity: -Math.abs(req.required), 
+            stockType: req.isGranel ? 'GRANEL' : 'MP',
+            batchInternal: batchId,
+            loteProveedor: 'S/D', 
+            unit: 'Kg/Lts',
+            details: `OP ${batchId} (Forzado)`
+          });
+        }
       }
 
       // 2. CREA LA ORDEN EN MÁQUINA DE ESTADOS (Ticket ENVIADO)
@@ -228,7 +243,6 @@ export default function ProductionOrderScreen({ route, navigation }) {
         targetKilos: requirements.targetKilos,
         stockType: 'GRANEL', 
         batchInternal: batchId,
-        batchProvider: batchProvider.trim() || 'S/D',
         expiryDate: expiryDate.trim(),
         unit: 'Lts',
         company: companyName,
@@ -245,7 +259,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
           setRequirements(null);
           setProductName('');
           setTargetQuantity('');
-          setBatchProvider('');
+          setExpiryDate('');
           setExpiryDate('');
         } }]
       );
@@ -290,7 +304,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
         quantity: orderData.quantity, 
         stockType: 'GRANEL', 
         batchInternal: orderData.batchInternal,
-        batchProvider: orderData.batchProvider,
+        batchProvider: 'PROPIA',
         expiryDate: orderData.expiryDate,
         unit: orderData.unit,
         company: orderData.company,
@@ -458,20 +472,6 @@ export default function ProductionOrderScreen({ route, navigation }) {
                   keyboardType="numeric"
                   value={targetQuantity}
                   onChangeText={(text) => { setTargetQuantity(text); setRequirements(null); }}
-                  placeholderTextColor="#94a3b8"
-                />
-              </View>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Lotes de Proveedor MP Usados (Trazabilidad)</Text>
-              <View style={styles.inputWrapper}>
-                <FileText color="#94a3b8" size={20} style={styles.inputIcon} />
-                <TextInput 
-                  style={styles.input} 
-                  placeholder="Ej: BCK-990, L-445" 
-                  value={batchProvider}
-                  onChangeText={setBatchProvider}
                   placeholderTextColor="#94a3b8"
                 />
               </View>

@@ -8,11 +8,7 @@ import { db, auth } from '../config/firebase';
 import { collection, query, where, getDocs, onSnapshot, getDoc, doc } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
 import { canAccessQualityControl } from '../config/permissions';
-import {
-  LogOut, FlaskConical, ClipboardCheck,
-  ChevronRight, Clock, Sparkles, Calculator,
-  UserCheck, Database, Keyboard, Package, Truck, Beaker, Container, Box
-} from 'lucide-react-native';
+import { LogOut, FlaskConical, ClipboardCheck, ChevronRight, Clock, Sparkles, Calculator, UserCheck, Database, Keyboard, Package, Truck, Beaker, Container, Box, MonitorPlay, ShoppingCart } from 'lucide-react-native';
 
 export default function HomeScreen({ navigation }) {
   const { width, height } = useWindowDimensions();
@@ -225,6 +221,17 @@ export default function HomeScreen({ navigation }) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Órdenes y Operativa</Text>
 
+          <TouchableOpacity activeOpacity={0.8} style={styles.labCard} onPress={() => navigation.navigate('OrdersBoard')}>
+            <View style={[styles.labIconBox, { backgroundColor: '#1e293b' }]}>
+              <MonitorPlay color="#38bdf8" size={24} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.labCardTitle, { color: '#1e293b' }]}>Tablero de Órdenes</Text>
+              <Text style={styles.labCardSub}>Monitor de estado de OP, OE y OD</Text>
+            </View>
+            <ChevronRight color="#cbd5e1" size={20} />
+          </TouchableOpacity>
+
           <TouchableOpacity activeOpacity={0.8} style={styles.labCard} onPress={() => navigation.navigate('ProductionOrder', { companyName: 'H2O' })}>
             <View style={[styles.labIconBox, { backgroundColor: '#f0f9ff' }]}>
               <Beaker color="#0ea5e9" size={24} />
@@ -257,6 +264,19 @@ export default function HomeScreen({ navigation }) {
                 )}
               </View>
               <Text style={styles.labCardSub}>Envasar en Bidones y Cajas</Text>
+            </View>
+            <ChevronRight color="#cbd5e1" size={20} />
+          </TouchableOpacity>
+
+          <TouchableOpacity activeOpacity={0.8} style={styles.labCard} onPress={() => navigation.navigate('DirectPackagingOrder', { companyName: 'H2O' })}>
+            <View style={[styles.labIconBox, { backgroundColor: '#ecfdf5' }]}>
+              <Box color="#10b981" size={24} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={styles.labCardTitle}>Orden Envasado Directo (OEM)</Text>
+              </View>
+              <Text style={styles.labCardSub}>Envasar Materia Prima en Bidones/Cajas</Text>
             </View>
             <ChevronRight color="#cbd5e1" size={20} />
           </TouchableOpacity>
@@ -318,7 +338,12 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.qualityCardText}>Tótem Asistencia</Text>
             </TouchableOpacity>
 
-            <View style={{ flex: 1 }} />
+            <TouchableOpacity style={styles.qualityCard} onPress={() => navigation.navigate('PurchaseRequests')}>
+              <View style={[styles.qualityIconBox, { backgroundColor: '#fef2f2' }]}>
+                <ShoppingCart color="#ef4444" size={24} />
+              </View>
+              <Text style={styles.qualityCardText}>Pedidos Internos</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -338,60 +363,24 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
 
-        <View style={{ height: 90 }} />
-      </ScrollView>
-
-      {/* FAB: INGRESO GLOBAL DE MP */}
-      <TouchableOpacity
-        style={styles.fabAiButton}
-        activeOpacity={0.9}
-        onPress={() => setMpModalVisible(true)}
-      >
-        <Text style={styles.fabAiText}>CARGAR STOCK</Text>
-      </TouchableOpacity>
-
-      {/* MODAL GLOBAL MP */}
-      <Modal
-        visible={mpModalVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setMpModalVisible(false)}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => setMpModalVisible(false)}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Ingreso Global de Stock</Text>
-            <Text style={styles.modalSub}>Selecciona cómo deseas registrar el movimiento.</Text>
-
-            <TouchableOpacity
-              style={styles.modalBtnPrimary}
-              onPress={() => {
-                setMpModalVisible(false);
-                navigation.navigate('SmartAICargo', { companyName: 'STOCK_CENTRAL_MP' });
-              }}
-            >
-              <Sparkles color="#fff" size={20} />
-              <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text style={styles.modalBtnPrimaryText}>Ingreso Inteligente (IA)</Text>
-                <Text style={styles.modalBtnPrimarySub}>Pegar texto, lista o usar cámara</Text>
-              </View>
+        {/* ENTRADAS DE STOCK */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Ingresos de Stock</Text>
+          <View style={styles.row}>
+            <TouchableOpacity style={styles.adminSmallCard} onPress={() => navigation.navigate('SmartAICargo', { companyName: 'STOCK_CENTRAL_MP' })}>
+              <Sparkles color="#3b82f6" size={20} />
+              <Text style={styles.adminSmallCardText}>Ingreso IA</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.modalBtnSecondary}
-              onPress={() => {
-                setMpModalVisible(false);
-                navigation.navigate('IncomingInventory', { companyName: 'STOCK_CENTRAL_MP' });
-              }}
-            >
-              <Keyboard color="#0f172a" size={20} />
-              <View style={{ flex: 1, marginLeft: 10 }}>
-                <Text style={styles.modalBtnSecondaryText}>Carga Manual</Text>
-                <Text style={styles.modalBtnSecondarySub}>Ingresos manuales por compra</Text>
-              </View>
+            <TouchableOpacity style={styles.adminSmallCard} onPress={() => navigation.navigate('IncomingInventory', { companyName: 'STOCK_CENTRAL_MP' })}>
+              <Keyboard color="#64748b" size={20} />
+              <Text style={styles.adminSmallCardText}>Carga Manual</Text>
             </TouchableOpacity>
           </View>
-        </Pressable>
-      </Modal>
+        </View>
+
+        <View style={{ height: 90 }} />
+      </ScrollView>
 
     </SafeAreaView>
   );

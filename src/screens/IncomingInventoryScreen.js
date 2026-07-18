@@ -4,9 +4,10 @@ import {
   TouchableOpacity, Alert, StatusBar, ActivityIndicator, Switch
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { auth } from '../config/firebase';
+import { db, auth } from '../config/firebase';
+import { collection, addDoc, getDocs, onSnapshot } from 'firebase/firestore';
 import { registerMovement } from '../services/logisticsService';
-import { ChevronLeft, Save, PackagePlus, FileText, Calendar, Building2, Truck, Droplet, Box, Circle, ClipboardList, Database, ArrowDownCircle, ArrowUpCircle } from 'lucide-react-native';
+import { ChevronLeft, Save, PackagePlus, FileText, Calendar, Building2, Truck, Droplet, Box, Circle, ClipboardList, Database, ArrowDownCircle, ArrowUpCircle, Plus } from 'lucide-react-native';
 import AutocompleteInput from '../components/AutocompleteInput';
 import { RAW_MATERIALS_LIST, PROVIDERS_LIST, ETIQUETA_CAPACITIES, BIDON_CAPACITIES, CAJA_FORMATS } from '../config/constants';
 import { printSingleLabel } from '../services/labelService';
@@ -28,6 +29,44 @@ export default function IncomingInventoryScreen({ navigation }) {
     capacity: '20L', 
     format: 'x5'     
   });
+
+  // Materiales dinámicos
+  const [customMaterials, setCustomMaterials] = useState([]);
+  const [isAddingNewMP, setIsAddingNewMP] = useState(false);
+  const [newMPName, setNewMPName] = useState('');
+
+  React.useEffect(() => {
+    const unsub = onSnapshot(collection(db, "Custom_Materials"), (snapshot) => {
+      const mats = [];
+      snapshot.forEach(doc => {
+        if (doc.data().name) mats.push(doc.data().name);
+      });
+      setCustomMaterials(mats);
+    });
+    return () => unsub();
+  }, []);
+
+  const mergedMaterialsList = [...new Set([...RAW_MATERIALS_LIST, ...customMaterials])].sort();
+
+  const handleCreateNewMP = async () => {
+    if (!newMPName.trim()) {
+      Alert.alert("Error", "Ingresa un nombre para la nueva materia prima");
+      return;
+    }
+    try {
+      const normalizedName = newMPName.trim().toUpperCase();
+      await addDoc(collection(db, "Custom_Materials"), {
+        name: normalizedName,
+        createdAt: new Date().toISOString()
+      });
+      setFormData({...formData, itemName: normalizedName});
+      setIsAddingNewMP(false);
+      setNewMPName('');
+      Alert.alert("Éxito", "Nueva Materia Prima guardada en el catálogo");
+    } catch (e) {
+      Alert.alert("Error", "No se pudo guardar la materia prima");
+    }
+  };
 
   const generateUniqueBatch = () => {
     const fecha = new Date().toISOString().split('T')[0].replace(/-/g, '');
@@ -192,12 +231,21 @@ export default function IncomingInventoryScreen({ navigation }) {
             <>
               <Text style={styles.label}>{inventoryType === 'MP' ? 'Descripción de Materia Prima' : 'Producto al que corresponde la Etiqueta'}</Text>
               <AutocompleteInput
-                data={inventoryType === 'MP' ? RAW_MATERIALS_LIST : []} // En etiquetas podría sugerir productos
+                data={inventoryType === 'MP' ? mergedMaterialsList : []} 
                 value={formData.itemName}
                 onChangeText={(txt) => setFormData({...formData, itemName: txt})}
                 placeholder={inventoryType === 'MP' ? "Ej: ÁCIDO SULFÚRICO" : "Ej: ACTION"}
                 icon={<FileText color="#94a3b8" size={18} />}
               />
+              {inventoryType === 'MP' && (
+                <TouchableOpacity 
+                  style={{ flexDirection: 'row', alignItems: 'center', marginTop: -5, marginBottom: 15, alignSelf: 'flex-start' }}
+                  onPress={() => setIsAddingNewMP(true)}
+                >
+                  <Plus color="#3b82f6" size={16} />
+                  <Text style={{ color: '#3b82f6', fontSize: 12, fontWeight: '700', marginLeft: 4 }}>Añadir Nueva MP al Catálogo</Text>
+                </TouchableOpacity>
+              )}
             </>
           )}
 
@@ -360,6 +408,32 @@ export default function IncomingInventoryScreen({ navigation }) {
         
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* MODAL NUEVA MP */}
+      {isAddingNewMP && (
+        <View style={StyleSheet.absoluteFillObject}>
+          <View style={{flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20}}>
+            <View style={{backgroundColor: '#fff', padding: 20, borderRadius: 16}}>
+              <Text style={{fontSize: 16, fontWeight: 'bold', marginBottom: 15}}>Registrar Nueva Materia Prima</Text>
+              <TextInput 
+                style={styles.input}
+                placeholder="Nombre de la nueva MP (ej. ACIDO CITRICO)"
+                value={newMPName}
+                onChangeText={setNewMPName}
+                autoCapitalize="characters"
+              />
+              <View style={{flexDirection: 'row', justifyContent: 'flex-end', marginTop: 20, gap: 10}}>
+                <TouchableOpacity onPress={() => setIsAddingNewMP(false)} style={{padding: 10}}>
+                  <Text style={{color: '#64748b', fontWeight: 'bold'}}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleCreateNewMP} style={{padding: 10, backgroundColor: '#3b82f6', borderRadius: 8}}>
+                  <Text style={{color: '#fff', fontWeight: 'bold'}}>Guardar y Usar</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }

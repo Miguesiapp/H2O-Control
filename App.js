@@ -5,7 +5,7 @@ import { View, Text, ActivityIndicator, StatusBar, Platform, Animated, Image, St
 import { auth } from './src/config/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import AppNavigator from './src/navigation/AppNavigator';
-
+import Toast from 'react-native-toast-message';
 // ---------------------------------------------------------
 // FIX: Habilitar scroll nativo en React Native Web
 // ---------------------------------------------------------
@@ -97,6 +97,7 @@ export default function App() {
     <NavigationContainer>
       <StatusBar barStyle="dark-content" />
       <AppNavigator user={user} />
+      <Toast />
     </NavigationContainer>
   );
 }

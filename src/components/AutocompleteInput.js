@@ -1,5 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, Keyboard } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Keyboard, Alert } from 'react-native';
+
+const normalizeString = (str) => {
+  if (!str) return '';
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase();
+};
 
 export default function AutocompleteInput({ 
   data, 
@@ -9,24 +14,52 @@ export default function AutocompleteInput({
   icon: IconComponent, 
   containerStyle 
 }) {
+  const [inputText, setInputText] = useState(value || '');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [filteredData, setFilteredData] = useState([]);
+  
+  // Sincronizar el estado local si el valor externo cambia (ej: cuando se resetea el form)
+  useEffect(() => {
+    setInputText(value || '');
+  }, [value]);
 
   useEffect(() => {
-    if (value && showSuggestions) {
+    if (inputText && showSuggestions) {
+      const normalizedInput = normalizeString(inputText);
       const filtered = data.filter(item => 
-        item.toLowerCase().includes(value.toLowerCase())
+        normalizeString(item).includes(normalizedInput)
       );
       setFilteredData(filtered);
     } else {
       setFilteredData([]);
     }
-  }, [value, data, showSuggestions]);
+  }, [inputText, data, showSuggestions]);
 
   const handleSelect = (item) => {
-    onChangeText(item);
+    const displayName = item.split('/')[0].trim();
+    setInputText(displayName);
+    onChangeText(displayName);
     setShowSuggestions(false);
     Keyboard.dismiss();
+  };
+
+  const handleBlur = () => {
+    if (inputText) {
+      const match = data.find(d => normalizeString(d.split('/')[0].trim()) === normalizeString(inputText));
+      if (match) {
+        const displayName = match.split('/')[0].trim();
+        setInputText(displayName);
+        onChangeText(displayName);
+      } else {
+        Alert.alert("Atención", "Ese ítem no existe en la base de datos o no lo seleccionaste de la lista. Por favor, vuelve a intentarlo.");
+        setInputText('');
+        onChangeText('');
+      }
+    }
+    // Esconder sugerencias con un ligero retraso para permitir que se ejecute el onPress de la lista
+    setTimeout(() => {
+      setShowSuggestions(false);
+    }, 200);
   };
 
   return (
@@ -36,14 +69,17 @@ export default function AutocompleteInput({
         <TextInput
           style={styles.input}
           placeholder={placeholder}
-          value={value}
+          value={inputText}
           onChangeText={(txt) => {
-            onChangeText(txt);
+            setInputText(txt);
+            // Vaciamos el valor en el componente padre hasta que seleccione algo válido
+            if (value !== '') onChangeText(''); 
             setShowSuggestions(true);
           }}
           onFocus={() => {
-             if (value) setShowSuggestions(true);
+             if (inputText) setShowSuggestions(true);
           }}
+          onBlur={handleBlur}
           placeholderTextColor="#94a3b8"
           autoCapitalize="characters"
         />
@@ -57,7 +93,8 @@ export default function AutocompleteInput({
              <TouchableOpacity 
                key={index.toString()} 
                style={styles.suggestionItem}
-               onPress={() => handleSelect(displayName)}
+               onPress={() => handleSelect(item)}
+               keyboardShouldPersistTaps="always"
              >
                <Text style={styles.suggestionText}>{displayName}</Text>
              </TouchableOpacity>
@@ -98,24 +135,26 @@ const styles = StyleSheet.create({
     top: 55,
     left: 0,
     right: 0,
-    backgroundColor: '#fff',
+    backgroundColor: '#ffffff', // Fondo sólido para que no sea translúcido
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
+    borderColor: '#cbd5e1',
+    maxHeight: 250,
+    overflow: 'hidden',
     zIndex: 9999,
+    elevation: 10, // Sombra para Android
+    shadowColor: '#000', // Sombra para iOS
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
   },
   suggestionItem: {
-    padding: 12,
+    padding: 15,
     borderBottomWidth: 1,
     borderBottomColor: '#f1f5f9',
   },
   suggestionText: {
-    fontSize: 14,
+    fontSize: 15,
     color: '#334155',
     fontWeight: '600',
   }

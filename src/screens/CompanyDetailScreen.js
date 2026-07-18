@@ -22,6 +22,7 @@ export default function CompanyDetailScreen({ route, navigation }) {
   const menuOptions = [
     { id: 'prod', title: 'Producción', sub: 'Crear Granel (OP)', icon: <Package size={28} color="#f59e0b" />, bg: '#fffbeb', border: '#fde68a', screen: 'ProductionOrder' },
     { id: 'envasado', title: 'Envasado', sub: 'Llenado Final (OE)', icon: <Container size={28} color="#3b82f6" />, bg: '#eff6ff', border: '#bfdbfe', screen: 'PackagingOrder' },
+    { id: 'envasadodirecto', title: 'Env. Directo MP', sub: 'Envasado de Materia Prima (OEM)', icon: <Container size={28} color="#10b981" />, bg: '#ecfdf5', border: '#a7f3d0', screen: 'DirectPackagingOrder' },
     { id: 'egresos', title: 'Despachos', sub: 'Salida a Cliente', icon: <ArrowUpFromLine size={28} color="#ef4444" />, bg: '#fef2f2', border: '#fecaca', screen: 'OutgoingInventory' },
   ];
 

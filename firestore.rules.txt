@@ -130,9 +130,18 @@ service cloud.firestore {
     match /Formulas/{formula} {
       allow read, write: if isAuthorized();
     }
+
+    match /Custom_Materials/{material} {
+      allow read, write: if isAuthorized();
+    }
+
     match /logs/{log} {
       allow read, create: if isAuthorized();
       allow update, delete: if false; 
+    }
+
+    match /PurchaseRequests/{request} {
+      allow read, write: if isAuthorized();
     }
   }
 }

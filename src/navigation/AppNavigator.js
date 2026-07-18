@@ -16,7 +16,9 @@ import InventoryAdjustmentScreen from '../screens/InventoryAdjustmentScreen';
 import OutgoingInventoryScreen from '../screens/OutgoingInventoryScreen';
 import ProductionOrderScreen from '../screens/ProductionOrderScreen';
 import PackagingOrderScreen from '../screens/PackagingOrderScreen';
+import DirectPackagingOrderScreen from '../screens/DirectPackagingOrderScreen';
 import InterCompanyTransferScreen from '../screens/InterCompanyTransferScreen'; 
+import OrdersBoardScreen from '../screens/OrdersBoardScreen';
 
 // 4. Módulos de Laboratorio (H2O), Calidad (BBS) y Reportes
 import FormulationScreen from '../screens/FormulationScreen'; 
@@ -34,6 +36,9 @@ import AttendanceReportsScreen from '../screens/AttendanceReportsScreen';
 
 // 7. Módulo de Inteligencia Ejecutiva (C-LEVEL)
 import ExecutiveReportsScreen from '../screens/ExecutiveReportsScreen';
+
+// 8. Solicitudes de Compras
+import PurchaseRequestsScreen from '../screens/PurchaseRequestsScreen';
 
 // NOTA: Se eliminaron QRGeneratorScreen y TraceabilityScannerScreen de las importaciones.
 
@@ -73,13 +78,18 @@ export default function AppNavigator({ user }) {
       <Stack.Screen name="OutgoingInventory" component={OutgoingInventoryScreen} />
       <Stack.Screen name="ProductionOrder" component={ProductionOrderScreen} />
       <Stack.Screen name="PackagingOrder" component={PackagingOrderScreen} />
+      <Stack.Screen name="DirectPackagingOrder" component={DirectPackagingOrderScreen} />
       <Stack.Screen name="InterCompanyTransfer" component={InterCompanyTransferScreen} />
+      <Stack.Screen name="OrdersBoard" component={OrdersBoardScreen} />
       
-      {/* SECCIÓN: LABORATORIO Y AUDITORÍA */}
+      {/* SECCIÓN: MÓDULOS DE LABORATORIO E HISTORIAL */}
+      <Stack.Screen name="History" component={HistoryScreen} />
       <Stack.Screen name="Formulation" component={FormulationScreen} />
       <Stack.Screen name="AddFormula" component={AddFormulaScreen} />
       <Stack.Screen name="QualityControl" component={QualityControlScreen} />
-      <Stack.Screen name="History" component={HistoryScreen} />
+
+      {/* SECCIÓN: PEDIDOS INTERNOS */}
+      <Stack.Screen name="PurchaseRequests" component={PurchaseRequestsScreen} />
 
       {/* SECCIÓN: PERSONAL Y ASISTENCIA */}
       <Stack.Screen name="StaffAttendance" component={StaffAttendanceScreen} />

@@ -73,7 +73,8 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
       const isExactDeduction = 
         actionType === 'EGRESO_DESPACHO_CLIENTE' || 
         actionType === 'CONSUMO_ENVASADO' ||
-        (actionType === 'EGRESO_CLEARING' && data.batchInternal && data.batchInternal !== 'S/D');
+        actionType === 'RETIRO_PRODUCCION' ||
+        ((actionType === 'EGRESO_CLEARING' || actionType === 'BAJA_POR_AJUSTE') && data.batchInternal && data.batchInternal !== 'S/D');
 
       if (isExactDeduction) {
         // DESCUENTO EXACTO: Va directo al Lote que el usuario eligió en pantalla

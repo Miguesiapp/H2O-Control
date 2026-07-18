@@ -1,17 +1,45 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, FlatList, TouchableOpacity, 
-  TextInput, ActivityIndicator, StatusBar 
+  TextInput, ActivityIndicator, StatusBar, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
-import { collection, onSnapshot, query, orderBy, where } from 'firebase/firestore';
-import { ChevronLeft, Plus, Beaker, Search, AlertTriangle, ListFilter, BrainCircuit } from 'lucide-react-native';
+import { collection, onSnapshot, query, orderBy, where, doc, deleteDoc } from 'firebase/firestore';
+import { ChevronLeft, Plus, Search, Beaker, CheckCircle2, FlaskConical, AlertCircle, AlertTriangle, Edit3, Trash2 } from 'lucide-react-native';
+import Toast from 'react-native-toast-message';
+
+const normalizeString = (str) => {
+  if (!str) return '';
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase();
+};
 
 export default function FormulationScreen({ navigation }) {
   const [formulas, setFormulas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
+
+  const handleDelete = (id, name) => {
+    Alert.alert(
+      "Eliminar Fórmula",
+      `¿Estás seguro que deseas eliminar la receta de ${name}? Esta acción no se puede deshacer.`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Eliminar", 
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteDoc(doc(db, "Formulas_Maestras", id));
+              Toast.show({ type: 'success', text1: 'Eliminado', text2: `La receta de ${name} fue eliminada permanentemente.` });
+            } catch (e) {
+              Alert.alert("Error", "No se pudo eliminar la fórmula.");
+            }
+          }
+        }
+      ]
+    );
+  };
 
   useEffect(() => {
     // Apuntamos a Formulas_Maestras y solo traemos las ACTIVAS
@@ -35,7 +63,7 @@ export default function FormulationScreen({ navigation }) {
 
   // Filtrado de búsqueda
   const filteredFormulas = formulas.filter(f => 
-    f.productName.toLowerCase().includes(searchText.toLowerCase())
+    normalizeString(f.productName).includes(normalizeString(searchText))
   );
 
   const renderFormula = ({ item }) => {
@@ -46,21 +74,30 @@ export default function FormulationScreen({ navigation }) {
     const borderTheme = isAcid ? '#fecaca' : '#bfdbfe';
 
     return (
-      <View style={[styles.card, { borderTopColor: themeColor }]}>
+      <TouchableOpacity 
+        activeOpacity={0.8}
+        onPress={() => navigation.navigate('AddFormula', { formulaToEdit: item })}
+        style={[styles.card, { borderTopColor: themeColor }]}
+      >
         <View style={styles.cardHeader}>
           <View style={styles.titleContainer}>
             <View style={[styles.iconBox, { backgroundColor: bgTheme }]}>
               <Beaker size={20} color={themeColor} />
             </View>
-            <View>
+            <View style={{ flex: 1, paddingRight: 10 }}>
               <Text style={styles.productTitle}>{item.productName}</Text>
               <Text style={styles.companySub}>{item.companyTarget}</Text>
             </View>
           </View>
-          <View style={[styles.typeBadge, { backgroundColor: bgTheme, borderColor: borderTheme }]}>
-            <Text style={[styles.typeBadgeText, { color: themeColor }]}>
-              {isAcid ? 'ÁCIDO' : 'ALCALINO'}
-            </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={[styles.typeBadge, { backgroundColor: bgTheme, borderColor: borderTheme }]}>
+              <Text style={[styles.typeBadgeText, { color: themeColor }]}>
+                {isAcid ? 'ÁCIDO' : 'ALCALINO'}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={() => handleDelete(item.id, item.productName)} style={{ padding: 5 }}>
+              <Trash2 size={20} color="#ef4444" />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -77,15 +114,25 @@ export default function FormulationScreen({ navigation }) {
         </View>
 
         <View style={styles.compositionBox}>
-          <Text style={styles.formulaTitle}>Composición Química (% p/p)</Text>
+          <Text style={styles.formulaTitle}>Composición / Protocolo</Text>
           <View style={styles.ingredientsList}>
-            {item.ingredients?.map((ing, index) => (
-              <View key={index} style={styles.ingRow}>
-                <View style={styles.ingDot} />
-                <Text style={styles.ingText}>{ing.name}</Text>
-                <Text style={styles.ingPercentage}>{ing.percentage}%</Text>
-              </View>
-            ))}
+            {item.ingredients?.map((ing, index) => {
+              if (ing.type === 'NOTE') {
+                return (
+                  <View key={index} style={[styles.ingRow, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}>
+                    <View style={[styles.ingDot, { backgroundColor: '#f87171' }]} />
+                    <Text style={[styles.ingText, { color: '#991b1b', fontWeight: '700' }]}>{ing.text}</Text>
+                  </View>
+                );
+              }
+              return (
+                <View key={index} style={styles.ingRow}>
+                  <View style={styles.ingDot} />
+                  <Text style={styles.ingText}>{ing.name}</Text>
+                  <Text style={styles.ingPercentage}>{ing.percentage}%</Text>
+                </View>
+              );
+            })}
           </View>
         </View>
 
@@ -95,7 +142,7 @@ export default function FormulationScreen({ navigation }) {
             Precaución: {isAcid ? 'Reacciona violentamente con bases fuertes.' : 'Reacciona violentamente con ácidos fuertes.'}
           </Text>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 

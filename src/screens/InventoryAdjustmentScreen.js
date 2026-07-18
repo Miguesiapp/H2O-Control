@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, TextInput, 
-  TouchableOpacity, Alert, StatusBar, ActivityIndicator, Switch
+  TouchableOpacity, Alert, StatusBar, ActivityIndicator, Switch, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth } from '../config/firebase';
 import { registerMovement } from '../services/logisticsService';
 import { ChevronLeft, Save, PackagePlus, FileText, Calendar, Building2, Truck, Droplet, Box, Circle, ClipboardList, Database, ArrowDownCircle, ArrowUpCircle } from 'lucide-react-native';
 import AutocompleteInput from '../components/AutocompleteInput';
+import Toast from 'react-native-toast-message';
 import { RAW_MATERIALS_LIST, PROVIDERS_LIST, ETIQUETA_CAPACITIES, BIDON_CAPACITIES, CAJA_FORMATS } from '../config/constants';
 import { printSingleLabel } from '../services/labelService';
 
@@ -127,11 +128,14 @@ export default function InventoryAdjustmentScreen({ navigation }) {
       );
 
       if (isEgreso) {
-        Alert.alert(
-          "Baja Registrada", 
-          `Se descontaron ${Math.abs(qtyNormalized)} ${finalUnit} de ${finalItemName}.`,
-          [{ text: "Entendido", onPress: () => navigation.goBack() }]
-        );
+        if (Platform.OS === 'web') {
+          Toast.show({ type: 'success', text1: 'Ajuste Exitoso', text2: 'El stock fue modificado en la base de datos.' });
+          navigation.goBack();
+        } else {
+          Alert.alert("Ajuste Exitoso", "El stock fue modificado en la base de datos.", [
+            { text: "Entendido", onPress: () => navigation.goBack() }
+          ]);
+        }
       } else {
         Alert.alert(
           "Alta de Stock Exitosa",

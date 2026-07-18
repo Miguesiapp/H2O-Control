@@ -6,8 +6,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { ChevronLeft, Search, PackageOpen, AlertTriangle, ShieldCheck, X, FlaskConical, Droplet, Box, Tag, Printer } from 'lucide-react-native';
+import { ChevronLeft, Search, PackageOpen, AlertTriangle, ShieldCheck, X, FlaskConical, Droplet, Box, Tag, Printer, ChevronDown, ChevronUp } from 'lucide-react-native';
 import { printMultipleLabels } from '../services/labelService';
+
+const normalizeString = (str) => {
+  if (!str) return '';
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase();
+};
 
 export default function StockView({ route, navigation }) {
   const { companyName, stockType, title } = route.params;
@@ -24,6 +29,13 @@ export default function StockView({ route, navigation }) {
 
   // Tab activo para Insumos (Bidones, Cajas, Etiquetas)
   const [activeInsumoTab, setActiveInsumoTab] = useState('BIDONES');
+
+  // Estado para los acordeones
+  const [expandedItems, setExpandedItems] = useState([]);
+
+  const toggleExpand = (id) => {
+    setExpandedItems(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
 
   useEffect(() => {
     const q = query(
@@ -62,10 +74,12 @@ export default function StockView({ route, navigation }) {
     return '#f59e0b'; 
   };
 
-  const filteredItems = items.filter(item => 
-    (item.itemName || item.productName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (item.batchInternal || '').toLowerCase().includes(searchQuery.toLowerCase()) 
-  );
+  const filteredItems = items.filter(item => {
+    const searchNormalized = normalizeString(searchQuery);
+    return normalizeString(item.itemName || item.productName).includes(searchNormalized) ||
+           normalizeString(item.batchInternal).includes(searchNormalized) ||
+           normalizeString(item.providerName).includes(searchNormalized);
+  });
 
   // Lógica específica para INSUMOS (Agrupar)
   const isCentralInsumos = stockType === 'INSUMOS';
@@ -81,56 +95,115 @@ export default function StockView({ route, navigation }) {
     }
   }
 
+  // Agrupar items por nombre (Insensible a mayúsculas y tildes)
+  const groupedItemsMap = displayedItems.reduce((acc, item) => {
+    const rawName = item.itemName || item.productName || 'Desconocido';
+    const groupKey = normalizeString(rawName); // Llave unificada
+
+    const rawBatch = item.batchInternal || 'S/D';
+    const batchKey = normalizeString(rawBatch);
+
+    if (!acc[groupKey]) {
+      acc[groupKey] = {
+        id: groupKey, 
+        itemName: rawName, // Guardamos el nombre original con mayúsculas para mostrar en UI
+        quantity: 0,
+        unit: item.unit || 'Uds',
+        minStock: item.minStock || 100,
+        lotesMap: {} 
+      };
+    }
+    acc[groupKey].quantity += Number(item.quantity) || 0;
+
+    // Unificar lotes iguales
+    if (!acc[groupKey].lotesMap[batchKey]) {
+      acc[groupKey].lotesMap[batchKey] = { ...item, quantity: 0, rawDocs: [] };
+    }
+    acc[groupKey].lotesMap[batchKey].quantity += Number(item.quantity) || 0;
+    acc[groupKey].lotesMap[batchKey].rawDocs.push(item.id);
+
+    return acc;
+  }, {});
+
+  const groupedItems = Object.values(groupedItemsMap).map(group => {
+    return {
+      ...group,
+      lotes: Object.values(group.lotesMap)
+    };
+  }).sort((a, b) => a.itemName.localeCompare(b.itemName));
+
   const renderItem = ({ item }) => {
     const status = getStockLevel(item.quantity, item.minStock || 100);
     const StatusIcon = status.icon;
 
+    const isExpanded = expandedItems.includes(item.id);
+
     return (
       <View style={[styles.itemCard, { borderTopColor: status.color }]}>
-        <View style={styles.itemHeader}>
-          <Text style={styles.itemName}>{item.itemName || item.productName}</Text>
-          <View style={{flexDirection: 'row', alignItems: 'center'}}>
-            <TouchableOpacity 
-              style={{padding: 6, backgroundColor: '#f1f5f9', borderRadius: 8, marginRight: 10}}
-              onPress={() => {
-                setSelectedPrintItem(item);
-                setLabelsCount('1');
-                setQtyPerLabel(String(item.quantity));
-                setPrintModalVisible(true);
-              }}
-            >
-              <Printer color="#3b82f6" size={16} />
-            </TouchableOpacity>
-            <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
-              <StatusIcon color={status.color} size={12} style={{marginRight: 4}} />
-              <Text style={[styles.statusBadgeText, { color: status.color }]}>{status.label}</Text>
+        <TouchableOpacity activeOpacity={0.7} onPress={() => toggleExpand(item.id)}>
+          <View style={styles.itemHeader}>
+            <Text style={styles.itemName}>{item.itemName}</Text>
+            <View style={{flexDirection: 'row', alignItems: 'center'}}>
+              <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
+                <StatusIcon color={status.color} size={12} style={{marginRight: 4}} />
+                <Text style={[styles.statusBadgeText, { color: status.color }]}>{status.label}</Text>
+              </View>
+              {isExpanded ? <ChevronUp color="#64748b" size={20} style={{marginLeft: 10}} /> : <ChevronDown color="#64748b" size={20} style={{marginLeft: 10}} />}
             </View>
           </View>
-        </View>
 
-        <View style={styles.contentRow}>
-          <View style={styles.qtyBox}>
-            <Text style={styles.quantityValue}>{item.quantity}</Text>
-            <Text style={styles.quantityUnit}>{item.unit || 'Uds'}</Text>
+          <View style={styles.contentRow}>
+            <View style={styles.qtyBox}>
+              <Text style={styles.quantityValue}>{item.quantity}</Text>
+              <Text style={styles.quantityUnit}>{item.unit}</Text>
+            </View>
+            
+            <View style={styles.metaBox}>
+              <Text style={styles.metaText}>Lotes Disponibles: <Text style={styles.metaBold}>{item.lotes.length}</Text></Text>
+              <Text style={styles.metaText}>Mínimo Req: <Text style={styles.metaBold}>{item.minStock}</Text></Text>
+            </View>
           </View>
-          
-          <View style={styles.metaBox}>
-            <Text style={styles.metaText}>Mín. Req: <Text style={styles.metaBold}>{item.minStock || 100}</Text></Text>
-            <Text style={styles.metaText}>Lote Interno: <Text style={styles.metaBold}>{item.batchInternal || 'S/D'}</Text></Text>
-            
-            {item.loteProveedor && <Text style={styles.metaText}>Lote Prov: <Text style={styles.metaBold}>{item.loteProveedor}</Text></Text>}
-            {item.vencimiento && <Text style={styles.metaText}>Vence: <Text style={styles.metaBold}>{item.vencimiento}</Text></Text>}
-            
-            {item.status && (
-              <View style={styles.labStatusRow}>
-                <FlaskConical color={getLabStatusColor(item.status)} size={12} style={{marginRight: 4}} />
-                <Text style={styles.metaText}>
-                  Calidad: <Text style={[styles.metaBold, { color: getLabStatusColor(item.status) }]}>{item.status}</Text>
-                </Text>
+        </TouchableOpacity>
+
+        {isExpanded && (
+          <View style={styles.expandedContainer}>
+            <Text style={styles.expandedTitle}>Detalle de Lotes:</Text>
+            {item.lotes.map((lote, index) => (
+              <View key={lote.id || index.toString()} style={styles.loteCard}>
+                <View style={styles.loteHeader}>
+                  <Text style={styles.loteTitle}>Lote Int: {lote.batchInternal || 'S/D'}</Text>
+                  <Text style={styles.loteQty}>{lote.quantity} {lote.unit}</Text>
+                </View>
+                
+                {lote.loteProveedor && <Text style={styles.loteSub}>Lote Prov: <Text style={{fontWeight: '700'}}>{lote.loteProveedor}</Text></Text>}
+                {lote.providerName && <Text style={styles.loteSub}>Proveedor: <Text style={{fontWeight: '700'}}>{lote.providerName}</Text></Text>}
+                {lote.vencimiento && <Text style={styles.loteSub}>Vence: <Text style={{fontWeight: '700'}}>{lote.vencimiento}</Text></Text>}
+                
+                <View style={styles.loteActions}>
+                  <TouchableOpacity 
+                    style={styles.printMiniBtn}
+                    onPress={() => {
+                      setSelectedPrintItem(lote);
+                      setLabelsCount('1');
+                      setQtyPerLabel(String(lote.quantity));
+                      setPrintModalVisible(true);
+                    }}
+                  >
+                    <Printer color="#3b82f6" size={14} style={{marginRight: 4}} />
+                    <Text style={{color: '#3b82f6', fontSize: 11, fontWeight: '700'}}>Imprimir</Text>
+                  </TouchableOpacity>
+                  
+                  {lote.status && (
+                    <View style={styles.labStatusRow}>
+                      <FlaskConical color={getLabStatusColor(lote.status)} size={12} style={{marginRight: 4}} />
+                      <Text style={[styles.metaBold, { fontSize: 10, color: getLabStatusColor(lote.status) }]}>{lote.status}</Text>
+                    </View>
+                  )}
+                </View>
               </View>
-            )}
+            ))}
           </View>
-        </View>
+        )}
       </View>
     );
   };
@@ -208,7 +281,7 @@ export default function StockView({ route, navigation }) {
         </View>
       ) : (
         <FlatList
-          data={displayedItems}
+          data={groupedItems}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.list}
@@ -344,7 +417,17 @@ const styles = StyleSheet.create({
   metaBox: { flex: 1, paddingLeft: 20 },
   metaText: { fontSize: 11, color: '#64748b', marginBottom: 4 },
   metaBold: { fontWeight: '700', color: '#334155' },
-  labStatusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2, backgroundColor: '#f8fafc', alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  labStatusRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  
+  expandedContainer: { marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#f1f5f9' },
+  expandedTitle: { fontSize: 12, fontWeight: '800', color: '#475569', marginBottom: 10, textTransform: 'uppercase' },
+  loteCard: { backgroundColor: '#f8fafc', padding: 12, borderRadius: 8, marginBottom: 8, borderWidth: 1, borderColor: '#e2e8f0' },
+  loteHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
+  loteTitle: { fontSize: 13, fontWeight: '800', color: '#0f172a' },
+  loteQty: { fontSize: 13, fontWeight: '900', color: '#3b82f6' },
+  loteSub: { fontSize: 11, color: '#64748b', marginBottom: 2 },
+  loteActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#e2e8f0' },
+  printMiniBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#eff6ff', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
 
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc' },
   loadingText: { marginTop: 15, color: '#475569', fontWeight: '700', fontSize: 14 },

@@ -1,22 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, 
-  ActivityIndicator, ScrollView, TextInput, StatusBar 
+  ActivityIndicator, ScrollView, TextInput, StatusBar, Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
 import { collection, getDocs, query, where } from 'firebase/firestore';
-import { ChevronLeft, Calculator, AlertCircle, CheckCircle2, ShoppingCart, Target, Beaker, Factory } from 'lucide-react-native';
+import { ChevronLeft, Calculator, AlertCircle, CheckCircle2, ShoppingCart, Target, Beaker, Factory, ChevronDown, X } from 'lucide-react-native';
 
-// IMPORTAMOS EL DICCIONARIO CENTRALIZADO DESDE EL SERVICIO
 import { EQUIVALENCIES } from '../services/formulaService';
-import AutocompleteInput from '../components/AutocompleteInput';
+
+const normalizeString = (str) => {
+  if (!str) return '';
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+};
 
 export default function QuarterlyCalculatorScreen({ navigation }) {
   const [formulas, setFormulas] = useState([]);
   const [selectedFormula, setSelectedFormula] = useState(null);
+  const [modalVisible, setModalVisible] = useState(false);
   const [goal, setGoal] = useState('');
   const [results, setResults] = useState([]);
+  const [granelStock, setGranelStock] = useState(null);
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
 
@@ -28,6 +33,9 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
         const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         data.sort((a, b) => a.productName.localeCompare(b.productName));
         setFormulas(data);
+        if (data.length > 0) {
+          setSelectedFormula(data[0]);
+        }
       } catch (error) {
         Alert.alert("Error de Conexión", "No se pudo sincronizar el catálogo de fórmulas.");
       } finally {
@@ -46,36 +54,53 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
     }
 
     setLoading(true);
+    setGranelStock(null);
     try {
       const inventoryRef = collection(db, "Inventory");
       const calculation = [];
 
+      // AVERIGUAR STOCK ACTUAL DEL GRANEL
+      const qGranel = query(
+        inventoryRef,
+        where("itemName", "==", selectedFormula.productName.toUpperCase()),
+        where("stockType", "==", "GRANEL")
+      );
+      const granelSnap = await getDocs(qGranel);
+      let currentGranelStock = 0;
+      granelSnap.forEach(doc => {
+        if (doc.data().quantity > 0) currentGranelStock += Number(doc.data().quantity);
+      });
+      setGranelStock(currentGranelStock);
+
       const density = selectedFormula.densidadObjetivo || 1;
       const targetKilos = targetVolume * density;
 
+      // 1. CARGAMOS TODO EL STOCK MP (para evitar problemas de mayúsculas/tildes de Firebase)
+      const qAllMP = query(inventoryRef, where("stockType", "==", "MP"));
+      const snapAllMP = await getDocs(qAllMP);
+      const allMPStock = snapAllMP.docs.map(doc => doc.data());
+
       for (const ing of selectedFormula.ingredients) {
-        const ingNameUpper = ing.name.toUpperCase();
+        const ingNameUpper = ing.name.trim().toUpperCase();
+        const ingNameNorm = normalizeString(ing.name);
+        
         const amountNeeded = (targetKilos * Number(ing.percentage)) / 100;
 
-        // BÚSQUEDA INTELIGENTE CON SINÓNIMOS (Usando el dict importado)
-        const searchNames = [ingNameUpper];
+        // BÚSQUEDA INTELIGENTE CON SINÓNIMOS
+        const searchNamesUpper = [ingNameUpper];
         if (EQUIVALENCIES[ingNameUpper]) {
-          searchNames.push(...EQUIVALENCIES[ingNameUpper]);
+          searchNamesUpper.push(...EQUIVALENCIES[ingNameUpper]);
         }
+        
+        const searchNamesNorm = searchNamesUpper.map(n => normalizeString(n));
 
-        // Firebase permite buscar múltiples valores a la vez usando 'in'
-        const q = query(
-          inventoryRef, 
-          where("itemName", "in", searchNames), 
-          where("stockType", "==", "MP")
-        );
-        
-        const stockSnap = await getDocs(q);
-        
+        // Buscar en la memoria
         let totalInStock = 0;
-        stockSnap.forEach(doc => {
-          const qty = Number(doc.data().quantity);
-          if (qty > 0) totalInStock += qty;
+        allMPStock.forEach(item => {
+           const itemNameNorm = normalizeString(item.itemName);
+           if (searchNamesNorm.includes(itemNameNorm) && Number(item.quantity) > 0) {
+             totalInStock += Number(item.quantity);
+           }
         });
 
         calculation.push({
@@ -131,7 +156,6 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
 
         <Text style={styles.label}>1. Producto a Proyectar</Text>
         
-        {/* MANEJO DE ESTADO VACÍO (Para no asustarse si no hay fórmulas) */}
         {formulas.length === 0 ? (
           <View style={styles.emptyFormulasBox}>
             <AlertCircle color="#f59e0b" size={20} />
@@ -140,20 +164,18 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
             </Text>
           </View>
         ) : (
-          <AutocompleteInput
-            data={formulas.map(f => f.productName)}
-            value={selectedFormula?.productName || ''}
-            onChangeText={(txt) => {
-              const matched = formulas.find(f => f.productName.toUpperCase() === txt.trim().toUpperCase());
-              if (matched) {
-                setSelectedFormula(matched);
-              } else {
-                setSelectedFormula({ productName: txt }); // temporary hold
-              }
-            }}
-            placeholder="Ej: ACTION"
-            icon={<Beaker color="#94a3b8" size={18} />}
-          />
+          <TouchableOpacity 
+            style={[styles.inputWrapper, { paddingVertical: 18, justifyContent: 'space-between' }]}
+            onPress={() => setModalVisible(true)}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Beaker color="#94a3b8" size={20} style={{ marginRight: 10 }} />
+              <Text style={{ fontSize: 16, color: '#0f172a', fontWeight: '700' }}>
+                {selectedFormula ? selectedFormula.productName : 'Seleccionar Producto...'}
+              </Text>
+            </View>
+            <ChevronDown color="#94a3b8" size={20} />
+          </TouchableOpacity>
         )}
 
         <Text style={styles.label}>2. Volumen Deseado (Litros)</Text>
@@ -186,6 +208,13 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
 
         {results.length > 0 && (
           <View style={styles.resultsContainer}>
+            {granelStock !== null && (
+              <View style={styles.granelStockBox}>
+                <Text style={styles.granelStockLabel}>Stock Actual del Producto (Granel):</Text>
+                <Text style={styles.granelStockValue}>{granelStock.toFixed(1)} Lts</Text>
+              </View>
+            )}
+            
             <Text style={styles.resultsTitle}>Balance Operativo de Materias Primas</Text>
             {results.map((item, index) => (
               <View key={index} style={[styles.resultCard, item.balance < 0 ? styles.borderError : styles.borderSuccess]}>
@@ -225,6 +254,43 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
         )}
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* MODAL PARA SELECCIONAR FORMULA */}
+      <Modal
+        visible={modalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Seleccionar Producto</Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <X color="#64748b" size={24} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalList}>
+              {formulas.map(f => (
+                <TouchableOpacity 
+                  key={f.id} 
+                  style={[styles.modalItem, selectedFormula?.id === f.id && styles.modalItemActive]}
+                  onPress={() => {
+                    setSelectedFormula(f);
+                    setModalVisible(false);
+                  }}
+                >
+                  <Text style={[styles.modalItemText, selectedFormula?.id === f.id && styles.modalItemTextActive]}>
+                    {f.productName}
+                  </Text>
+                  {selectedFormula?.id === f.id && <CheckCircle2 color="#3b82f6" size={20} />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -247,6 +313,20 @@ const styles = StyleSheet.create({
   infoBanner: { backgroundColor: '#eff6ff', padding: 15, borderRadius: 12, marginBottom: 25, borderWidth: 1, borderColor: '#bfdbfe' },
   bannerText: { color: '#1e3a8a', fontSize: 12, textAlign: 'center', lineHeight: 18, fontWeight: '500' },
 
+  granelStockBox: {
+    backgroundColor: '#f5f3ff',
+    padding: 15,
+    borderRadius: 12,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#ddd6fe',
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between'
+  },
+  granelStockLabel: { color: '#4c1d95', fontWeight: '700', fontSize: 13 },
+  granelStockValue: { color: '#6d28d9', fontWeight: '900', fontSize: 18 },
+
   label: { fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 10, marginTop: 5, textTransform: 'uppercase', letterSpacing: 0.5 },
   
   emptyFormulasBox: { flexDirection: 'row', backgroundColor: '#fffbeb', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: '#fde68a', alignItems: 'center', marginBottom: 25 },
@@ -265,6 +345,16 @@ const styles = StyleSheet.create({
   calcBtn: { backgroundColor: '#3b82f6', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 20, borderRadius: 16, marginTop: 30, gap: 12, elevation: 4, shadowColor: '#3b82f6', shadowOpacity: 0.3, shadowRadius: 8 },
   calcBtnText: { color: '#fff', fontSize: 16, fontWeight: '900', letterSpacing: 0.5 },
   
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
+  modalContainer: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '80%', paddingBottom: 20 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  modalTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a' },
+  modalList: { paddingHorizontal: 20, paddingTop: 10 },
+  modalItem: { paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  modalItemActive: { backgroundColor: '#eff6ff', borderRadius: 12, paddingHorizontal: 15, borderBottomWidth: 0, marginVertical: 4 },
+  modalItemText: { fontSize: 15, color: '#334155', fontWeight: '600' },
+  modalItemTextActive: { color: '#1e3a8a', fontWeight: '800' },
+
   resultsContainer: { marginTop: 40, paddingBottom: 50 },
   resultsTitle: { fontSize: 13, fontWeight: '800', color: '#64748b', marginBottom: 15, textTransform: 'uppercase', letterSpacing: 1 },
   

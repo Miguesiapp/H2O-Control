@@ -1,23 +1,80 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, TextInput, 
   TouchableOpacity, Alert, StatusBar, KeyboardAvoidingView, Platform 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db, auth } from '../config/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { ChevronLeft, Save, Plus, Beaker, Trash2, BrainCircuit, Sparkles, FileText } from 'lucide-react-native';
+import { collection, addDoc, updateDoc, doc, serverTimestamp, getDocs, onSnapshot } from 'firebase/firestore';
+import { ChevronLeft, Save, Plus, Beaker, Trash2, FileText, FileEdit } from 'lucide-react-native';
 import AutocompleteInput from '../components/AutocompleteInput';
 import { RAW_MATERIALS_LIST, PRODUCTS_MADRE_LIST, PRODUCTS_FINAL_LIST } from '../config/constants';
+import Toast from 'react-native-toast-message';
 
-export default function AddFormulaScreen({ navigation }) {
+export default function AddFormulaScreen({ route, navigation }) {
+  const formulaToEdit = route.params?.formulaToEdit;
+  const isEditing = !!formulaToEdit;
+
   const [productName, setProductName] = useState('');
   const [ph, setPh] = useState('');
   const [density, setDensity] = useState('');
   
-  // Ingredientes abstractos (Sin lotes, solo porcentajes para la Fórmula Maestra)
-  const [ingredients, setIngredients] = useState([{ id: '1', name: '', amount: '' }]);
+  // Ingredientes abstractos y notas
+  const [ingredients, setIngredients] = useState([{ id: '1', type: 'MATERIAL', name: '', amount: '' }]);
   const [inputMode, setInputMode] = useState('PERCENTAGE'); // 'PERCENTAGE' or 'KILOS'
+
+  const [customMaterials, setCustomMaterials] = useState([]);
+
+  useEffect(() => {
+    import('firebase/firestore').then(({ onSnapshot, collection, query, where }) => {
+      let currentMats = [];
+      
+      const unsubCustom = onSnapshot(collection(db, "Custom_Materials"), (snapshot) => {
+        const mats = [];
+        snapshot.forEach(doc => {
+          if (doc.data().name) mats.push(doc.data().name.trim().toUpperCase());
+        });
+        currentMats = [...currentMats, ...mats];
+        setCustomMaterials([...new Set(currentMats)]);
+      });
+
+      const qInv = query(collection(db, "Inventory"), where("stockType", "==", "MP"));
+      const unsubInv = onSnapshot(qInv, (snapshot) => {
+        const mats = [];
+        snapshot.forEach(doc => {
+          if (doc.data().itemName) mats.push(doc.data().itemName.trim().toUpperCase());
+        });
+        currentMats = [...currentMats, ...mats];
+        setCustomMaterials([...new Set(currentMats)]);
+      });
+
+      return () => {
+        unsubCustom();
+        unsubInv();
+      };
+    });
+  }, []);
+
+  const mergedMaterialsList = [...new Set([...RAW_MATERIALS_LIST, ...customMaterials])].sort();
+
+  useEffect(() => {
+    if (isEditing) {
+      setProductName(formulaToEdit.productName || '');
+      setPh(formulaToEdit.phObjetivo ? formulaToEdit.phObjetivo.toString() : '');
+      setDensity(formulaToEdit.densidadObjetivo ? formulaToEdit.densidadObjetivo.toString() : '');
+      
+      if (formulaToEdit.ingredients && formulaToEdit.ingredients.length > 0) {
+        const loadedIngredients = formulaToEdit.ingredients.map((ing, idx) => ({
+          id: Date.now().toString() + idx,
+          type: ing.type || 'MATERIAL',
+          name: ing.name || '',
+          amount: ing.percentage ? ing.percentage.toString() : '',
+          text: ing.text || ''
+        }));
+        setIngredients(loadedIngredients);
+      }
+    }
+  }, [isEditing, formulaToEdit]);
 
   const toDecimal = (val) => {
     if (!val) return 0;
@@ -30,9 +87,13 @@ export default function AddFormulaScreen({ navigation }) {
       return;
     }
 
-    const hasMissingIngredients = ingredients.some(ing => !ing.name.trim() || !ing.amount);
+    const hasMissingIngredients = ingredients.some(ing => {
+      if (ing.type === 'NOTE') return !ing.text?.trim();
+      return !ing.name?.trim() || !ing.amount;
+    });
+
     if (hasMissingIngredients) {
-      Alert.alert("Datos Incompletos", "Por favor, completa el nombre y cantidad de todos los ingredientes.");
+      Alert.alert("Datos Incompletos", "Por favor, completa el nombre/cantidad o el texto de todas las notas e ingredientes.");
       return;
     }
 
@@ -45,12 +106,19 @@ export default function AddFormulaScreen({ navigation }) {
         return;
       }
 
-      // Validación del 100%
+      // Validación del 100% (solo para materiales)
       let totalPercentage = 0;
+      
       const parsedIngredients = ingredients.map(ing => {
+        if (ing.type === 'NOTE') {
+          return { type: 'NOTE', text: ing.text.trim() };
+        }
+
         let perc = 0;
         if (inputMode === 'KILOS') {
-            const totalAmount = ingredients.reduce((sum, i) => sum + toDecimal(i.amount), 0);
+            const totalAmount = ingredients
+                .filter(i => i.type !== 'NOTE')
+                .reduce((sum, i) => sum + toDecimal(i.amount), 0);
             perc = totalAmount > 0 ? (toDecimal(ing.amount) / totalAmount) * 100 : 0;
         } else {
             perc = toDecimal(ing.amount);
@@ -58,6 +126,7 @@ export default function AddFormulaScreen({ navigation }) {
         const finalPerc = parseFloat(perc.toFixed(2));
         totalPercentage += finalPerc;
         return {
+          type: 'MATERIAL',
           name: ing.name.trim().toUpperCase(),
           percentage: finalPerc
         };
@@ -66,27 +135,31 @@ export default function AddFormulaScreen({ navigation }) {
       if (Math.abs(totalPercentage - 100) > 0.1) {
         Alert.alert(
           "Error de Formulación", 
-          `La receta no suma 100%.\nSuma actual: ${totalPercentage.toFixed(2)}%\nDiferencia: ${(100 - totalPercentage).toFixed(2)}%`
+          `Los materiales de la receta no suman 100%.\nSuma actual: ${totalPercentage.toFixed(2)}%\nDiferencia: ${(100 - totalPercentage).toFixed(2)}%`
         );
         return;
       }
 
-      // Guardamos la RECETA MAESTRA en Firebase
-      await addDoc(collection(db, "Formulas_Maestras"), {
+      const formulaData = {
         productName: productName.trim().toUpperCase(),
         phObjetivo: phVal,
         densidadObjetivo: densityVal,
         ingredients: parsedIngredients,
-        status: 'ACTIVA', // Clave para que aparezca en el catálogo
-        creadaPor: auth.currentUser?.email || 'Sistema',
-        fechaCreacion: serverTimestamp()
-      });
+        status: 'ACTIVA',
+        lastUpdated: serverTimestamp()
+      };
 
-      Alert.alert(
-        "Fórmula Registrada", 
-        `La receta maestra de ${productName.toUpperCase()} se guardó exitosamente y ya está disponible para el cálculo de producciones.`,
-        [{ text: "Entendido", onPress: () => navigation.goBack() }]
-      );
+      if (isEditing) {
+        await updateDoc(doc(db, "Formulas_Maestras", formulaToEdit.id), formulaData);
+        Toast.show({ type: 'success', text1: 'Fórmula Actualizada', text2: `La receta de ${productName.toUpperCase()} fue actualizada.` });
+        navigation.goBack();
+      } else {
+        formulaData.creadaPor = auth.currentUser?.email || 'Sistema';
+        formulaData.fechaCreacion = serverTimestamp();
+        await addDoc(collection(db, "Formulas_Maestras"), formulaData);
+        Toast.show({ type: 'success', text1: 'Fórmula Registrada', text2: `La receta de ${productName.toUpperCase()} se guardó exitosamente.` });
+        navigation.goBack();
+      }
     } catch (error) {
       console.error(error);
       Alert.alert("Error", "No se pudo sincronizar la fórmula con el servidor.");
@@ -94,7 +167,11 @@ export default function AddFormulaScreen({ navigation }) {
   };
 
   const addIngredient = () => {
-    setIngredients([...ingredients, { id: Date.now().toString(), name: '', amount: '' }]);
+    setIngredients([...ingredients, { id: Date.now().toString(), type: 'MATERIAL', name: '', amount: '' }]);
+  };
+
+  const addNote = () => {
+    setIngredients([...ingredients, { id: Date.now().toString(), type: 'NOTE', text: '' }]);
   };
 
   const removeIngredient = (id) => {
@@ -118,7 +195,7 @@ export default function AddFormulaScreen({ navigation }) {
           <ChevronLeft color="#2e4a3b" size={28} />
         </TouchableOpacity>
         <View style={{ alignItems: 'center' }}>
-          <Text style={styles.headerTitle}>Nueva Fórmula Maestra</Text>
+          <Text style={styles.headerTitle}>{isEditing ? 'Editar Fórmula' : 'Nueva Fórmula'}</Text>
           <Text style={styles.headerSub}>Recetario Base del Sistema</Text>
         </View>
         <Beaker color="#2e4a3b" size={24} />
@@ -173,7 +250,7 @@ export default function AddFormulaScreen({ navigation }) {
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>Composición Química</Text>
+        <Text style={styles.sectionTitle}>Composición Química y Protocolo</Text>
         
         {/* Toggle para cambiar entre % y Kilos */}
         <View style={styles.toggleContainer}>
@@ -192,9 +269,31 @@ export default function AddFormulaScreen({ navigation }) {
         </View>
 
         {ingredients.map((ing, idx) => {
+          if (ing.type === 'NOTE') {
+            return (
+              <View key={ing.id} style={[styles.ingredientBlock, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}>
+                <View style={styles.ingRow}>
+                  <FileEdit color="#f87171" size={20} style={{ marginRight: 10 }} />
+                  <TextInput 
+                    style={[styles.input, { flex: 1, backgroundColor: '#fff', borderColor: '#fca5a5' }]}
+                    placeholder="Ej: Esperar 15 min y medir pH"
+                    value={ing.text}
+                    onChangeText={(val) => updateIngredient(idx, 'text', val)}
+                    placeholderTextColor="#fca5a5"
+                  />
+                  {ingredients.length > 1 && (
+                    <TouchableOpacity onPress={() => removeIngredient(ing.id)} style={styles.deleteBtn}>
+                      <Trash2 color="#ef4444" size={22} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            );
+          }
+
           let calculatedPercentage = null;
           if (inputMode === 'KILOS') {
-            const total = ingredients.reduce((sum, i) => sum + toDecimal(i.amount), 0);
+            const total = ingredients.filter(i => i.type !== 'NOTE').reduce((sum, i) => sum + toDecimal(i.amount), 0);
             calculatedPercentage = total > 0 ? ((toDecimal(ing.amount) / total) * 100).toFixed(2) : 0;
           }
           return (
@@ -202,11 +301,12 @@ export default function AddFormulaScreen({ navigation }) {
             <View style={styles.ingRow}>
               <View style={{ flex: 2 }}>
                 <AutocompleteInput 
-                  data={[...RAW_MATERIALS_LIST, ...PRODUCTS_MADRE_LIST].sort()}
+                  data={[...mergedMaterialsList, ...PRODUCTS_MADRE_LIST].sort()}
                   value={ing.name}
                   onChangeText={(val) => updateIngredient(idx, 'name', val)}
                   placeholder="Materia Prima o Granel"
                   icon={<FileText color="#94a3b8" size={18} />}
+                  containerStyle={{ marginBottom: 0, zIndex: 100 - idx }}
                 />
               </View>
               <TextInput 
@@ -231,17 +331,23 @@ export default function AddFormulaScreen({ navigation }) {
           </View>
         )})}
 
-        <TouchableOpacity style={styles.addBtn} onPress={addIngredient}>
-          <Plus color="#2e4a3b" size={20} />
-          <Text style={styles.addBtnText}>Añadir Materia Prima</Text>
-        </TouchableOpacity>
-
-          <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-            <Save color="#fff" size={20} />
-            <Text style={styles.saveButtonText}>Guardar Fórmula Maestra</Text>
+        <View style={{ flexDirection: 'row', gap: 10, marginTop: 5 }}>
+          <TouchableOpacity style={[styles.addBtn, { flex: 1 }]} onPress={addIngredient}>
+            <Plus color="#2e4a3b" size={18} />
+            <Text style={styles.addBtnText}>Añadir Material</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={[styles.addBtn, { flex: 1, borderColor: '#f87171' }]} onPress={addNote}>
+            <FileEdit color="#f87171" size={18} />
+            <Text style={[styles.addBtnText, { color: '#f87171' }]}>Añadir Nota</Text>
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+          <Save color="#fff" size={20} />
+          <Text style={styles.saveButtonText}>{isEditing ? 'Actualizar Fórmula' : 'Guardar Fórmula'}</Text>
+        </TouchableOpacity>
           
-          <View style={{ height: 40 }} />
+        <View style={{ height: 40 }} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -259,42 +365,20 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '900', color: '#2e4a3b' },
   headerSub: { fontSize: 10, color: '#888', textTransform: 'uppercase', fontWeight: 'bold' },
   container: { padding: 20 },
-  
-  aiBanner: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#0f172a', 
-    padding: 18, borderRadius: 16, marginBottom: 20, elevation: 4
-  },
-  aiIconBox: { backgroundColor: 'rgba(255,255,255,0.1)', padding: 10, borderRadius: 12 },
-  aiBannerTitle: { fontSize: 15, fontWeight: '900', color: '#fff' },
-  aiBannerSub: { fontSize: 11, color: '#94a3b8', marginTop: 4, lineHeight: 16 },
-
-  card: { 
-    backgroundColor: '#fff', padding: 18, borderRadius: 15, elevation: 2, 
-    borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 20
-  },
+  card: { backgroundColor: '#fff', padding: 18, borderRadius: 15, elevation: 2, borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 20 },
   label: { fontSize: 12, fontWeight: '700', color: '#64748b', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.5 },
   input: { backgroundColor: '#f8fafc', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', color: '#1e293b', fontSize: 15, fontWeight: '600' },
-  
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 15 },
-  chip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f1f5f9', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#e2e8f0' },
-  chipActive: { backgroundColor: '#0f172a', borderColor: '#0f172a' },
-  chipText: { fontSize: 12, fontWeight: '700', color: '#64748b' },
-  chipTextActive: { color: '#fff' },
-  
   row: { flexDirection: 'row' },
   sectionTitle: { fontSize: 14, fontWeight: '900', color: '#334155', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
-  
   toggleContainer: { flexDirection: 'row', backgroundColor: '#e2e8f0', borderRadius: 10, padding: 4, marginBottom: 15 },
   toggleBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 },
   toggleBtnActive: { backgroundColor: '#fff', elevation: 2 },
   toggleText: { fontSize: 12, fontWeight: '700', color: '#64748b' },
   toggleTextActive: { color: '#2e4a3b' },
-
   ingredientBlock: { backgroundColor: '#fff', padding: 12, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: '#e2e8f0', elevation: 1 },
   ingRow: { flexDirection: 'row', alignItems: 'center' },
-  
   deleteBtn: { padding: 8, marginLeft: 5 },
-  addBtn: { flexDirection: 'row', alignItems: 'center', marginTop: 5, backgroundColor: '#fff', alignSelf: 'flex-start', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#2e4a3b' },
+  addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#2e4a3b' },
   addBtnText: { color: '#2e4a3b', fontWeight: 'bold', marginLeft: 5, fontSize: 13 },
   saveButton: { backgroundColor: '#2e4a3b', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 18, borderRadius: 15, marginTop: 30, gap: 10, elevation: 4 },
   saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '900', textTransform: 'uppercase' }

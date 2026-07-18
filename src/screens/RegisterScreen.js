@@ -8,6 +8,7 @@ import { auth, db } from '../config/firebase';
 import { createUserWithEmailAndPassword, deleteUser, updateProfile } from 'firebase/auth'; 
 import { setDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { ChevronLeft, User, Mail, Lock, ShieldCheck, UserPlus } from 'lucide-react-native';
+import Toast from 'react-native-toast-message';
 
 export default function RegisterScreen({ navigation }) {
   const [email, setEmail] = useState('');
@@ -52,7 +53,7 @@ export default function RegisterScreen({ navigation }) {
         });
 
         setLoading(false);
-        Alert.alert("Alta Exitosa", `Bienvenido ${cleanName}. Se ha creado tu legajo digital.`);
+        Toast.show({ type: 'success', text1: 'Alta Exitosa', text2: `Bienvenido ${cleanName}. Se ha creado tu legajo digital.` });
         navigation.replace('Home');
 
       } catch (firestoreError) {
