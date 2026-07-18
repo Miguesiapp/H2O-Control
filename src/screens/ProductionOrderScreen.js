@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase'; 
-import { collection, query, where, getDocs, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot, serverTimestamp, addDoc, Timestamp } from 'firebase/firestore';
 import { registerMovement, createOrder, updateOrderStatus } from '../services/logisticsService';
 import { 
   ChevronLeft, Play, Beaker, FileText, Factory, AlertCircle, Calculator, CheckCircle2, XCircle, Plus, ClipboardList, CheckSquare 
@@ -15,6 +15,11 @@ import AutocompleteInput from '../components/AutocompleteInput';
 import { EQUIVALENCIES } from '../services/formulaService';
 import { PRODUCTS_MADRE_LIST } from '../config/constants';
 import { canCreateOrders } from '../config/permissions';
+
+const normalizeString = (str) => {
+  if (!str) return '';
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+};
 
 export default function ProductionOrderScreen({ route, navigation }) {
   const { companyName } = route.params;
@@ -121,6 +126,19 @@ export default function ProductionOrderScreen({ route, navigation }) {
       const targetKilos = targetVolume * density;
       const calculatedNeeds = [];
 
+      // CARGAMOS TODO EL STOCK ACTIVO UNA SOLA VEZ PARA MATCHEO LOCAL INTELIGENTE
+      const inventoryRef = collection(db, 'Inventory');
+      const qAllStock = query(inventoryRef, where('quantity', '>', 0));
+      const allStockSnap = await getDocs(qAllStock);
+      const allActiveStock = allStockSnap.docs.map(doc => {
+         const data = doc.data();
+         return {
+           ...data,
+           _id: doc.id,
+           _createdAt: data.createdAt?.toMillis() || 0
+         };
+      });
+
       for (const ingredient of formulaData.ingredients) {
         const percentageValue = ingredient.percentage !== undefined ? ingredient.percentage / 100 : 0;
         const requiredQty = targetKilos * percentageValue; 
@@ -128,34 +146,31 @@ export default function ProductionOrderScreen({ route, navigation }) {
         const ingUpper = ingredient.name.trim().toUpperCase();
         const eqIngs = EQUIVALENCIES[ingUpper] || [];
         const possibleIngredients = [ingUpper, ...eqIngs];
+        const possibleNorm = possibleIngredients.map(n => normalizeString(n));
 
         const isGranel = PRODUCTS_MADRE_LIST.some(pm => pm.split('/')[0].trim() === ingUpper);
         const searchCompany = isGranel ? 'H2O' : 'STOCK_CENTRAL_MP';
         const searchStockType = isGranel ? 'GRANEL' : 'MP';
-
-        const inventoryRef = collection(db, 'Inventory');
-        const qStock = query(inventoryRef, 
-          where('itemName', 'in', possibleIngredients), 
-          where('company', '==', searchCompany),
-          where('stockType', '==', searchStockType)
-        );
-        const stockSnap = await getDocs(qStock);
         
         let currentStock = 0;
         const availableBatches = [];
-        stockSnap.forEach(doc => {
-            const data = doc.data();
-            if (data.quantity > 0) {
-              availableBatches.push({
-                 batchInternal: data.batchInternal || 'S/D',
-                 batchProvider: data.batchProvider || 'S/D',
-                 quantity: data.quantity,
-                 createdAt: data.createdAt?.toMillis() || 0
-              });
-            }
-            currentStock += data.quantity || 0;
+        
+        allActiveStock.forEach(item => {
+           if (item.company === searchCompany && item.stockType === searchStockType) {
+              const itemNorm = normalizeString(item.itemName);
+              if (possibleNorm.includes(itemNorm)) {
+                  availableBatches.push({
+                     batchInternal: item.batchInternal || 'S/D',
+                     batchProvider: item.batchProvider || 'S/D',
+                     quantity: item.quantity,
+                     createdAt: item._createdAt
+                  });
+                  currentStock += item.quantity || 0;
+              }
+           }
         });
-
+        
+        // (Batches ya recolectados arriba)
         availableBatches.sort((a, b) => a.createdAt - b.createdAt);
         let remainingRequired = requiredQty;
         const batchesToConsume = [];
