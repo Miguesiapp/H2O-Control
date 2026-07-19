@@ -1,5 +1,6 @@
 import { db } from '../config/firebase';
 import { collection, addDoc, getDocs, query, where, serverTimestamp, doc, getDoc, orderBy } from 'firebase/firestore';
+import { RAW_MATERIALS_LIST, PRODUCTS_MADRE_LIST } from '../config/constants';
 
 // ============================================================================
 // 0. DICCIONARIO GLOBAL DE EQUIVALENCIAS TÉCNICAS (Centralizado)
@@ -32,6 +33,24 @@ export const EQUIVALENCIES = {
   "ÓXIDO DE ZINC": ["ZNO"],
   "ZNO": ["OXIDO DE ZINC"]
 };
+
+// AUTO-GENERAR SINÓNIMOS BASADOS EN LAS LISTAS CON BARRAS ( / )
+const allLists = [...RAW_MATERIALS_LIST, ...PRODUCTS_MADRE_LIST];
+allLists.forEach(item => {
+  if (item.includes('/')) {
+    const parts = item.split('/').map(p => p.trim().toUpperCase());
+    parts.forEach(part => {
+      if (!EQUIVALENCIES[part]) {
+        EQUIVALENCIES[part] = [];
+      }
+      parts.forEach(otherPart => {
+        if (otherPart !== part && !EQUIVALENCIES[part].includes(otherPart)) {
+          EQUIVALENCIES[part].push(otherPart);
+        }
+      });
+    });
+  }
+});
 
 
 // ============================================================================

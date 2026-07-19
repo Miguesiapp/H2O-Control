@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, 
-  ActivityIndicator, ScrollView, TextInput, StatusBar, Modal
+  ActivityIndicator, ScrollView, TextInput, StatusBar, Modal, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { db } from '../config/firebase';
-import { collection, getDocs, query, where } from 'firebase/firestore';
-import { ChevronLeft, Calculator, AlertCircle, CheckCircle2, ShoppingCart, Target, Beaker, Factory, ChevronDown, X } from 'lucide-react-native';
+import { auth, db } from '../config/firebase';
+import { collection, getDocs, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
+import { ChevronLeft, Calculator, AlertCircle, CheckCircle2, ShoppingCart, Target, Beaker, Factory, ChevronDown, X, ClipboardList, Download } from 'lucide-react-native';
 
 import { EQUIVALENCIES } from '../services/formulaService';
 
@@ -116,6 +116,74 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
       Alert.alert("Fallo de Cálculo", "Ocurrió un error al procesar el balance de inventario.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGenerateRequests = () => {
+    const missingItems = results.filter(item => item.balance < 0);
+    const targetVolume = Number(goal.replace(',', '.'));
+    if (missingItems.length === 0) return;
+
+    Alert.alert(
+      "Generar Notas de Pedido",
+      `¿Deseas enviar ${missingItems.length} faltante(s) al sector de Pedidos?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Sí, Enviar",
+          onPress: async () => {
+            try {
+              for (const item of missingItems) {
+                const missingQty = Math.abs(item.balance).toFixed(1);
+                await addDoc(collection(db, 'PurchaseRequests'), {
+                  title: `COMPRAR: ${missingQty} L/Kg de ${item.name} (Faltante para ${targetVolume}L de ${selectedFormula.productName})`,
+                  status: 'PENDING',
+                  requestedBy: auth.currentUser?.email || 'Calculadora',
+                  createdAt: serverTimestamp()
+                });
+              }
+              Alert.alert("Éxito", "Las notas de pedido han sido creadas. Puedes verlas en la sección de Pedidos.");
+            } catch (error) {
+              Alert.alert("Error", "No se pudieron crear los pedidos.");
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleDownloadSimulation = () => {
+    let text = `SIMULACIÓN DE PRODUCCIÓN\n========================\n`;
+    text += `Producto: ${selectedFormula?.productName}\n`;
+    text += `Volumen Objetivo: ${goal} Lts\n`;
+    text += `Fecha: ${new Date().toLocaleString()}\n\n`;
+
+    const missingItems = results.filter(i => i.balance < 0);
+    if (missingItems.length > 0) {
+      text += `--- MATERIAS PRIMAS FALTANTES (A COMPRAR) ---\n`;
+      missingItems.forEach(i => {
+        text += `- ${i.name}: Falta ${Math.abs(i.balance).toFixed(1)} L/Kg\n`;
+      });
+      text += `\n`;
+    }
+
+    text += `--- DESGLOSE COMPLETO DE REQUERIMIENTOS ---\n`;
+    results.forEach(i => {
+      text += `- ${i.name}: Requiere ${i.needed.toFixed(1)} L/Kg | Físico Real: ${i.stock.toFixed(1)} L/Kg | Proyección: ${i.balance > 0 ? '+' : ''}${i.balance.toFixed(1)}\n`;
+    });
+
+    if (Platform.OS === 'web') {
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Simulacion_${selectedFormula?.productName?.replace(/ /g, '_')}_${goal}L.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } else {
+      Alert.alert("Simulación Generada", "La descarga directa solo está disponible en la versión Web (PWA).");
     }
   };
 
@@ -250,6 +318,26 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
                 )}
               </View>
             ))}
+
+            <View style={styles.actionButtonsRow}>
+              <TouchableOpacity 
+                style={[styles.actionBtn, { backgroundColor: '#3b82f6' }]}
+                onPress={handleDownloadSimulation}
+              >
+                <Download color="#fff" size={20} />
+                <Text style={styles.actionBtnText}>Descargar Cálculo</Text>
+              </TouchableOpacity>
+
+              {results.some(item => item.balance < 0) && (
+                <TouchableOpacity 
+                  style={[styles.actionBtn, { backgroundColor: '#0f172a' }]}
+                  onPress={handleGenerateRequests}
+                >
+                  <ClipboardList color="#fff" size={20} />
+                  <Text style={styles.actionBtnText}>Pedir Faltantes</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
         )}
         <View style={{ height: 40 }} />
@@ -375,5 +463,25 @@ const styles = StyleSheet.create({
   
   buyWarning: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 15, backgroundColor: '#fef2f2', padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#fca5a5' },
   buyIconBox: { backgroundColor: '#fee2e2', padding: 6, borderRadius: 8 },
-  buyText: { fontSize: 12, color: '#b91c1c', fontWeight: '800' }
+  buyText: { fontSize: 12, color: '#b91c1c', fontWeight: '800' },
+
+  actionButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 25
+  },
+  actionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    elevation: 4,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.3,
+    shadowRadius: 8
+  },
+  actionBtnText: { color: '#fff', fontSize: 14, fontWeight: '900', letterSpacing: 0.5 }
 });

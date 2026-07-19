@@ -7,8 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
 import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { registerMovement, createOrder, updateOrderStatus } from '../services/logisticsService';
-import { ChevronLeft, Truck, Send, PackageMinus, MapPin, Hash, ClipboardType, Plus, ClipboardList, CheckSquare, CheckCircle2, Play, Droplet } from 'lucide-react-native';
-import AutocompleteInput from '../components/AutocompleteInput';
+import { ChevronLeft, Truck, Send, PackageMinus, MapPin, Hash, ClipboardType, Plus, ClipboardList, CheckSquare, CheckCircle2, Play, Droplet, ChevronDown, X } from 'lucide-react-native';
 import { canCreateOrders } from '../config/permissions';
 
 const BIDON_CAPACITIES = ['20', '10', '5', '1'];
@@ -58,6 +57,8 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
   const [availableProducts, setAvailableProducts] = useState([]);
   const [availableBatches, setAvailableBatches] = useState([]);
   const [allFinalStock, setAllFinalStock] = useState([]);
+  const [productModalVisible, setProductModalVisible] = useState(false);
+  const [batchModalVisible, setBatchModalVisible] = useState(false);
   
   const [formData, setFormData] = useState({
     productName: '',
@@ -327,13 +328,18 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
           <Text style={styles.sectionTitle}>Identificación de Mercadería</Text>
           <View style={styles.card}>
             <Text style={styles.label}>Producto a Despachar</Text>
-            <AutocompleteInput 
-              data={availableProducts}
-              value={formData.productName}
-              onChangeText={(txt) => setFormData({...formData, productName: txt, batchInternal: ''})}
-              placeholder="Ej: ACTION"
-              icon={<PackageMinus color="#94a3b8" size={18} />}
-            />
+            <TouchableOpacity 
+              style={[styles.inputWrapper, { paddingVertical: 15 }]} 
+              onPress={() => setProductModalVisible(true)}
+            >
+              <PackageMinus color="#94a3b8" size={18} style={styles.inputIcon} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 16, color: formData.productName ? '#0f172a' : '#94a3b8', fontWeight: '800' }}>
+                  {formData.productName || 'Seleccionar Producto'}
+                </Text>
+              </View>
+              <ChevronDown color="#94a3b8" size={20} />
+            </TouchableOpacity>
 
             <Text style={styles.label}>Presentación (Litros)</Text>
             <View style={styles.chipRow}>
@@ -363,13 +369,19 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
               </View>
               <View style={{ flex: 1.5 }}>
                 <Text style={styles.label}>Lote de Salida</Text>
-                <AutocompleteInput 
-                  data={availableBatches}
-                  value={formData.batchInternal}
-                  onChangeText={(txt) => setFormData({...formData, batchInternal: txt})}
-                  placeholder="Ej: OP-20260411-1234"
-                  icon={<Hash color="#94a3b8" size={18} />}
-                />
+                <TouchableOpacity 
+                  style={[styles.inputWrapper, { paddingVertical: 15 }]} 
+                  onPress={() => setBatchModalVisible(true)}
+                  disabled={availableBatches.length === 0}
+                >
+                  <Hash color="#94a3b8" size={18} style={styles.inputIcon} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 14, color: formData.batchInternal ? '#0f172a' : '#94a3b8', fontWeight: '800' }}>
+                      {formData.batchInternal || (availableBatches.length === 0 ? 'Sin lotes' : 'Seleccionar Lote')}
+                    </Text>
+                  </View>
+                  <ChevronDown color="#94a3b8" size={20} />
+                </TouchableOpacity>
               </View>
             </View>
           </View>
@@ -419,6 +431,72 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
           <View style={{ height: 40 }} />
         </ScrollView>
       )}
+
+      {/* MODAL DE SELECCIÓN DE PRODUCTO */}
+      <Modal visible={productModalVisible} transparent={true} animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Seleccionar Producto</Text>
+              <TouchableOpacity onPress={() => setProductModalVisible(false)}>
+                <X color="#64748b" size={24} />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={availableProducts}
+              keyExtractor={(item, index) => index.toString()}
+              contentContainerStyle={styles.modalList}
+              renderItem={({ item }) => (
+                <TouchableOpacity 
+                  style={[styles.modalItem, formData.productName === item && styles.modalItemActive]}
+                  onPress={() => {
+                    setFormData({...formData, productName: item, batchInternal: ''});
+                    setProductModalVisible(false);
+                  }}
+                >
+                  <Text style={[styles.modalItemText, formData.productName === item && styles.modalItemTextActive]}>
+                    {item}
+                  </Text>
+                  {formData.productName === item && <CheckCircle2 color="#1e3a8a" size={20} />}
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL DE SELECCIÓN DE LOTE */}
+      <Modal visible={batchModalVisible} transparent={true} animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Seleccionar Lote de Salida</Text>
+              <TouchableOpacity onPress={() => setBatchModalVisible(false)}>
+                <X color="#64748b" size={24} />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={availableBatches}
+              keyExtractor={(item, index) => index.toString()}
+              contentContainerStyle={styles.modalList}
+              renderItem={({ item }) => (
+                <TouchableOpacity 
+                  style={[styles.modalItem, formData.batchInternal === item && styles.modalItemActive]}
+                  onPress={() => {
+                    setFormData({...formData, batchInternal: item});
+                    setBatchModalVisible(false);
+                  }}
+                >
+                  <Text style={[styles.modalItemText, formData.batchInternal === item && styles.modalItemTextActive]}>
+                    {item}
+                  </Text>
+                  {formData.batchInternal === item && <CheckCircle2 color="#1e3a8a" size={20} />}
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </View>
+      </Modal>
 
       {/* MODAL DETALLES DE ORDEN */}
       <Modal visible={orderModalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOrderModalVisible(false)}>
