@@ -56,10 +56,10 @@ export default function AutocompleteInput({
         onChangeText('');
       }
     }
-    // Esconder sugerencias con un ligero retraso para permitir que se ejecute el onPress de la lista
+    // Esconder sugerencias con un retraso mayor para asegurar que onPress en Web se registre
     setTimeout(() => {
       setShowSuggestions(false);
-    }, 200);
+    }, 300);
   };
 
   return (
@@ -131,18 +131,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   dropdown: {
-    position: 'absolute',
-    top: 55,
-    left: 0,
-    right: 0,
-    backgroundColor: '#ffffff', // Fondo sólido para que no sea translúcido
+    backgroundColor: '#ffffff',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#cbd5e1',
     maxHeight: 250,
     overflow: 'hidden',
-    zIndex: 9999,
-    elevation: 10, // Sombra para Android
+    marginTop: -5,
+    marginBottom: 15,
+    elevation: 3,
     shadowColor: '#000', // Sombra para iOS
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
