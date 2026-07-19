@@ -37,7 +37,7 @@ export const EQUIVALENCIES = {
 // AUTO-GENERAR SINÓNIMOS BASADOS EN LAS LISTAS CON BARRAS ( / )
 const allLists = [...RAW_MATERIALS_LIST, ...PRODUCTS_MADRE_LIST];
 allLists.forEach(item => {
-  if (item.includes('/')) {
+  if (item && typeof item === 'string' && item.includes('/')) {
     const parts = item.split('/').map(p => p.trim().toUpperCase());
     parts.forEach(part => {
       if (!EQUIVALENCIES[part]) {
