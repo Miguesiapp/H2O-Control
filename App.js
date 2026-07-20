@@ -22,6 +22,14 @@ if (Platform.OS === 'web') {
     }
   `;
   document.head.appendChild(style);
+
+  // Evitar que Google Chrome traduzca la aplicación automáticamente (rompe los autocompletados)
+  document.documentElement.lang = 'es';
+  document.documentElement.setAttribute('translate', 'no');
+  const metaTranslate = document.createElement('meta');
+  metaTranslate.name = 'google';
+  metaTranslate.content = 'notranslate';
+  document.head.appendChild(metaTranslate);
 }
 // ---------------------------------------------------------
 

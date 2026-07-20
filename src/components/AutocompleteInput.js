@@ -44,18 +44,6 @@ export default function AutocompleteInput({
   };
 
   const handleBlur = () => {
-    if (inputText) {
-      const match = data.find(d => normalizeString(d.split('/')[0].trim()) === normalizeString(inputText));
-      if (match) {
-        const displayName = match.split('/')[0].trim();
-        setInputText(displayName);
-        onChangeText(displayName);
-      } else {
-        Alert.alert("Atención", "Ese ítem no existe en la base de datos o no lo seleccionaste de la lista. Por favor, vuelve a intentarlo.");
-        setInputText('');
-        onChangeText('');
-      }
-    }
     // Esconder sugerencias con un retraso mayor para asegurar que onPress en Web se registre
     setTimeout(() => {
       setShowSuggestions(false);

@@ -11,6 +11,7 @@ import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, 
 import AutocompleteInput from '../components/AutocompleteInput';
 import { EQUIVALENCIES_MAP } from '../config/constants';
 import { canCreateOrders } from '../config/permissions';
+import Toast from 'react-native-toast-message';
 
 const BIDON_CAPACITIES = ['20', '10', '5', '1'];
 const BIDON_BRANDS = ['H2O', 'AGROCUBE', 'ALIANZA', 'AGROFONTEZUELA'];
@@ -85,7 +86,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
         setApprovedLots(lots);
       } catch (error) {
         console.error(error);
-        Alert.alert("Error de Conexión", "No se pudieron cargar los lotes liberados.");
+        Toast.show({ type: 'error', text1: 'Error de Conexión', text2: 'No se pudieron cargar los lotes liberados.' });
       } finally {
         setLoading(false);
       }
@@ -137,11 +138,11 @@ export default function PackagingOrderScreen({ route, navigation }) {
 
   const handleCreateOrder = async () => {
     if (!selectedLot || units <= 0 || !commercialName.trim()) {
-      Alert.alert("Atención", "Selecciona un lote, un nombre comercial, y la cantidad de unidades obtenidas.");
+      Toast.show({ type: 'error', text1: 'Atención', text2: 'Selecciona un lote, un nombre comercial, y la cantidad.' });
       return;
     }
     if (isOverdraft) {
-      Alert.alert("Quiebre de Stock", `Intentas envasar ${litersToConsume} Lts, pero el lote solo cuenta con ${selectedLot.quantity} Lts.`);
+      Toast.show({ type: 'error', text1: 'Quiebre de Stock', text2: `El lote solo cuenta con ${selectedLot.quantity} Lts.` });
       return;
     }
 
@@ -202,24 +203,24 @@ export default function PackagingOrderScreen({ route, navigation }) {
 
       await createOrder('OE', orderData, currentUser);
 
-      Alert.alert(
-        "Orden Emitida", 
-        `Se ha enviado a la cola de Envasado.\n\nSe reservaron:\n- ${litersToConsume} Lts de Granel\n- ${units} Bidones (${formData.brandBidon})\n${appliesBox ? `- ${requiredBoxes} Cajas (${formData.brandCaja})` : ''}`,
-        [{ text: "Entendido", onPress: () => {
-          setViewMode('LIST');
-          setSelectedLot(null);
-          setCommercialName('');
-          setFormData({
-            presentation: '20', 
-            unitsProduced: '',  
-            brandBidon: 'H2O',
-            brandCaja: 'H2O', 
-          });
-        }}]
-      );
+      Toast.show({
+        type: 'success',
+        text1: 'OE Emitida con Éxito',
+        text2: `Se reservaron ${litersToConsume} Lts de Granel.`
+      });
+
+      setViewMode('LIST');
+      setSelectedLot(null);
+      setCommercialName('');
+      setFormData({
+        presentation: '20', 
+        unitsProduced: '',  
+        brandBidon: 'H2O',
+        brandCaja: 'H2O', 
+      });
     } catch (error) {
       console.error(error);
-      Alert.alert("Error del Sistema", "No se pudo emitir la orden de envasado.");
+      Toast.show({ type: 'error', text1: 'Error del Sistema', text2: 'No se pudo emitir la orden.' });
     } finally {
       setIsSubmitting(false);
     }
@@ -234,9 +235,9 @@ export default function PackagingOrderScreen({ route, navigation }) {
       setProcessingOrder(true);
       const currentUser = auth.currentUser?.email || 'Sistema';
       await updateOrderStatus(selectedOrder.id, 'EN_PROCESO', currentUser);
-      Alert.alert("Orden Aceptada", "El envasado ha comenzado.");
+      Toast.show({ type: 'info', text1: 'Orden Aceptada', text2: 'El envasado ha comenzado.' });
     } catch (error) {
-      Alert.alert("Error", "No se pudo aceptar la orden.");
+      Toast.show({ type: 'error', text1: 'Error', text2: 'No se pudo aceptar la orden.' });
     } finally {
       setProcessingOrder(false);
     }
@@ -264,10 +265,10 @@ export default function PackagingOrderScreen({ route, navigation }) {
           expiryDate: orderData.expiryDate 
       });
 
-      Alert.alert("Orden Finalizada", "El producto terminado ha sido ingresado al stock.");
+      Toast.show({ type: 'success', text1: 'Orden Finalizada', text2: 'Inventario final actualizado.' });
       setOrderModalVisible(false);
     } catch (error) {
-      Alert.alert("Error", "No se pudo finalizar la orden.");
+      Toast.show({ type: 'error', text1: 'Error', text2: 'No se pudo finalizar la orden.' });
     } finally {
       setProcessingOrder(false);
     }

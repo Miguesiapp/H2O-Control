@@ -15,6 +15,7 @@ import AutocompleteInput from '../components/AutocompleteInput';
 import { EQUIVALENCIES } from '../services/formulaService';
 import { PRODUCTS_MADRE_LIST } from '../config/constants';
 import { canCreateOrders } from '../config/permissions';
+import Toast from 'react-native-toast-message';
 
 const normalizeString = (str) => {
   if (!str) return '';
@@ -98,9 +99,10 @@ export default function ProductionOrderScreen({ route, navigation }) {
 
   const handleCalculateNeeds = async () => {
     if (!productName.trim() || !targetQuantity.trim()) {
-      Alert.alert("Atención", "Especifica el producto madre y el volumen a fabricar.");
+      Alert.alert("Faltan Datos", "Selecciona un Producto Madre para realizar el cálculo y define el volumen.");
       return;
     }
+
     const targetVolume = Number(targetQuantity.replace(',', '.'));
     if (isNaN(targetVolume) || targetVolume <= 0) {
       Alert.alert("Error", "El volumen debe ser un número mayor a 0.");
@@ -266,18 +268,17 @@ export default function ProductionOrderScreen({ route, navigation }) {
 
       await createOrder('OP', orderData, currentUser);
 
-      Alert.alert(
-        "Orden Emitida", 
-        `Lote Asignado: ${batchId}\nVolumen: ${requirements.targetVolume} L\nLa orden se ha enviado a la cola de Producción.`,
-        [{ text: "Entendido", onPress: () => {
-          setViewMode('LIST');
-          setRequirements(null);
-          setProductName('');
-          setTargetQuantity('');
-          setExpiryDate('');
-          setExpiryDate('');
-        } }]
-      );
+      Toast.show({
+        type: 'success',
+        text1: 'OP Emitida con Éxito',
+        text2: `Lote: ${batchId} | ${requirements.targetVolume} L enviados a Producción.`
+      });
+
+      setViewMode('LIST');
+      setRequirements(null);
+      setProductName('');
+      setTargetQuantity('');
+      setExpiryDate('');
     } catch (error) {
       console.error(error);
       Alert.alert("Error del Sistema", "No se pudo emitir la orden de producción.");
@@ -603,7 +604,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
                 {isSubmitting ? <ActivityIndicator color="#fff" size="small" /> : (
                   <>
                     <Play color="#fff" size={20} fill="#fff" />
-                    <Text style={styles.mainButtonText}>Confirmar y Emitir Orden</Text>
+                    <Text style={styles.mainButtonText}>Confirmar y Enviar Orden de Producción</Text>
                   </>
                 )}
               </TouchableOpacity>
