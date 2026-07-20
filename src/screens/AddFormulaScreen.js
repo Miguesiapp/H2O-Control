@@ -34,23 +34,12 @@ export default function AddFormulaScreen({ route, navigation }) {
         snapshot.forEach(doc => {
           if (doc.data().name) mats.push(doc.data().name.trim().toUpperCase());
         });
-        currentMats = [...currentMats, ...mats];
-        setCustomMaterials([...new Set(currentMats)]);
-      });
-
-      const qInv = query(collection(db, "Inventory"), where("stockType", "==", "MP"));
-      const unsubInv = onSnapshot(qInv, (snapshot) => {
-        const mats = [];
-        snapshot.forEach(doc => {
-          if (doc.data().itemName) mats.push(doc.data().itemName.trim().toUpperCase());
-        });
-        currentMats = [...currentMats, ...mats];
+        currentMats = [...mats];
         setCustomMaterials([...new Set(currentMats)]);
       });
 
       return () => {
         unsubCustom();
-        unsubInv();
       };
     });
   }, []);
@@ -108,11 +97,19 @@ export default function AddFormulaScreen({ route, navigation }) {
 
       // Validación del 100% (solo para materiales)
       let totalPercentage = 0;
+      const seenMaterials = new Set();
+      let hasDuplicates = false;
       
       const parsedIngredients = ingredients.map(ing => {
         if (ing.type === 'NOTE') {
           return { type: 'NOTE', text: ing.text.trim() };
         }
+
+        const ingNameUpper = ing.name.trim().toUpperCase();
+        if (seenMaterials.has(ingNameUpper)) {
+          hasDuplicates = true;
+        }
+        seenMaterials.add(ingNameUpper);
 
         let perc = 0;
         if (inputMode === 'KILOS') {
@@ -127,10 +124,15 @@ export default function AddFormulaScreen({ route, navigation }) {
         totalPercentage += finalPerc;
         return {
           type: 'MATERIAL',
-          name: ing.name.trim().toUpperCase(),
+          name: ingNameUpper,
           percentage: finalPerc
         };
       });
+
+      if (hasDuplicates) {
+        Alert.alert("Error", "Has agregado la misma Materia Prima más de una vez. Por favor, consolida la cantidad en una sola fila.");
+        return;
+      }
 
       if (Math.abs(totalPercentage - 100) > 0.1) {
         Alert.alert(
@@ -162,7 +164,7 @@ export default function AddFormulaScreen({ route, navigation }) {
       }
     } catch (error) {
       console.error(error);
-      Alert.alert("Error", "No se pudo sincronizar la fórmula con el servidor.");
+      Toast.show({ type: 'error', text1: 'Error', text2: 'No se pudo guardar la fórmula. Revisa tu conexión.' });
     }
   };
 
