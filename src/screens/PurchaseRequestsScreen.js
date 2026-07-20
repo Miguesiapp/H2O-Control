@@ -122,12 +122,13 @@ export default function PurchaseRequestsScreen({ navigation }) {
             style={[styles.actionBtn, { backgroundColor: bgTheme, borderColor: themeColor }]}
             onPress={() => handleConfirmRequest(item.id)}
           >
-            <CheckCircle2 color={themeColor} size={28} />
-            <Text style={[styles.actionBtnText, { color: themeColor }]}>Confirmar</Text>
+            <CheckCircle2 color={themeColor} size={20} />
+            <Text style={[styles.actionBtnText, { color: themeColor, fontSize: 13, marginLeft: 6 }]}>Pedido Pendiente</Text>
           </TouchableOpacity>
         ) : (
-          <View style={styles.completedBadge}>
-            <CheckCircle2 color="#fff" size={24} />
+          <View style={[styles.actionBtn, { backgroundColor: '#10b981', borderColor: '#059669', flexDirection: 'row', paddingHorizontal: 12 }]}>
+            <CheckCircle2 color="#fff" size={20} />
+            <Text style={[styles.actionBtnText, { color: '#fff', fontSize: 13, marginLeft: 6 }]}>Pedido Realizado</Text>
           </View>
         )}
       </View>

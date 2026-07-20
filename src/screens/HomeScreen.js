@@ -20,6 +20,7 @@ export default function HomeScreen({ navigation }) {
   const [pendingOPCount, setPendingOPCount] = useState(0);
   const [pendingOECount, setPendingOECount] = useState(0);
   const [pendingODCount, setPendingODCount] = useState(0);
+  const [pendingPurchasesCount, setPendingPurchasesCount] = useState(0);
   const currentUserEmail = auth.currentUser?.email || 'Usuario';
   const [currentUserName, setCurrentUserName] = useState(
     auth.currentUser?.displayName 
@@ -98,10 +99,21 @@ export default function HomeScreen({ navigation }) {
       console.error("Error fetching pending OD:", error);
     });
 
+    const qPurchases = query(
+      collection(db, "PurchaseRequests"),
+      where("status", "==", "PENDING")
+    );
+    const unsubscribePurchases = onSnapshot(qPurchases, (snapshot) => {
+      setPendingPurchasesCount(snapshot.docs.length);
+    }, (error) => {
+      console.error("Error fetching pending purchases:", error);
+    });
+
     return () => {
       unsubscribeOP();
       unsubscribeOE();
       unsubscribeOD();
+      unsubscribePurchases();
     };
   }, []);
 
@@ -224,6 +236,7 @@ export default function HomeScreen({ navigation }) {
           <TouchableOpacity activeOpacity={0.8} style={styles.labCard} onPress={() => navigation.navigate('OrdersBoard')}>
             <View style={[styles.labIconBox, { backgroundColor: '#1e293b' }]}>
               <MonitorPlay color="#38bdf8" size={24} />
+              {(pendingOPCount + pendingOECount + pendingODCount) > 0 && <View style={styles.notificationDot} />}
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.labCardTitle, { color: '#1e293b' }]}>Tablero de Órdenes</Text>
@@ -341,6 +354,7 @@ export default function HomeScreen({ navigation }) {
             <TouchableOpacity style={styles.qualityCard} onPress={() => navigation.navigate('PurchaseRequests')}>
               <View style={[styles.qualityIconBox, { backgroundColor: '#fef2f2' }]}>
                 <ShoppingCart color="#ef4444" size={24} />
+                {pendingPurchasesCount > 0 && <View style={styles.notificationDot} />}
               </View>
               <Text style={styles.qualityCardText}>Pedidos Internos</Text>
             </TouchableOpacity>

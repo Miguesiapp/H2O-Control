@@ -65,9 +65,8 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
 
     } else if (numericQty < 0) {
       // ---------------------------------------------------
-      // CASO B: EXTRACCIÓN DE STOCK (Resta)
       // ---------------------------------------------------
-      const absQty = Math.abs(numericQty);
+      const absQty = Number(Math.abs(numericQty).toFixed(2));
 
       // ENRUTADOR INTELIGENTE: ¿Descuento Exacto o FIFO?
       const isExactDeduction = 
@@ -139,7 +138,7 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
       if (remainingToDeduct <= 0) break;
 
       const availableQty = item.quantity;
-      const deduction = Math.min(availableQty, remainingToDeduct);
+      const deduction = Number(Math.min(availableQty, remainingToDeduct).toFixed(2));
 
       // Actualizamos la base de datos restando lo correspondiente de este lote
       await updateDoc(doc(db, "Inventory", item.id), {
@@ -147,7 +146,7 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
         lastUpdated: serverTimestamp()
       });
 
-      remainingToDeduct -= deduction;
+      remainingToDeduct = Number((remainingToDeduct - deduction).toFixed(2));
     }
 
     if (remainingToDeduct > 0) {

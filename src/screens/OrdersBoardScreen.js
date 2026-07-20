@@ -8,7 +8,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { db, auth } from '../config/firebase';
 import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
 import { updateOrderStatus, assignOrderRoleTo, updateOrderPriority, updateOrderProgressAndChecklist } from '../services/logisticsService';
-import { ChevronLeft, ArrowUp, ArrowDown, UserPlus, CheckCircle2, Clock, PlayCircle, ClipboardCheck, BarChart3, Truck, Edit3 } from 'lucide-react-native';
+import { printOrder } from '../services/printService';
+import { ChevronLeft, ArrowUp, ArrowDown, UserPlus, CheckCircle2, Clock, PlayCircle, ClipboardCheck, BarChart3, Truck, Edit3, Printer } from 'lucide-react-native';
 
 export default function OrdersBoardScreen({ navigation }) {
   const { width } = useWindowDimensions();
@@ -258,9 +259,14 @@ export default function OrdersBoardScreen({ navigation }) {
 
         {/* Status & Progress */}
         <View style={[styles.dCol, { width: 150, alignItems: 'flex-end' }]}>
-          <TouchableOpacity onPress={() => cycleStatus(item.id, item.status)} style={{ marginBottom: 8 }}>
-            {renderStatusBadge(item.status)}
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+            <TouchableOpacity onPress={() => printOrder(item)} style={{ padding: 4, backgroundColor: '#334155', borderRadius: 6, marginRight: 8 }}>
+              <Printer color="#f8fafc" size={14} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => cycleStatus(item.id, item.status)}>
+              {renderStatusBadge(item.status)}
+            </TouchableOpacity>
+          </View>
           {renderProgressBox(item)}
         </View>
       </View>
@@ -291,9 +297,14 @@ export default function OrdersBoardScreen({ navigation }) {
               <Text style={[styles.typeBadgeText, { color: typeColor }]}>{item.type}</Text>
             </View>
           </View>
-          <TouchableOpacity onPress={() => cycleStatus(item.id, item.status)}>
-            {renderStatusBadge(item.status)}
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity onPress={() => printOrder(item)} style={{ padding: 6, backgroundColor: '#334155', borderRadius: 8, marginRight: 10 }}>
+              <Printer color="#f8fafc" size={16} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => cycleStatus(item.id, item.status)}>
+              {renderStatusBadge(item.status)}
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Content: Product */}

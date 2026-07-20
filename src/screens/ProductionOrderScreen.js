@@ -143,7 +143,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
 
       for (const ingredient of formulaData.ingredients) {
         const percentageValue = ingredient.percentage !== undefined ? ingredient.percentage / 100 : 0;
-        const requiredQty = targetKilos * percentageValue; 
+        const requiredQty = Number((targetKilos * percentageValue).toFixed(2));
         
         const ingUpper = ingredient.name.trim().toUpperCase();
         const eqIngs = EQUIVALENCIES[ingUpper] || [];
@@ -178,13 +178,13 @@ export default function ProductionOrderScreen({ route, navigation }) {
         const batchesToConsume = [];
         for (const b of availableBatches) {
            if (remainingRequired <= 0) break;
-           const consumeQty = Math.min(b.quantity, remainingRequired);
+           const consumeQty = Number(Math.min(b.quantity, remainingRequired).toFixed(2));
            batchesToConsume.push({
               batchInternal: b.batchInternal,
               batchProvider: b.batchProvider,
               consumed: consumeQty
            });
-           remainingRequired -= consumeQty;
+           remainingRequired = Number((remainingRequired - consumeQty).toFixed(2));
         }
 
         calculatedNeeds.push({
@@ -192,7 +192,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
           required: requiredQty,
           stock: currentStock,
           isSufficient: currentStock >= requiredQty,
-          missing: currentStock >= requiredQty ? 0 : requiredQty - currentStock,
+          missing: currentStock >= requiredQty ? 0 : Number((requiredQty - currentStock).toFixed(2)),
           isGranel: isGranel,
           batchesToConsume: batchesToConsume
         });

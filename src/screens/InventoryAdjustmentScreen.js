@@ -9,7 +9,7 @@ import { registerMovement } from '../services/logisticsService';
 import { ChevronLeft, Save, PackagePlus, FileText, Calendar, Building2, Truck, Droplet, Box, Circle, ClipboardList, Database, ArrowDownCircle, ArrowUpCircle } from 'lucide-react-native';
 import AutocompleteInput from '../components/AutocompleteInput';
 import Toast from 'react-native-toast-message';
-import { RAW_MATERIALS_LIST, PROVIDERS_LIST, ETIQUETA_CAPACITIES, BIDON_CAPACITIES, CAJA_FORMATS } from '../config/constants';
+import { RAW_MATERIALS_LIST, PROVIDERS_LIST, ETIQUETA_CAPACITIES, BIDON_CAPACITIES, CAJA_FORMATS, PRODUCTS_MADRE_LIST } from '../config/constants';
 import { printSingleLabel } from '../services/labelService';
 
 export default function InventoryAdjustmentScreen({ navigation }) {
@@ -45,6 +45,7 @@ export default function InventoryAdjustmentScreen({ navigation }) {
     let qtyNormalized = Number(formData.quantity.replace(',', '.'));
     const isMP = inventoryType === 'MP';
     const isPT = inventoryType === 'PT';
+    const isGranel = inventoryType === 'GRANEL';
     const isEgreso = operationType === 'EGRESO';
 
     if (isNaN(qtyNormalized) || qtyNormalized <= 0) {
@@ -69,6 +70,11 @@ export default function InventoryAdjustmentScreen({ navigation }) {
         Alert.alert("Datos Incompletos", "Lote del Proveedor y Vencimiento son obligatorios para Ingreso de Materia Prima.");
         return;
       }
+    } else if (isGranel) {
+      if (!formData.itemName.trim()) {
+         Alert.alert("Datos Incompletos", "El nombre del producto a Granel es obligatorio.");
+         return;
+      }
     } else {
       if (category === 'Etiquetas' && !formData.itemName.trim()) {
         Alert.alert("Datos Incompletos", "El nombre del producto para la etiqueta es obligatorio.");
@@ -85,6 +91,8 @@ export default function InventoryAdjustmentScreen({ navigation }) {
       
       if (isPT) {
         finalUnit = unitType === 'Kilos' ? 'Kg' : (unitType === 'Litros' ? 'Lts' : 'Uds');
+      } else if (isGranel) {
+        finalUnit = unitType === 'Kilos' ? 'Kg' : 'Lts';
       } else if (!isMP) {
         if (category === 'Bidones') finalItemName = `BIDON ${formData.capacity}`;
         if (category === 'Cajas') finalItemName = `CAJA ${formData.format}`;
@@ -100,16 +108,16 @@ export default function InventoryAdjustmentScreen({ navigation }) {
         providerName: formData.providerName.trim() || 'S/D',
         expiryDate: formData.expiryDate.trim() || 'S/V',
         observations: formData.observations.trim(),
-        category: isMP ? 'Materia Prima' : (isPT ? 'Producto Terminado' : category),
-        stockType: isMP ? 'MP' : (isPT ? 'FINAL' : 'INSUMOS'),
+        category: isMP ? 'Materia Prima' : (isPT ? 'Producto Terminado' : (isGranel ? 'Producto Granel' : category)),
+        stockType: isMP ? 'MP' : (isPT ? 'FINAL' : (isGranel ? 'GRANEL' : 'INSUMOS')),
         batchInternal: batchInternal, 
         unit: finalUnit,
-        status: isMP && !isEgreso ? 'PENDIENTE' : 'APTO'
+        status: (isMP && !isEgreso) ? 'PENDIENTE' : ((isGranel && !isEgreso) ? 'PENDIENTE_LABORATORIO' : 'APTO')
       };
 
       let companyDest = 'STOCK_CENTRAL_INSUMOS';
       if (isMP) companyDest = 'STOCK_CENTRAL_MP';
-      if (isPT) companyDest = 'H2O';
+      if (isPT || isGranel) companyDest = 'H2O';
       
       let actionName = '';
       if (isEgreso) {
@@ -117,6 +125,7 @@ export default function InventoryAdjustmentScreen({ navigation }) {
       } else {
         if (isMP) actionName = 'ALTA_POR_AJUSTE_MATERIA_PRIMA';
         else if (isPT) actionName = 'ALTA_POR_AJUSTE_PRODUCTO_TERMINADO';
+        else if (isGranel) actionName = 'ALTA_POR_AJUSTE_GRANEL';
         else actionName = `ALTA_POR_AJUSTE_${category.toUpperCase().replace(/ /g, '_')}`;
       }
 
@@ -228,6 +237,14 @@ export default function InventoryAdjustmentScreen({ navigation }) {
           </TouchableOpacity>
 
           <TouchableOpacity 
+            style={[styles.masterToggleBtn, inventoryType === 'GRANEL' && { backgroundColor: '#f59e0b', borderColor: '#f59e0b' }]}
+            onPress={() => setInventoryType('GRANEL')}
+          >
+            <Droplet color={inventoryType === 'GRANEL' ? '#fff' : '#64748b'} size={18} style={{marginRight: 6}} />
+            <Text style={[styles.masterToggleText, inventoryType === 'GRANEL' && styles.masterToggleTextActive]}>GRANEL</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
             style={[styles.masterToggleBtn, inventoryType === 'INSUMOS' && styles.masterToggleBtnActiveInsumos]}
             onPress={() => setInventoryType('INSUMOS')}
           >
@@ -254,18 +271,18 @@ export default function InventoryAdjustmentScreen({ navigation }) {
           </>
         )}
 
-        <View style={styles.card}>
-          {(inventoryType === 'MP' || inventoryType === 'PT' || (inventoryType === 'INSUMOS' && category === 'Etiquetas')) && (
-            <>
-              <Text style={styles.label}>{inventoryType === 'MP' ? 'Descripción de Materia Prima' : (inventoryType === 'PT' ? 'Descripción del Producto Terminado' : 'Producto al que corresponde la Etiqueta')}</Text>
+        <View style={styles.formContainer}>
+          {(inventoryType === 'MP' || inventoryType === 'GRANEL' || inventoryType === 'PT' || (inventoryType === 'INSUMOS' && category === 'Etiquetas')) && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>{inventoryType === 'MP' ? 'Materia Prima' : (inventoryType === 'GRANEL' ? 'Producto Granel' : 'Producto / Nombre')}</Text>
               <AutocompleteInput
-                data={inventoryType === 'MP' ? RAW_MATERIALS_LIST : []} // En etiquetas o PT podría sugerir productos
+                data={inventoryType === 'MP' ? RAW_MATERIALS_LIST : (inventoryType === 'GRANEL' ? PRODUCTS_MADRE_LIST : [])}
                 value={formData.itemName}
-                onChangeText={(txt) => setFormData({...formData, itemName: txt})}
-                placeholder={inventoryType === 'MP' ? "Ej: ÁCIDO SULFÚRICO" : "Ej: ACTION"}
-                icon={<FileText color="#94a3b8" size={18} />}
+                onChangeText={(t) => setFormData({...formData, itemName: t})}
+                placeholder={inventoryType === 'MP' ? "Buscar MP..." : (inventoryType === 'GRANEL' ? "Buscar Granel..." : "Nombre del producto...")}
+                allowCustom={true}
               />
-            </>
+            </View>
           )}
 
           {inventoryType === 'INSUMOS' && category === 'Etiquetas' && (
@@ -322,36 +339,44 @@ export default function InventoryAdjustmentScreen({ navigation }) {
             </>
           )}
 
-          <Text style={styles.label}>Cantidad a {isEgreso ? 'Descontar' : 'Ingresar'}</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <View style={[styles.inputWrapper, { flex: 1, marginBottom: 0 }, isEgreso && { borderColor: '#fca5a5', backgroundColor: '#fef2f2' }]}>
-              <Circle color={isEgreso ? "#ef4444" : "#94a3b8"} size={18} style={styles.inputIcon} />
-              <TextInput 
-                style={styles.input} 
-                placeholder="Cantidad"
-                keyboardType="numeric"
-                placeholderTextColor="#94a3b8"
-                value={formData.quantity}
-                onChangeText={(txt) => setFormData({...formData, quantity: txt})}
-              />
-            </View>
-
-            {inventoryType === 'MP' && (
-              <View style={{ flexDirection: 'row', marginLeft: 10, backgroundColor: '#f1f5f9', borderRadius: 12, padding: 4 }}>
-                <TouchableOpacity 
-                  style={[{ paddingVertical: 10, paddingHorizontal: 15, borderRadius: 8 }, unitType === 'Kilos' && { backgroundColor: '#0f172a' }]} 
-                  onPress={() => setUnitType('Kilos')}
-                >
-                  <Text style={[{ fontSize: 13, fontWeight: '700', color: '#64748b' }, unitType === 'Kilos' && { color: '#fff' }]}>Kilos</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[{ paddingVertical: 10, paddingHorizontal: 15, borderRadius: 8 }, unitType === 'Litros' && { backgroundColor: '#0f172a' }]} 
-                  onPress={() => setUnitType('Litros')}
-                >
-                  <Text style={[{ fontSize: 13, fontWeight: '700', color: '#64748b' }, unitType === 'Litros' && { color: '#fff' }]}>Litros</Text>
-                </TouchableOpacity>
+          <View style={{ marginBottom: 20 }}>
+            <Text style={styles.label}>Cantidad a {isEgreso ? 'Descontar' : 'Ingresar'}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={[styles.inputWrapper, { flex: 1, marginBottom: 0 }, isEgreso && { borderColor: '#fca5a5', backgroundColor: '#fef2f2' }]}>
+                <Circle color={isEgreso ? "#ef4444" : "#94a3b8"} size={18} style={styles.inputIcon} />
+                <TextInput 
+                  style={styles.input} 
+                  placeholder="Cantidad"
+                  keyboardType="numeric"
+                  placeholderTextColor="#94a3b8"
+                  value={formData.quantity}
+                  onChangeText={(txt) => setFormData({...formData, quantity: txt})}
+                />
               </View>
-            )}
+
+              {(inventoryType === 'PT' || inventoryType === 'MP' || inventoryType === 'GRANEL') ? (
+                <View style={{ flexDirection: 'row', marginLeft: 10, backgroundColor: '#f1f5f9', borderRadius: 12, padding: 4 }}>
+                  <TouchableOpacity 
+                    style={[{ paddingVertical: 10, paddingHorizontal: 15, borderRadius: 8 }, unitType === 'Kilos' && { backgroundColor: '#0f172a' }]} 
+                    onPress={() => setUnitType('Kilos')}
+                  >
+                    <Text style={[{ fontSize: 13, fontWeight: '700', color: '#64748b' }, unitType === 'Kilos' && { color: '#fff' }]}>Kilos</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[{ paddingVertical: 10, paddingHorizontal: 15, borderRadius: 8 }, unitType === 'Litros' && { backgroundColor: '#0f172a' }]} 
+                    onPress={() => setUnitType('Litros')}
+                  >
+                    <Text style={[{ fontSize: 13, fontWeight: '700', color: '#64748b' }, unitType === 'Litros' && { color: '#fff' }]}>Litros</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={{ flexDirection: 'row', marginLeft: 10, backgroundColor: '#f1f5f9', borderRadius: 12, padding: 4 }}>
+                  <View style={[{ paddingVertical: 10, paddingHorizontal: 15, borderRadius: 8, backgroundColor: '#0f172a' }]}>
+                     <Text style={[{ fontSize: 13, fontWeight: '700', color: '#fff' }]}>Uds</Text>
+                  </View>
+                </View>
+              )}
+            </View>
           </View>
         </View>
 
