@@ -4,7 +4,12 @@ import {
   initializeAuth, 
   getReactNativePersistence 
 } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { 
+  getFirestore, 
+  initializeFirestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager 
+} from 'firebase/firestore';
 import { getStorage } from 'firebase/storage'; // Agregamos Storage para las fotos de remitos
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -34,7 +39,10 @@ if (Platform.OS === 'web') {
   });
 }
 
-const db = getFirestore(app);
+// Inicializamos Firestore habilitando la Memoria Caché (Modo Offline)
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()})
+});
 const storage = getStorage(app); // Necesario para guardar las fotos que lee la IA
 
 export { auth, db, storage };

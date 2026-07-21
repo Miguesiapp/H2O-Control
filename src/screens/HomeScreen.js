@@ -117,6 +117,23 @@ export default function HomeScreen({ navigation }) {
     };
   }, []);
 
+  const handleHardRefresh = () => {
+    if (Platform.OS === 'web') {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for(let registration of registrations) {
+            registration.unregister();
+          }
+          window.location.reload(true);
+        });
+      } else {
+        window.location.reload(true);
+      }
+    } else {
+      Alert.alert("Aviso", "Esta función es para la versión Web/PWA.");
+    }
+  };
+
   const handleLogOut = () => {
     if (Platform.OS === 'web') {
       const confirmLogout = window.confirm("¿Deseas desconectar este dispositivo de la red corporativa?");
@@ -148,6 +165,12 @@ export default function HomeScreen({ navigation }) {
 
         {/* PANEL DE ACCESO RÁPIDO */}
         <View style={styles.headerButtons}>
+          {Platform.OS === 'web' && (
+            <TouchableOpacity activeOpacity={0.7} style={styles.actionBtn} onPress={handleHardRefresh}>
+              <Sparkles color="#3b82f6" size={22} />
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity activeOpacity={0.7} style={styles.actionBtn} onPress={() => navigation.navigate('History')}>
             <Clock color="#475569" size={22} />
           </TouchableOpacity>
