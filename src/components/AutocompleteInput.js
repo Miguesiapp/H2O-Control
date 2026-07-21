@@ -12,7 +12,8 @@ export default function AutocompleteInput({
   onChangeText, 
   placeholder, 
   icon: IconComponent, 
-  containerStyle 
+  containerStyle,
+  allowCustom = false
 }) {
   const [inputText, setInputText] = useState(value || '');
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -60,8 +61,12 @@ export default function AutocompleteInput({
           value={inputText}
           onChangeText={(txt) => {
             setInputText(txt);
-            // Vaciamos el valor en el componente padre hasta que seleccione algo válido
-            if (value !== '') onChangeText(''); 
+            if (allowCustom) {
+               onChangeText(txt);
+            } else {
+               // Vaciamos el valor en el componente padre hasta que seleccione algo válido
+               if (value !== '') onChangeText(''); 
+            }
             setShowSuggestions(true);
           }}
           onFocus={() => {

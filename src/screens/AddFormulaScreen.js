@@ -222,6 +222,7 @@ export default function AddFormulaScreen({ route, navigation }) {
                 placeholder="Ej: GRANEL BUFFER"
                 icon={<FileText color="#94a3b8" size={18} />}
                 containerStyle={{ zIndex: 1001 }}
+                allowCustom={true}
               />
             </View>
           </View>
@@ -309,6 +310,7 @@ export default function AddFormulaScreen({ route, navigation }) {
                   placeholder="Materia Prima o Granel"
                   icon={<FileText color="#94a3b8" size={18} />}
                   containerStyle={{ marginBottom: 0, zIndex: 100 - idx }}
+                  allowCustom={true}
                 />
               </View>
               <TextInput 

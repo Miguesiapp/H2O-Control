@@ -75,7 +75,7 @@ export default function PurchaseRequestsScreen({ navigation }) {
               });
               Toast.show({ type: 'success', text1: 'Pedido Confirmado', text2: 'Marcado como completado.' });
             } catch (error) {
-              Alert.alert("Error", "No se pudo actualizar el estado.");
+              Alert.alert("Error de Permisos o Red", `No se pudo actualizar el estado.\n\nDetalle técnico: ${error.message}`);
             }
           }
         }
