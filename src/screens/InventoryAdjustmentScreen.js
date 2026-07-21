@@ -84,7 +84,11 @@ export default function InventoryAdjustmentScreen({ navigation }) {
 
     try {
       setIsSubmitting(true);
-      const batchInternal = isEgreso ? 'BAJA-AJUSTE' : generateUniqueBatch(); 
+      
+      let batchInternal = isEgreso ? 'BAJA-AJUSTE' : generateUniqueBatch();
+      if (!isEgreso && formData.batchProvider.trim() !== '') {
+        batchInternal = formData.batchProvider.trim().toUpperCase();
+      }
       
       let finalItemName = formData.itemName.trim().toUpperCase();
       let finalUnit = 'Uds';

@@ -24,9 +24,10 @@ export default function AddFormulaScreen({ route, navigation }) {
   const [inputMode, setInputMode] = useState('PERCENTAGE'); // 'PERCENTAGE' or 'KILOS'
 
   const [customMaterials, setCustomMaterials] = useState([]);
+  const [dynamicProducts, setDynamicProducts] = useState([]);
 
   useEffect(() => {
-    import('firebase/firestore').then(({ onSnapshot, collection, query, where }) => {
+    import('firebase/firestore').then(({ onSnapshot, collection }) => {
       let currentMats = [];
       
       const unsubCustom = onSnapshot(collection(db, "Custom_Materials"), (snapshot) => {
@@ -38,8 +39,17 @@ export default function AddFormulaScreen({ route, navigation }) {
         setCustomMaterials([...new Set(currentMats)]);
       });
 
+      const unsubFormulas = onSnapshot(collection(db, "Formulas_Maestras"), (snapshot) => {
+        const prods = [];
+        snapshot.forEach(doc => {
+          if (doc.data().productName) prods.push(doc.data().productName.trim().toUpperCase());
+        });
+        setDynamicProducts([...new Set(prods)]);
+      });
+
       return () => {
         unsubCustom();
+        unsubFormulas();
       };
     });
   }, []);
@@ -216,7 +226,7 @@ export default function AddFormulaScreen({ route, navigation }) {
             <View style={{ flex: 1, marginRight: 10 }}>
               <Text style={styles.label}>Nombre del Producto</Text>
               <AutocompleteInput 
-                data={[...PRODUCTS_MADRE_LIST, ...PRODUCTS_FINAL_LIST].sort()}
+                data={[...new Set([...PRODUCTS_MADRE_LIST, ...PRODUCTS_FINAL_LIST, ...dynamicProducts])].sort()}
                 value={productName}
                 onChangeText={setProductName}
                 placeholder="Ej: GRANEL BUFFER"
@@ -304,7 +314,7 @@ export default function AddFormulaScreen({ route, navigation }) {
             <View style={styles.ingRow}>
               <View style={{ flex: 2 }}>
                 <AutocompleteInput 
-                  data={[...mergedMaterialsList, ...PRODUCTS_MADRE_LIST].sort()}
+                  data={[...new Set([...mergedMaterialsList, ...PRODUCTS_MADRE_LIST, ...dynamicProducts])].sort()}
                   value={ing.name}
                   onChangeText={(val) => updateIngredient(idx, 'name', val)}
                   placeholder="Materia Prima o Granel"
