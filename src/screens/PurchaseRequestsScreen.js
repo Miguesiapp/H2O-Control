@@ -15,9 +15,12 @@ export default function PurchaseRequestsScreen({ navigation }) {
   const [newRequestText, setNewRequestText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [confirmingId, setConfirmingId] = useState(null);
+
   useEffect(() => {
     const q = query(
       collection(db, "PurchaseRequests"), 
+      where("status", "==", "PENDING"),
       orderBy("createdAt", "desc")
     );
     
@@ -65,18 +68,26 @@ export default function PurchaseRequestsScreen({ navigation }) {
         { text: "Cancelar", style: "cancel" },
         { 
           text: "Sí, confirmar", 
-          onPress: async () => {
-            try {
-              const currentUser = auth.currentUser?.email || 'Sistema';
-              await updateDoc(doc(db, "PurchaseRequests", id), {
-                status: 'COMPLETED',
-                confirmedBy: currentUser,
-                confirmedAt: serverTimestamp()
-              });
-              Toast.show({ type: 'success', text1: 'Pedido Confirmado', text2: 'Marcado como completado.' });
-            } catch (error) {
-              Alert.alert("Error de Permisos o Red", `No se pudo actualizar el estado.\n\nDetalle técnico: ${error.message}`);
-            }
+          onPress: () => {
+            // Cambio visual a verde INMEDIATO
+            setConfirmingId(id);
+            
+            // Esperamos 1.5 segundos para que lo vea verde y luego actualizamos Firebase (lo cual lo desaparecerá por el query PENDING)
+            setTimeout(async () => {
+              try {
+                const currentUser = auth.currentUser?.email || 'Sistema';
+                await updateDoc(doc(db, "PurchaseRequests", id), {
+                  status: 'COMPLETED',
+                  confirmedBy: currentUser,
+                  confirmedAt: serverTimestamp()
+                });
+                Toast.show({ type: 'success', text1: 'Pedido Confirmado', text2: 'Marcado como completado y retirado de la lista.' });
+                setConfirmingId(null);
+              } catch (error) {
+                setConfirmingId(null);
+                Alert.alert("Error de Permisos o Red", `No se pudo actualizar el estado.\n\nDetalle técnico: ${error.message}`);
+              }
+            }, 1500);
           }
         }
       ]
@@ -84,7 +95,8 @@ export default function PurchaseRequestsScreen({ navigation }) {
   };
 
   const renderRequestCard = ({ item }) => {
-    const isCompleted = item.status === 'COMPLETED';
+    // Es PENDIENTE según la base de datos, pero si está en confirmingId, lo mostramos COMPLETED visualmente
+    const isCompleted = (item.status === 'COMPLETED') || (confirmingId === item.id);
     
     const themeColor = isCompleted ? '#10b981' : '#ef4444';
     const bgTheme = isCompleted ? '#ecfdf5' : '#fef2f2';
@@ -109,7 +121,7 @@ export default function PurchaseRequestsScreen({ navigation }) {
             <Text style={styles.metaValue}>{dateStr}</Text>
           </View>
           
-          {isCompleted && (
+          {isCompleted && item.confirmedBy && (
             <View style={[styles.metaRow, { marginTop: 5 }]}>
               <Text style={[styles.metaLabel, { color: '#059669' }]}>Confirmado por:</Text>
               <Text style={[styles.metaValue, { color: '#059669' }]}>{item.confirmedBy}</Text>
