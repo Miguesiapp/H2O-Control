@@ -150,30 +150,36 @@ export default function InventoryAdjustmentScreen({ navigation }) {
           ]);
         }
       } else {
-        Alert.alert(
-          "Alta de Stock Exitosa",
-          `Lote asignado: ${batchInternal}\n¿Desea imprimir etiqueta de identificación (Zebra)?`,
-          [
-            { text: "No, gracias", style: "cancel", onPress: () => navigation.goBack() },
-            { text: "Imprimir Etiqueta", onPress: async () => {
-                try {
-                  await printSingleLabel({
-                    type: isMP ? 'MP' : 'INSUMOS',
-                    name: finalItemName,
-                    batch: isMP ? (formData.batchProvider.trim() || batchInternal) : batchInternal,
-                    expiration: formData.expiryDate.trim() || 'N/A',
-                    quantity: qtyNormalized,
-                    unit: finalUnit
-                  });
-                } catch (e) {
-                  Alert.alert("Error de Impresión", "No se pudo generar la etiqueta.");
-                } finally {
-                  navigation.goBack();
+        if (Platform.OS === 'web') {
+          // Alert.alert con botones personalizados falla o es ignorado en Web
+          Toast.show({ type: 'success', text1: 'Alta de Stock Exitosa', text2: `Lote asignado correctamente.` });
+          navigation.navigate('Home');
+        } else {
+          Alert.alert(
+            "Alta de Stock Exitosa",
+            `Lote asignado: ${batchInternal}\n¿Desea imprimir etiqueta de identificación (Zebra)?`,
+            [
+              { text: "No, gracias", style: "cancel", onPress: () => navigation.navigate('Home') },
+              { text: "Imprimir Etiqueta", onPress: async () => {
+                  try {
+                    await printSingleLabel({
+                      type: isMP ? 'MP' : 'INSUMOS',
+                      name: finalItemName,
+                      batch: isMP ? (formData.batchProvider.trim() || batchInternal) : batchInternal,
+                      expiration: formData.expiryDate.trim() || 'N/A',
+                      quantity: qtyNormalized,
+                      unit: finalUnit
+                    });
+                  } catch (e) {
+                    Alert.alert("Error de Impresión", "No se pudo generar la etiqueta.");
+                  } finally {
+                    navigation.navigate('Home');
+                  }
                 }
               }
-            }
-          ]
-        );
+            ]
+          );
+        }
       }
 
     } catch (error) {

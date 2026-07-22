@@ -171,11 +171,13 @@ export default function StockView({ route, navigation }) {
             {item.lotes.map((lote, index) => (
               <View key={lote.id || index.toString()} style={styles.loteCard}>
                 <View style={styles.loteHeader}>
-                  <Text style={styles.loteTitle}>Lote Int: {lote.batchInternal || 'S/D'}</Text>
+                  <Text style={styles.loteTitle}>
+                    Ingreso: {lote.createdAt && typeof lote.createdAt.toDate === 'function' ? lote.createdAt.toDate().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : (lote.createdAt ? new Date(lote.createdAt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : 'S/F')}
+                  </Text>
                   <Text style={styles.loteQty}>{lote.quantity} {lote.unit}</Text>
                 </View>
                 
-                {lote.loteProveedor && <Text style={styles.loteSub}>Lote Prov: <Text style={{fontWeight: '700'}}>{lote.loteProveedor}</Text></Text>}
+                <Text style={styles.loteSub}>Lote Prov: <Text style={{fontWeight: '700'}}>{lote.batchProvider || lote.loteProveedor || 'S/D'}</Text></Text>
                 {lote.providerName && <Text style={styles.loteSub}>Proveedor: <Text style={{fontWeight: '700'}}>{lote.providerName}</Text></Text>}
                 {lote.vencimiento && <Text style={styles.loteSub}>Vence: <Text style={{fontWeight: '700'}}>{lote.vencimiento}</Text></Text>}
                 

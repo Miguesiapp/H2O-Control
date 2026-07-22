@@ -110,26 +110,31 @@ export default function SmartAICargoScreen({ navigation }) {
         });
       }
 
-      Alert.alert(
-        "Operación Exitosa", 
-        `El movimiento quedó registrado bajo el usuario: ${currentUser}`,
-        [
-          { text: "Cerrar", onPress: () => navigation.goBack() },
-          { 
-            text: opMode.includes('INGRESO') ? "IMPRIMIR QR" : "VER STOCK", 
-            onPress: () => {
-              if(opMode.includes('INGRESO')) {
-                navigation.navigate('QRGenerator', { 
-                  itemData: firstItemForQR,
-                  companyName: companyDest 
-                });
-              } else {
-                navigation.navigate('StockView', { companyName: companyDest });
-              }
-            } 
-          }
-        ]
-      );
+      if (Platform.OS === 'web') {
+        Toast.show({ type: 'success', text1: 'Operación Exitosa', text2: `El movimiento quedó registrado bajo el usuario: ${currentUser}` });
+        navigation.navigate('Home');
+      } else {
+        Alert.alert(
+          "Operación Exitosa", 
+          `El movimiento quedó registrado bajo el usuario: ${currentUser}`,
+          [
+            { text: "Cerrar", onPress: () => navigation.navigate('Home') },
+            { 
+              text: opMode.includes('INGRESO') ? "IMPRIMIR QR" : "VER STOCK", 
+              onPress: () => {
+                if(opMode.includes('INGRESO')) {
+                  navigation.navigate('QRGenerator', { 
+                    itemData: firstItemForQR,
+                    companyName: companyDest 
+                  });
+                } else {
+                  navigation.navigate('StockView', { companyName: companyDest });
+                }
+              } 
+            }
+          ]
+        );
+      }
     } catch (error) {
       Alert.alert("Error", "No se pudo actualizar el inventario.");
     } finally {
