@@ -152,7 +152,6 @@ export default function SmartAICargoScreen({ navigation }) {
             style={[styles.stockToggleBtn, targetStock === 'MP' && styles.stockToggleBtnActive]}
             onPress={() => setTargetStock('MP')}
           >
-            <Database color={targetStock === 'MP' ? '#fff' : '#64748b'} size={18} style={{marginRight: 6}} />
             <Text style={[styles.stockToggleText, targetStock === 'MP' && styles.stockToggleTextActive]}>M. PRIMA</Text>
           </TouchableOpacity>
 
@@ -160,7 +159,6 @@ export default function SmartAICargoScreen({ navigation }) {
             style={[styles.stockToggleBtn, targetStock === 'GRANEL' && styles.stockToggleBtnActive]}
             onPress={() => setTargetStock('GRANEL')}
           >
-            <Beaker color={targetStock === 'GRANEL' ? '#fff' : '#64748b'} size={18} style={{marginRight: 6}} />
             <Text style={[styles.stockToggleText, targetStock === 'GRANEL' && styles.stockToggleTextActive]}>GRANEL</Text>
           </TouchableOpacity>
 
@@ -168,7 +166,6 @@ export default function SmartAICargoScreen({ navigation }) {
             style={[styles.stockToggleBtn, targetStock === 'FINAL' && styles.stockToggleBtnActive]}
             onPress={() => setTargetStock('FINAL')}
           >
-            <Package color={targetStock === 'FINAL' ? '#fff' : '#64748b'} size={18} style={{marginRight: 6}} />
             <Text style={[styles.stockToggleText, targetStock === 'FINAL' && styles.stockToggleTextActive]}>PT</Text>
           </TouchableOpacity>
 
@@ -176,7 +173,6 @@ export default function SmartAICargoScreen({ navigation }) {
             style={[styles.stockToggleBtn, targetStock === 'INSUMOS' && styles.stockToggleBtnActive]}
             onPress={() => setTargetStock('INSUMOS')}
           >
-            <Box color={targetStock === 'INSUMOS' ? '#fff' : '#64748b'} size={18} style={{marginRight: 6}} />
             <Text style={[styles.stockToggleText, targetStock === 'INSUMOS' && styles.stockToggleTextActive]}>INSUMOS</Text>
           </TouchableOpacity>
         </View>
