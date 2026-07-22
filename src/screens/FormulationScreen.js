@@ -18,6 +18,11 @@ export default function FormulationScreen({ navigation }) {
   const [formulas, setFormulas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
+  const [expandedFormulas, setExpandedFormulas] = useState([]);
+
+  const toggleExpand = (id) => {
+    setExpandedFormulas(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
 
   const handleDelete = (id, name) => {
     Alert.alert(
