@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, FlatList, TouchableOpacity, 
-  TextInput, ActivityIndicator, StatusBar, Alert 
+  TextInput, ActivityIndicator, StatusBar, Alert, Platform 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db, auth } from '../config/firebase';
@@ -60,38 +60,44 @@ export default function PurchaseRequestsScreen({ navigation }) {
     }
   };
 
+  const processConfirmation = (id) => {
+    // Cambio visual a verde INMEDIATO
+    setConfirmingId(id);
+    
+    // Esperamos 1.5 segundos para que lo vea verde y luego actualizamos Firebase
+    setTimeout(async () => {
+      try {
+        const currentUser = auth.currentUser?.email || 'Sistema';
+        await updateDoc(doc(db, "PurchaseRequests", id), {
+          status: 'COMPLETED',
+          confirmedBy: currentUser,
+          confirmedAt: serverTimestamp()
+        });
+        Toast.show({ type: 'success', text1: 'Pedido Confirmado', text2: 'Marcado como completado y retirado de la lista.' });
+        setConfirmingId(null);
+      } catch (error) {
+        setConfirmingId(null);
+        Alert.alert("Error de Permisos o Red", `No se pudo actualizar el estado.\n\nDetalle técnico: ${error.message}`);
+      }
+    }, 1500);
+  };
+
   const handleConfirmRequest = (id) => {
-    Alert.alert(
-      "Confirmar Compra",
-      "¿Estás seguro que este pedido ya fue gestionado o comprado?",
-      [
-        { text: "Cancelar", style: "cancel" },
-        { 
-          text: "Sí, confirmar", 
-          onPress: () => {
-            // Cambio visual a verde INMEDIATO
-            setConfirmingId(id);
-            
-            // Esperamos 1.5 segundos para que lo vea verde y luego actualizamos Firebase (lo cual lo desaparecerá por el query PENDING)
-            setTimeout(async () => {
-              try {
-                const currentUser = auth.currentUser?.email || 'Sistema';
-                await updateDoc(doc(db, "PurchaseRequests", id), {
-                  status: 'COMPLETED',
-                  confirmedBy: currentUser,
-                  confirmedAt: serverTimestamp()
-                });
-                Toast.show({ type: 'success', text1: 'Pedido Confirmado', text2: 'Marcado como completado y retirado de la lista.' });
-                setConfirmingId(null);
-              } catch (error) {
-                setConfirmingId(null);
-                Alert.alert("Error de Permisos o Red", `No se pudo actualizar el estado.\n\nDetalle técnico: ${error.message}`);
-              }
-            }, 1500);
-          }
-        }
-      ]
-    );
+    if (Platform.OS === 'web') {
+      const confirm = window.confirm("¿Estás seguro que este pedido ya fue gestionado o comprado?");
+      if (confirm) {
+        processConfirmation(id);
+      }
+    } else {
+      Alert.alert(
+        "Confirmar Compra",
+        "¿Estás seguro que este pedido ya fue gestionado o comprado?",
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Sí, confirmar", onPress: () => processConfirmation(id) }
+        ]
+      );
+    }
   };
 
   const renderRequestCard = ({ item }) => {
