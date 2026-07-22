@@ -8,6 +8,7 @@ import { db } from '../config/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { ChevronLeft, Search, PackageOpen, AlertTriangle, ShieldCheck, X, FlaskConical, Droplet, Box, Tag, Printer, ChevronDown, ChevronUp } from 'lucide-react-native';
 import { printMultipleLabels } from '../services/labelService';
+import { RAW_MATERIALS_LIST, PRODUCTS_MADRE_LIST } from '../config/constants';
 
 const normalizeString = (str) => {
   if (!str) return '';
@@ -76,7 +77,19 @@ export default function StockView({ route, navigation }) {
 
   const filteredItems = items.filter(item => {
     const searchNormalized = normalizeString(searchQuery);
-    return normalizeString(item.itemName || item.productName).includes(searchNormalized) ||
+    const itemName = item.itemName || item.productName || '';
+    
+    // Buscar si el itemName está en alguna de las listas con sinónimos
+    let fullAliases = itemName;
+    if (stockType === 'MP') {
+      const foundInList = RAW_MATERIALS_LIST.find(rm => rm.startsWith(itemName));
+      if (foundInList) fullAliases = foundInList;
+    } else if (stockType === 'GRANEL') {
+      const foundInList = PRODUCTS_MADRE_LIST.find(pm => pm.startsWith(itemName));
+      if (foundInList) fullAliases = foundInList;
+    }
+
+    return normalizeString(fullAliases).includes(searchNormalized) ||
            normalizeString(item.batchInternal).includes(searchNormalized) ||
            normalizeString(item.providerName).includes(searchNormalized);
   });

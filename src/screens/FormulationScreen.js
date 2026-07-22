@@ -166,7 +166,7 @@ export default function FormulationScreen({ navigation }) {
           <ChevronLeft color="#0f172a" size={28} />
         </TouchableOpacity>
         <View style={{alignItems: 'center'}}>
-          <Text style={styles.headerTitle}>H2O Laboratorio</Text>
+          <Text style={styles.headerTitle}>Formulación</Text>
           <Text style={styles.headerSub}>Catálogo de Fórmulas</Text>
         </View>
         <TouchableOpacity 

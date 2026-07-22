@@ -228,7 +228,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
           <View style={styles.emptyFormulasBox}>
             <AlertCircle color="#f59e0b" size={20} />
             <Text style={styles.emptyFormulasText}>
-              No hay fórmulas activas. Dirígete a "H2O Laboratorio" y carga tu primera Receta Maestra.
+              No hay fórmulas activas. Dirígete a "Formulación" y carga tu primera Receta Maestra.
             </Text>
           </View>
         ) : (
