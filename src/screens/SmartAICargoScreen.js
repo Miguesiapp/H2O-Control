@@ -225,12 +225,13 @@ export default function SmartAICargoScreen({ navigation }) {
 
             {processedData?.items?.map((item, index) => (
               <View key={index} style={styles.itemRow}>
-                <View style={{ flex: 1, gap: 5 }}>
+                  <View style={{ flex: 1, paddingRight: 10 }}>
                     <TextInput 
                       style={styles.inputName} 
                       value={item?.name} 
                       onChangeText={(text) => handleEditItem(index, 'name', text)}
                       placeholder="Nombre del Item"
+                      multiline={true}
                     />
                     <View style={styles.rowMeta}>
                       <TextInput 
@@ -274,7 +275,7 @@ export default function SmartAICargoScreen({ navigation }) {
             >
               <Send color="#fff" size={20} />
               <Text style={styles.confirmBtnText}>
-                Confirmar y Registrar en {targetStock === 'MP' ? 'Stock MP' : targetStock === 'GRANEL' ? 'Granel' : 'PT'}
+                Confirmar y Registrar en {targetStock === 'MP' ? 'Stock MP' : targetStock === 'GRANEL' ? 'Granel' : targetStock === 'INSUMOS' ? 'Insumos' : 'PT'}
               </Text>
             </TouchableOpacity>
 
