@@ -101,6 +101,7 @@ export default function SmartAICargoScreen({ navigation }) {
           loteProveedor: item.lote || 'N/A',
           vencimiento: item.vencimiento || 'N/A',
           unit: item.unit || ((targetStock === 'FINAL' || targetStock === 'INSUMOS') ? 'Uds' : 'Kg/Lts'),
+          status: (targetStock === 'MP') ? 'PENDIENTE' : ((targetStock === 'GRANEL') ? 'PENDIENTE_LABORATORIO' : 'APTO'),
           evidenceUrl: processedData.evidenceUrl || null
         });
       }
