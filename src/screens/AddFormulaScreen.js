@@ -317,7 +317,7 @@ export default function AddFormulaScreen({ route, navigation }) {
                   data={[...new Set([...mergedMaterialsList, ...PRODUCTS_MADRE_LIST, ...dynamicProducts])].sort()}
                   value={ing.name}
                   onChangeText={(val) => updateIngredient(idx, 'name', val)}
-                  placeholder="Materia Prima o Granel"
+                  placeholder="Ingrediente"
                   icon={<FileText color="#94a3b8" size={18} />}
                   containerStyle={{ marginBottom: 0, zIndex: 100 - idx }}
                   allowCustom={true}

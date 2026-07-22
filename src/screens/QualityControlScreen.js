@@ -11,9 +11,14 @@ import { ChevronLeft, CheckCircle, XCircle, Beaker, ClipboardCheck, AlertCircle,
 export default function QualityControlScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('MP'); // 'MP' o 'GRANEL'
   const [pendingLots, setPendingLots] = useState([]);
+  const [expandedItems, setExpandedItems] = useState([]);
   const [analysis, setAnalysis] = useState({ ph: '', density: '', obs: '' });
   const [selectedLot, setSelectedLot] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const toggleExpand = (id) => {
+    setExpandedItems(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -80,29 +85,72 @@ export default function QualityControlScreen({ navigation }) {
     }
   };
 
-  const renderLot = ({ item }) => (
-    <TouchableOpacity 
-      style={[styles.lotCard, selectedLot?.id === item.id && styles.lotCardSelected]} 
-      onPress={() => setSelectedLot(item)}
-      activeOpacity={0.8}
-    >
-      <View style={styles.lotHeader}>
-        <View style={styles.titleRow}>
-           <View style={[styles.iconBox, selectedLot?.id === item.id && { backgroundColor: '#e2e8f0' }]}>
-             {activeTab === 'MP' ? <Database size={18} color="#475569" /> : <Beaker size={18} color="#475569" />}
-           </View>
-           <Text style={styles.lotTitle}>{item.itemName}</Text>
-        </View>
-        <View style={styles.badge}>
-          <Text style={styles.badgeText}>ESPERA</Text>
-        </View>
+  const renderGroup = ({ item }) => {
+    const isExpanded = expandedItems.includes(item.id);
+
+    return (
+      <View style={{ marginBottom: 12 }}>
+        <TouchableOpacity 
+          style={styles.lotCard} 
+          onPress={() => toggleExpand(item.id)}
+          activeOpacity={0.8}
+        >
+          <View style={styles.lotHeader}>
+            <View style={styles.titleRow}>
+               <View style={styles.iconBox}>
+                 {activeTab === 'MP' ? <Database size={18} color="#475569" /> : <Beaker size={18} color="#475569" />}
+               </View>
+               <Text style={styles.lotTitle}>{item.itemName}</Text>
+            </View>
+            <View style={styles.badgeGroup}>
+              <Text style={styles.badgeGroupText}>{item.lotes.length}</Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+
+        {isExpanded && (
+          <View style={styles.expandedContainer}>
+            {item.lotes.map((lote, index) => (
+               <TouchableOpacity 
+                 key={lote.id || index.toString()}
+                 style={[styles.loteCard, selectedLot?.id === lote.id && styles.loteCardSelected]}
+                 onPress={() => setSelectedLot(lote)}
+               >
+                  <View style={styles.loteHeaderSmall}>
+                    <Text style={styles.loteTitleSmall}>
+                      Ingreso: {lote.createdAt && typeof lote.createdAt.toDate === 'function' ? lote.createdAt.toDate().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : (lote.createdAt ? new Date(lote.createdAt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : 'S/F')}
+                    </Text>
+                    <Text style={styles.loteQtySmall}>{lote.quantity} {lote.unit}</Text>
+                  </View>
+                  
+                  {activeTab === 'MP' && <Text style={styles.loteSubSmall}>Lote Prov: <Text style={{fontWeight: '700'}}>{lote.batchProvider || lote.loteProveedor || 'S/D'}</Text></Text>}
+                  {activeTab === 'MP' && lote.providerName && <Text style={styles.loteSubSmall}>Proveedor: <Text style={{fontWeight: '700'}}>{lote.providerName}</Text></Text>}
+                  {activeTab === 'GRANEL' && <Text style={styles.loteSubSmall}>Lote Prod: <Text style={{fontWeight: '700'}}>{lote.batchInternal || 'S/D'}</Text></Text>}
+               </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </View>
-      <View style={styles.lotFooter}>
-        <Text style={styles.lotSub}>Lote: <Text style={styles.lotSubBold}>{item.batchInternal}</Text></Text>
-        <Text style={styles.lotSub}>Volumen: <Text style={styles.lotSubBold}>{item.quantity} {item.unit}</Text></Text>
-      </View>
-    </TouchableOpacity>
-  );
+    );
+  };
+
+  // Group pending lots by product
+  const groupedLotsMap = pendingLots.reduce((acc, item) => {
+    const rawName = item.itemName || item.productName || 'Desconocido';
+    const groupKey = rawName.trim().toUpperCase();
+    
+    if (!acc[groupKey]) {
+      acc[groupKey] = {
+        id: groupKey,
+        itemName: rawName,
+        lotes: []
+      };
+    }
+    acc[groupKey].lotes.push(item);
+    return acc;
+  }, {});
+  
+  const groupedLots = Object.values(groupedLotsMap).sort((a, b) => a.itemName.localeCompare(b.itemName));
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -143,11 +191,11 @@ export default function QualityControlScreen({ navigation }) {
         
         {loading ? (
           <ActivityIndicator color="#3b82f6" style={{ marginTop: 40 }} />
-        ) : pendingLots.length > 0 ? (
+        ) : groupedLots.length > 0 ? (
           <FlatList 
-            data={pendingLots}
+            data={groupedLots}
             keyExtractor={item => item.id}
-            renderItem={renderLot}
+            renderItem={renderGroup}
             contentContainerStyle={styles.listContainer}
             showsVerticalScrollIndicator={false}
           />
@@ -277,9 +325,19 @@ const styles = StyleSheet.create({
   lotTitle: { fontSize: 15, fontWeight: '800', color: '#1e293b', flex: 1 },
   badge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: '#fef3c7', borderWidth: 1, borderColor: '#fde68a' },
   badgeText: { fontSize: 9, fontWeight: '900', color: '#b45309' },
+  badgeGroup: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#bfdbfe' },
+  badgeGroupText: { fontSize: 11, fontWeight: '900', color: '#1d4ed8' },
   lotFooter: { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 10 },
   lotSub: { fontSize: 11, color: '#64748b', fontWeight: '600' },
   lotSubBold: { color: '#0f172a', fontWeight: '800' },
+  
+  expandedContainer: { backgroundColor: '#f8fafc', padding: 10, borderRadius: 12, marginTop: -5, marginBottom: 10, borderWidth: 1, borderColor: '#e2e8f0' },
+  loteCard: { backgroundColor: '#fff', padding: 12, borderRadius: 10, marginBottom: 8, borderWidth: 1, borderColor: '#e2e8f0' },
+  loteCardSelected: { borderWidth: 2, borderColor: '#3b82f6', backgroundColor: '#eff6ff' },
+  loteHeaderSmall: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  loteTitleSmall: { fontSize: 12, fontWeight: '700', color: '#334155' },
+  loteQtySmall: { fontSize: 12, fontWeight: '800', color: '#0f172a' },
+  loteSubSmall: { fontSize: 11, color: '#64748b', marginBottom: 2 },
 
   bottomSection: { flex: 1.2, backgroundColor: '#fff', borderTopLeftRadius: 30, borderTopRightRadius: 30, elevation: 20, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 20, borderWidth: 1, borderColor: '#e2e8f0' },
   formContainer: { flex: 1, padding: 25 },

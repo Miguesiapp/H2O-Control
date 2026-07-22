@@ -73,76 +73,86 @@ export default function FormulationScreen({ navigation }) {
     const bgTheme = isAcid ? '#fef2f2' : '#eff6ff';
     const borderTheme = isAcid ? '#fecaca' : '#bfdbfe';
 
+    const isExpanded = expandedFormulas.includes(item.id);
+
     return (
-      <TouchableOpacity 
-        activeOpacity={0.8}
-        onPress={() => navigation.navigate('AddFormula', { formulaToEdit: item })}
-        style={[styles.card, { borderTopColor: themeColor }]}
-      >
-        <View style={styles.cardHeader}>
-          <View style={styles.titleContainer}>
-            <View style={[styles.iconBox, { backgroundColor: bgTheme }]}>
-              <Beaker size={20} color={themeColor} />
+      <View style={[styles.card, { borderTopColor: themeColor }]}>
+        <TouchableOpacity 
+          activeOpacity={0.8}
+          onPress={() => toggleExpand(item.id)}
+        >
+          <View style={styles.cardHeader}>
+            <View style={styles.titleContainer}>
+              <View style={[styles.iconBox, { backgroundColor: bgTheme }]}>
+                <Beaker size={20} color={themeColor} />
+              </View>
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={styles.productTitle}>{item.productName}</Text>
+                <Text style={styles.companySub}>{item.companyTarget}</Text>
+              </View>
             </View>
-            <View style={{ flex: 1, paddingRight: 10 }}>
-              <Text style={styles.productTitle}>{item.productName}</Text>
-              <Text style={styles.companySub}>{item.companyTarget}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={[styles.typeBadge, { backgroundColor: bgTheme, borderColor: borderTheme }]}>
+                <Text style={[styles.typeBadgeText, { color: themeColor }]}>
+                  {isAcid ? 'ÁCIDO' : 'ALCALINO'}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => navigation.navigate('AddFormula', { formulaToEdit: item })} style={{ padding: 5 }}>
+                <Edit3 size={20} color="#3b82f6" />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => handleDelete(item.id, item.productName)} style={{ padding: 5 }}>
+                <Trash2 size={20} color="#ef4444" />
+              </TouchableOpacity>
             </View>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <View style={[styles.typeBadge, { backgroundColor: bgTheme, borderColor: borderTheme }]}>
-              <Text style={[styles.typeBadgeText, { color: themeColor }]}>
-                {isAcid ? 'ÁCIDO' : 'ALCALINO'}
+        </TouchableOpacity>
+
+        {isExpanded && (
+          <View>
+            <View style={styles.specsRow}>
+              <View style={styles.specItem}>
+                <Text style={styles.specLabel}>pH TEÓRICO</Text>
+                <Text style={[styles.specValue, { color: themeColor }]}>{item.phObjetivo}</Text>
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.specItem}>
+                <Text style={styles.specLabel}>DENSIDAD (g/cm³)</Text>
+                <Text style={styles.specValue}>{item.densidadObjetivo}</Text>
+              </View>
+            </View>
+
+            <View style={styles.compositionBox}>
+              <Text style={styles.formulaTitle}>Composición / Protocolo</Text>
+              <View style={styles.ingredientsList}>
+                {item.ingredients?.map((ing, index) => {
+                  if (ing.type === 'NOTE') {
+                    return (
+                      <View key={index} style={[styles.ingRow, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}>
+                        <View style={[styles.ingDot, { backgroundColor: '#f87171' }]} />
+                        <Text style={[styles.ingText, { color: '#991b1b', fontWeight: '700' }]}>{ing.text}</Text>
+                      </View>
+                    );
+                  }
+                  return (
+                    <View key={index} style={styles.ingRow}>
+                      <View style={styles.ingDot} />
+                      <Text style={styles.ingText}>{ing.name}</Text>
+                      <Text style={styles.ingPercentage}>{ing.percentage}%</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={[styles.warningBox, { backgroundColor: bgTheme, borderColor: borderTheme }]}>
+              <AlertTriangle size={14} color={themeColor} />
+              <Text style={[styles.warningText, { color: themeColor }]}>
+                Precaución: {isAcid ? 'Reacciona violentamente con bases fuertes.' : 'Reacciona violentamente con ácidos fuertes.'}
               </Text>
             </View>
-            <TouchableOpacity onPress={() => handleDelete(item.id, item.productName)} style={{ padding: 5 }}>
-              <Trash2 size={20} color="#ef4444" />
-            </TouchableOpacity>
           </View>
-        </View>
-
-        <View style={styles.specsRow}>
-          <View style={styles.specItem}>
-            <Text style={styles.specLabel}>pH TEÓRICO</Text>
-            <Text style={[styles.specValue, { color: themeColor }]}>{item.phObjetivo}</Text>
-          </View>
-          <View style={styles.divider} />
-          <View style={styles.specItem}>
-            <Text style={styles.specLabel}>DENSIDAD (g/cm³)</Text>
-            <Text style={styles.specValue}>{item.densidadObjetivo}</Text>
-          </View>
-        </View>
-
-        <View style={styles.compositionBox}>
-          <Text style={styles.formulaTitle}>Composición / Protocolo</Text>
-          <View style={styles.ingredientsList}>
-            {item.ingredients?.map((ing, index) => {
-              if (ing.type === 'NOTE') {
-                return (
-                  <View key={index} style={[styles.ingRow, { backgroundColor: '#fef2f2', borderColor: '#fecaca' }]}>
-                    <View style={[styles.ingDot, { backgroundColor: '#f87171' }]} />
-                    <Text style={[styles.ingText, { color: '#991b1b', fontWeight: '700' }]}>{ing.text}</Text>
-                  </View>
-                );
-              }
-              return (
-                <View key={index} style={styles.ingRow}>
-                  <View style={styles.ingDot} />
-                  <Text style={styles.ingText}>{ing.name}</Text>
-                  <Text style={styles.ingPercentage}>{ing.percentage}%</Text>
-                </View>
-              );
-            })}
-          </View>
-        </View>
-
-        <View style={[styles.warningBox, { backgroundColor: bgTheme, borderColor: borderTheme }]}>
-          <AlertTriangle size={14} color={themeColor} />
-          <Text style={[styles.warningText, { color: themeColor }]}>
-            Precaución: {isAcid ? 'Reacciona violentamente con bases fuertes.' : 'Reacciona violentamente con ácidos fuertes.'}
-          </Text>
-        </View>
-      </TouchableOpacity>
+        )}
+      </View>
     );
   };
 
@@ -252,8 +262,8 @@ const styles = StyleSheet.create({
   ingredientsList: { gap: 8 },
   ingRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#f1f5f9', padding: 10, borderRadius: 10 },
   ingDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#cbd5e1', marginRight: 10 },
-  ingText: { fontSize: 13, color: '#334155', fontWeight: '600', flex: 1 },
-  ingPercentage: { fontSize: 14, fontWeight: '900', color: '#0f172a' },
+  ingText: { fontSize: 13, color: '#334155', fontWeight: '600', flex: 1, paddingRight: 10 },
+  ingPercentage: { fontSize: 14, fontWeight: '900', color: '#0f172a', minWidth: 45, textAlign: 'right' },
   
   warningBox: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 10, borderWidth: 1, marginTop: 10 },
   warningText: { fontSize: 11, fontWeight: '700', flex: 1, lineHeight: 16 },

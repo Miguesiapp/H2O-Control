@@ -21,10 +21,11 @@ export default function HomeScreen({ navigation }) {
   const [pendingOECount, setPendingOECount] = useState(0);
   const [pendingODCount, setPendingODCount] = useState(0);
   const [pendingPurchasesCount, setPendingPurchasesCount] = useState(0);
+  const [pendingLabCount, setPendingLabCount] = useState(0);
   const currentUserEmail = auth.currentUser?.email || 'Usuario';
   const [currentUserName, setCurrentUserName] = useState(
-    auth.currentUser?.displayName 
-      ? auth.currentUser.displayName.split(' ')[0] 
+    auth.currentUser?.displayName
+      ? auth.currentUser.displayName.split(' ')[0]
       : currentUserEmail.split('@')[0]
   );
 
@@ -109,19 +110,30 @@ export default function HomeScreen({ navigation }) {
       console.error("Error fetching pending purchases:", error);
     });
 
+    const qLab = query(
+      collection(db, "Inventory"),
+      where("status", "in", ["PENDIENTE", "PENDIENTE_LABORATORIO"])
+    );
+    const unsubscribeLab = onSnapshot(qLab, (snapshot) => {
+      setPendingLabCount(snapshot.docs.length);
+    }, (error) => {
+      console.error("Error fetching pending lab items:", error);
+    });
+
     return () => {
       unsubscribeOP();
       unsubscribeOE();
       unsubscribeOD();
       unsubscribePurchases();
+      unsubscribeLab();
     };
   }, []);
 
   const handleHardRefresh = () => {
     if (Platform.OS === 'web') {
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(registrations) {
-          for(let registration of registrations) {
+        navigator.serviceWorker.getRegistrations().then(function (registrations) {
+          for (let registration of registrations) {
             registration.unregister();
           }
           window.location.reload(true);
@@ -353,6 +365,11 @@ export default function HomeScreen({ navigation }) {
             >
               <View style={[styles.qualityIconBox, { backgroundColor: '#fffbeb' }]}>
                 <ClipboardCheck color="#f59e0b" size={24} />
+                {pendingLabCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{pendingLabCount}</Text>
+                  </View>
+                )}
               </View>
               <Text style={styles.qualityCardText}>BBS Calidad</Text>
             </TouchableOpacity>
@@ -361,7 +378,7 @@ export default function HomeScreen({ navigation }) {
               <View style={[styles.qualityIconBox, { backgroundColor: '#fdf4ff' }]}>
                 <FlaskConical color="#c026d3" size={24} />
               </View>
-              <Text style={styles.qualityCardText}>H2O Laboratorio</Text>
+              <Text style={styles.qualityCardText}>Formulación</Text>
             </TouchableOpacity>
           </View>
 
@@ -411,7 +428,7 @@ export default function HomeScreen({ navigation }) {
 
             <TouchableOpacity style={styles.adminSmallCard} onPress={() => navigation.navigate('IncomingInventory', { companyName: 'STOCK_CENTRAL_MP' })}>
               <Keyboard color="#64748b" size={20} />
-              <Text style={styles.adminSmallCardText}>Carga Manual</Text>
+              <Text style={styles.adminSmallCardText}>Ingreso Manual</Text>
             </TouchableOpacity>
           </View>
         </View>

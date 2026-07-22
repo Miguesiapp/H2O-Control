@@ -85,9 +85,11 @@ export default function InventoryAdjustmentScreen({ navigation }) {
     try {
       setIsSubmitting(true);
       
-      let batchInternal = isEgreso ? 'BAJA-AJUSTE' : generateUniqueBatch();
-      if (!isEgreso && formData.batchProvider.trim() !== '') {
+      let batchInternal = '';
+      if (formData.batchProvider.trim() !== '') {
         batchInternal = formData.batchProvider.trim().toUpperCase();
+      } else {
+        batchInternal = isEgreso ? 'S/D' : generateUniqueBatch();
       }
       
       let finalItemName = formData.itemName.trim().toUpperCase();
@@ -390,10 +392,10 @@ export default function InventoryAdjustmentScreen({ navigation }) {
           </View>
         </View>
 
-        {!isEgreso && (
-          <>
-            <Text style={styles.sectionTitle}>Trazabilidad de Origen</Text>
-            <View style={styles.card}>
+        <Text style={styles.sectionTitle}>{isEgreso ? 'Lote a Descontar (Opcional)' : 'Trazabilidad de Origen'}</Text>
+        <View style={styles.card}>
+          {!isEgreso && (
+            <>
               <Text style={styles.label}>Razón Social Proveedor</Text>
               <AutocompleteInput
                 data={PROVIDERS_LIST}
@@ -402,38 +404,40 @@ export default function InventoryAdjustmentScreen({ navigation }) {
                 placeholder="Ej: Químicos del Sur S.A."
                 icon={<Building2 color="#94a3b8" size={18} />}
               />
+            </>
+          )}
 
-              <View style={styles.row}>
-                <View style={{flex: 1, marginRight: 10}}>
-                  <Text style={styles.label}>Lote Proveedor {inventoryType === 'MP' && '*'}</Text>
-                  <View style={styles.inputWrapper}>
-                    <Truck color="#94a3b8" size={18} style={styles.inputIcon} />
-                    <TextInput 
-                      style={styles.input} 
-                      placeholder="BCK-990" 
-                      placeholderTextColor="#94a3b8"
-                      value={formData.batchProvider}
-                      onChangeText={(txt) => setFormData({...formData, batchProvider: txt})}
-                    />
-                  </View>
-                </View>
-                <View style={{flex: 1}}>
-                  <Text style={styles.label}>Vencimiento {inventoryType === 'MP' && '*'}</Text>
-                  <View style={styles.inputWrapper}>
-                    <Calendar color="#94a3b8" size={18} style={styles.inputIcon} />
-                    <TextInput 
-                      style={styles.input} 
-                      placeholder="MM/AAAA" 
-                      placeholderTextColor="#94a3b8"
-                      value={formData.expiryDate}
-                      onChangeText={(txt) => setFormData({...formData, expiryDate: txt})}
-                    />
-                  </View>
-                </View>
+          <View style={styles.row}>
+            <View style={{flex: 1, marginRight: !isEgreso ? 10 : 0}}>
+              <Text style={styles.label}>{isEgreso ? 'Lote Específico' : `Lote Proveedor ${inventoryType === 'MP' ? '*' : ''}`}</Text>
+              <View style={styles.inputWrapper}>
+                <Truck color="#94a3b8" size={18} style={styles.inputIcon} />
+                <TextInput 
+                  style={styles.input} 
+                  placeholder={isEgreso ? "Si lo dejas vacío, descontará FIFO" : "BCK-990"} 
+                  placeholderTextColor="#94a3b8"
+                  value={formData.batchProvider}
+                  onChangeText={(txt) => setFormData({...formData, batchProvider: txt})}
+                />
               </View>
             </View>
-          </>
-        )}
+            {!isEgreso && (
+              <View style={{flex: 1}}>
+                <Text style={styles.label}>Vencimiento {inventoryType === 'MP' && '*'}</Text>
+                <View style={styles.inputWrapper}>
+                  <Calendar color="#94a3b8" size={18} style={styles.inputIcon} />
+                  <TextInput 
+                    style={styles.input} 
+                    placeholder="MM/AAAA" 
+                    placeholderTextColor="#94a3b8"
+                    value={formData.expiryDate}
+                    onChangeText={(txt) => setFormData({...formData, expiryDate: txt})}
+                  />
+                </View>
+              </View>
+            )}
+          </View>
+        </View>
         
         <View style={styles.card}>
           <Text style={styles.label}>Observaciones / Justificación {isEgreso && '*'}</Text>

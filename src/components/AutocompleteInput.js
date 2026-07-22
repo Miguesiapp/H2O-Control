@@ -81,7 +81,6 @@ export default function AutocompleteInput({
       {showSuggestions && filteredData.length > 0 && (
         <View style={styles.dropdown}>
           {filteredData.slice(0, 5).map((item, index) => {
-             const displayName = item.split('/')[0].trim();
              return (
              <TouchableOpacity 
                key={index.toString()} 
@@ -89,7 +88,7 @@ export default function AutocompleteInput({
                onPress={() => handleSelect(item)}
                keyboardShouldPersistTaps="always"
              >
-               <Text style={styles.suggestionText}>{displayName}</Text>
+               <Text style={styles.suggestionText}>{item}</Text>
              </TouchableOpacity>
           )})}
         </View>
