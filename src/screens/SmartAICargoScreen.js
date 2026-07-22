@@ -23,7 +23,8 @@ import {
   ClipboardList,
   Database,
   Beaker,
-  Package
+  Package,
+  Box
 } from 'lucide-react-native';
 
 export default function SmartAICargoScreen({ navigation }) {
@@ -33,7 +34,7 @@ export default function SmartAICargoScreen({ navigation }) {
   const [rawText, setRawText] = useState('');
   const [loading, setLoading] = useState(false);
   const [processedData, setProcessedData] = useState(null);
-  const [targetStock, setTargetStock] = useState('MP'); // 'MP' | 'GRANEL' | 'FINAL'
+  const [targetStock, setTargetStock] = useState('MP'); // 'MP' | 'GRANEL' | 'FINAL' | 'INSUMOS'
   
   // Siempre será ingreso a STOCK CENTRAL MP o H2O, y la IA puede detectar si es Retiro o Ingreso
   const [opMode, setOpMode] = useState('INGRESO_COMPRA'); 
@@ -78,7 +79,10 @@ export default function SmartAICargoScreen({ navigation }) {
         expiryDate: processedData.items[0].vencimiento || 'N/A'
       } : null;
 
-      const companyDest = targetStock === 'MP' ? 'STOCK_CENTRAL_MP' : 'H2O';
+      let companyDest = 'H2O';
+      if (targetStock === 'MP') companyDest = 'STOCK_CENTRAL_MP';
+      if (targetStock === 'INSUMOS') companyDest = 'STOCK_CENTRAL_INSUMOS';
+      
       const actionName = opMode.includes('INGRESO') ? `INGRESO_MASIVO_IA` : opMode;
 
       for (const item of processedData.items) {
@@ -96,7 +100,7 @@ export default function SmartAICargoScreen({ navigation }) {
           batchInternal: batchInternal,
           loteProveedor: item.lote || 'N/A',
           vencimiento: item.vencimiento || 'N/A',
-          unit: item.unit || (targetStock === 'FINAL' ? 'Uds' : 'Kg/Lts'),
+          unit: item.unit || ((targetStock === 'FINAL' || targetStock === 'INSUMOS') ? 'Uds' : 'Kg/Lts'),
           evidenceUrl: processedData.evidenceUrl || null
         });
       }
@@ -166,6 +170,14 @@ export default function SmartAICargoScreen({ navigation }) {
           >
             <Package color={targetStock === 'FINAL' ? '#fff' : '#64748b'} size={18} style={{marginRight: 6}} />
             <Text style={[styles.stockToggleText, targetStock === 'FINAL' && styles.stockToggleTextActive]}>PT</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.stockToggleBtn, targetStock === 'INSUMOS' && styles.stockToggleBtnActive]}
+            onPress={() => setTargetStock('INSUMOS')}
+          >
+            <Box color={targetStock === 'INSUMOS' ? '#fff' : '#64748b'} size={18} style={{marginRight: 6}} />
+            <Text style={[styles.stockToggleText, targetStock === 'INSUMOS' && styles.stockToggleTextActive]}>INSUMOS</Text>
           </TouchableOpacity>
         </View>
 
