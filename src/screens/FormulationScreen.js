@@ -159,7 +159,12 @@ export default function FormulationScreen({ navigation }) {
           <Text style={styles.headerTitle}>H2O Laboratorio</Text>
           <Text style={styles.headerSub}>Catálogo de Fórmulas</Text>
         </View>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity 
+          style={styles.headerAddBtn}
+          onPress={() => navigation.navigate('AddFormula')}
+        >
+          <Plus color="#fff" size={22} />
+        </TouchableOpacity>
       </View>
 
       <View style={styles.searchContainer}>
@@ -203,14 +208,6 @@ export default function FormulationScreen({ navigation }) {
         />
       )}
 
-      {/* FAB C-LEVEL para agregar nueva fórmula (Flujo Híbrido IA/Manual) */}
-      <TouchableOpacity 
-        style={styles.fab} 
-        activeOpacity={0.8}
-        onPress={() => navigation.navigate('AddFormula')}
-      >
-        <Plus color="#fff" size={28} />
-      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -223,6 +220,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: '#e2e8f0', elevation: 2, zIndex: 10
   },
   backBtn: { padding: 5 },
+  headerAddBtn: { backgroundColor: '#0f172a', padding: 8, borderRadius: 12, elevation: 2, shadowColor: '#0f172a', shadowOpacity: 0.2, shadowOffset: { width: 0, height: 2 }, shadowRadius: 4 },
   aiBtn: { padding: 8, backgroundColor: '#f1f5f9', borderRadius: 10, borderWidth: 1, borderColor: '#e2e8f0' },
   headerTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a' },
   headerSub: { fontSize: 11, color: '#64748b', textTransform: 'uppercase', fontWeight: '800', letterSpacing: 0.5 },
@@ -260,7 +258,6 @@ const styles = StyleSheet.create({
   warningBox: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 10, borderWidth: 1, marginTop: 10 },
   warningText: { fontSize: 11, fontWeight: '700', flex: 1, lineHeight: 16 },
   
-  fab: { position: 'absolute', bottom: 30, right: 25, backgroundColor: '#0f172a', width: 64, height: 64, borderRadius: 20, justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#0f172a', shadowOpacity: 0.3, shadowOffset: { width: 0, height: 4 }, shadowRadius: 10 },
   
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 50 },
   loadingText: { marginTop: 15, color: '#64748b', fontWeight: '700', fontSize: 14 },
