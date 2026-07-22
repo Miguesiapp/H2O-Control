@@ -46,7 +46,11 @@ export default function SmartAICargoScreen({ navigation }) {
     }
     setLoading(true);
     try {
-      const result = await analyzeSystemIntelligence(rawText);
+      let companyDest = 'H2O';
+      if (targetStock === 'MP') companyDest = 'STOCK_CENTRAL_MP';
+      if (targetStock === 'INSUMOS') companyDest = 'STOCK_CENTRAL_INSUMOS';
+
+      const result = await analyzeSystemIntelligence(rawText, companyDest, opMode, targetStock);
       setProcessedData(result);
       if (result.operationType) setOpMode(result.operationType);
     } catch (error) {

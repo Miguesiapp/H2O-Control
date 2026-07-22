@@ -29,7 +29,7 @@ Tu tono es educado y profesional, pero relajado y amigable, no eres un robot abu
 1. Detecta si la operación es 'INGRESO_COMPRA', 'INGRESO_OP', 'INGRESO_OE', o 'RETIRO_CASUAL'.
 2. Si un producto terminado ingresa para usarse en una fórmula, es MP (isInternalMP: true).
 3. OCR: Extrae Lote y Vencimiento de las imágenes. Si no hay, pon "N/A".
-4. INSUMOS: Si estás cargando insumos (envases, cajas, etiquetas), asegúrate de incluir en el "Nombre Normalizado" palabras clave como "BIDON", "CAJA" o "ETIQUETA" al inicio (Ej: "BIDON 5L BLANCO", "CAJA X4 5L", "ETIQUETA MARISCAL"). Esto es crítico para que el sistema los clasifique.
+4. INSUMOS: Al cargar insumos, DEBES clasificar cada ítem anteponiendo EXACTAMENTE una de estas tres palabras: "BIDON", "CAJA" o "ETIQUETA". Si el usuario escribe "cajas de 5L", debes poner "CAJA 5L". Si escribe "envases", pon "BIDON". IMPORTANTE: NO inventes ni agregues palabras que el usuario no escribió (por ejemplo "transparente", "rojo", etc. si no estaban en el texto).
 
 ### FORMATO DE SALIDA (ESTRICTO JSON PARA FUNCIONES DE SISTEMA):
 Cuando se te pida auditar un remito o texto estructurado, responde ÚNICAMENTE con este JSON:
@@ -53,11 +53,12 @@ Cuando se te pida auditar un remito o texto estructurado, responde ÚNICAMENTE c
 /**
  * 🧠 CEREBRO DE TEXTO
  */
-export const analyzeSystemIntelligence = async (text, contextCompany = null, contextMode = null) => {
+export const analyzeSystemIntelligence = async (text, contextCompany = null, contextMode = null, targetStock = null) => {
   try {
     let dynamicPrompt = SYSTEM_PROMPT_BASE;
     if (contextCompany) dynamicPrompt += `\nCONTEXTO: Empresa seleccionada '${contextCompany}'.`;
     if (contextMode) dynamicPrompt += `\nCONTEXTO: Operación '${contextMode}'.`;
+    if (targetStock) dynamicPrompt += `\nCONTEXTO CRÍTICO: El usuario está cargando específicamente la categoría '${targetStock}'. Ajusta tus categorizaciones a esta bodega.`;
 
     // Combinamos las reglas del sistema directamente con el texto del usuario
     const fullPrompt = dynamicPrompt + "\n\n=== TEXTO A ANALIZAR ===\n" + text;
