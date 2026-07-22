@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db, auth } from '../config/firebase';
-import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, doc, serverTimestamp, where } from 'firebase/firestore';
 import { ChevronLeft, Send, ShoppingCart, CheckCircle2 } from 'lucide-react-native';
 import Toast from 'react-native-toast-message';
 
