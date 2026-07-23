@@ -1,5 +1,5 @@
 import * as Print from 'expo-print';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 
 const generateHTML = (order) => {
   const { type, data, id, _createdAt } = order;
@@ -219,6 +219,11 @@ export const printOrder = async (order) => {
     });
   } catch (error) {
     console.error('Error printing:', error);
-    Alert.alert('Error', 'No se pudo generar la impresión.');
+    if (Platform.OS === 'web') {
+      // Usar un Toast custom o console para no bloquear Safari
+      console.warn('Error: No se pudo generar la impresión en Web.');
+    } else {
+      Alert.alert('Error', 'No se pudo generar la impresión.');
+    }
   }
 };
