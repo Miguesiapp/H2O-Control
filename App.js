@@ -20,7 +20,6 @@ if (Platform.OS === 'web') {
       display: flex; 
       flex-direction: column; 
       touch-action: pan-x pan-y; /* Previene double-tap zoom */
-      background-color: #e2e8f0; /* Fondo gris para los márgenes en PC */
     }
   `;
   document.head.appendChild(style);
@@ -115,13 +114,11 @@ export default function App() {
   }
 
   return (
-    <View style={Platform.OS === 'web' ? styles.webContainer : styles.mobileContainer}>
-      <NavigationContainer>
-        <StatusBar barStyle="dark-content" />
-        <AppNavigator user={user} />
-        <Toast />
-      </NavigationContainer>
-    </View>
+    <NavigationContainer>
+      <StatusBar barStyle="dark-content" />
+      <AppNavigator user={user} />
+      <Toast />
+    </NavigationContainer>
   );
 }
 
@@ -152,21 +149,5 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     letterSpacing: 4,
     marginLeft: 4, // Para centrar ópticamente por el letterSpacing
-  },
-  webContainer: {
-    flex: 1,
-    width: '100%',
-    maxWidth: 600,
-    alignSelf: 'center',
-    backgroundColor: '#ffffff',
-    // Opcional: Sombra para darle un aspecto de "app" centrada
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 5,
-  },
-  mobileContainer: {
-    flex: 1,
   }
 });
