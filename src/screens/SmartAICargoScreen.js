@@ -111,8 +111,10 @@ export default function SmartAICargoScreen({ navigation }) {
       }
 
       if (Platform.OS === 'web') {
-        window.alert(`Operación Exitosa. El movimiento quedó registrado bajo el usuario: ${currentUser}`);
-        navigation.navigate('Home');
+        Toast.show({ type: 'success', text1: 'Operación Exitosa', text2: `El movimiento quedó registrado bajo el usuario: ${currentUser}` });
+        setTimeout(() => {
+          navigation.navigate('Home');
+        }, 1500);
       } else {
         Alert.alert(
           "Operación Exitosa", 

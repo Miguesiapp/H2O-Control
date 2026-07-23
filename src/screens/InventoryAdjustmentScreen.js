@@ -144,7 +144,7 @@ export default function InventoryAdjustmentScreen({ navigation }) {
 
       if (isEgreso) {
         if (Platform.OS === 'web') {
-          window.alert("Ajuste Exitoso. El stock fue modificado en la base de datos.");
+          Toast.show({ type: 'success', text1: 'Ajuste Exitoso', text2: 'El stock fue modificado en la base de datos.' });
           navigation.goBack();
         } else {
           Alert.alert("Ajuste Exitoso", "El stock fue modificado en la base de datos.", [
@@ -153,7 +153,7 @@ export default function InventoryAdjustmentScreen({ navigation }) {
         }
       } else {
         if (Platform.OS === 'web') {
-          window.alert(`Alta de Stock Exitosa. Lote asignado correctamente: ${batchInternal}`);
+          Toast.show({ type: 'success', text1: 'Cargado con éxito', text2: `Lote asignado: ${batchInternal}` });
           setFormData({ itemName: '', quantity: '', providerName: '', batchProvider: '', expiryDate: '', observations: '', capacity: '20L', format: 'x5' });
         } else {
           Alert.alert(
