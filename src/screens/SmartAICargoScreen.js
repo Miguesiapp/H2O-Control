@@ -111,7 +111,7 @@ export default function SmartAICargoScreen({ navigation }) {
       }
 
       if (Platform.OS === 'web') {
-        Toast.show({ type: 'success', text1: 'Operación Exitosa', text2: `El movimiento quedó registrado bajo el usuario: ${currentUser}` });
+        window.alert(`Operación Exitosa. El movimiento quedó registrado bajo el usuario: ${currentUser}`);
         navigation.navigate('Home');
       } else {
         Alert.alert(
@@ -136,7 +136,8 @@ export default function SmartAICargoScreen({ navigation }) {
         );
       }
     } catch (error) {
-      Alert.alert("Error", "No se pudo actualizar el inventario.");
+      console.error(error);
+      Alert.alert("Error", "No se pudo actualizar el inventario: " + (error.message || "Error desconocido."));
     } finally {
       setLoading(false);
     }
