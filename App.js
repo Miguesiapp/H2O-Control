@@ -19,17 +19,29 @@ if (Platform.OS === 'web') {
       overflow-y: scroll; 
       display: flex; 
       flex-direction: column; 
+      touch-action: pan-x pan-y; /* Previene double-tap zoom */
     }
   `;
   document.head.appendChild(style);
 
-  // Evitar que Google Chrome traduzca la aplicación automáticamente (rompe los autocompletados)
+  // Evitar que Google Chrome traduzca la aplicación automáticamente
   document.documentElement.lang = 'es';
   document.documentElement.setAttribute('translate', 'no');
   const metaTranslate = document.createElement('meta');
   metaTranslate.name = 'google';
   metaTranslate.content = 'notranslate';
   document.head.appendChild(metaTranslate);
+
+  // Prevenir pinch-to-zoom en dispositivos iOS (Safari)
+  document.addEventListener('gesturestart', function (e) {
+    e.preventDefault();
+  });
+  document.addEventListener('gesturechange', function (e) {
+    e.preventDefault();
+  });
+  document.addEventListener('gestureend', function (e) {
+    e.preventDefault();
+  });
 }
 // ---------------------------------------------------------
 
