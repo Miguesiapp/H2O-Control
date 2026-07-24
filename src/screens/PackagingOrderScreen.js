@@ -78,11 +78,12 @@ export default function PackagingOrderScreen({ route, navigation }) {
           collection(db, "Inventory"),
           where("company", "==", companyName),
           where("stockType", "==", "GRANEL"),
-          where("status", "==", "APTO"), 
-          where("quantity", ">", 0)       
+          where("status", "==", "APTO")
         );
         const querySnapshot = await getDocs(q);
-        const lots = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const lots = querySnapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter(doc => (doc.quantity || 0) > 0);
         setApprovedLots(lots);
       } catch (error) {
         console.error(error);

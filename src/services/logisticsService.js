@@ -116,19 +116,22 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
     const q = query(
       inventoryRef,
       where("company", "==", company),
-      where("itemName", "==", itemName),
-      where("quantity", ">", 0)
+      where("itemName", "==", itemName)
     );
 
     const querySnapshot = await getDocs(q);
 
-    if (querySnapshot.empty) {
+    // Filtrar cantidad > 0 en memoria para evitar errores de índices compuestos en Firebase
+    const docs = querySnapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(doc => (doc.quantity || 0) > 0);
+
+    if (docs.length === 0) {
       console.warn(`Alerta FIFO: Se intentó retirar ${itemName} pero el stock es 0 en ${company}.`);
       return false;
     }
 
     // Ordenamos en memoria por fecha de creación (Gastamos primero lo más viejo)
-    const docs = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     docs.sort((a, b) => (a.createdAt?.toMillis() || 0) - (b.createdAt?.toMillis() || 0));
 
     let remainingToDeduct = quantityToDeduct;
