@@ -89,7 +89,7 @@ export default function InterCompanyTransferScreen({ navigation }) {
       });
 
       Alert.alert("Clearing Exitoso", "Transferencia completada y auditada.");
-      navigation.goBack();
+      (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'));
 
     } catch (error) {
       console.error(error);
@@ -106,7 +106,7 @@ export default function InterCompanyTransferScreen({ navigation }) {
       
       {/* HEADER REDISEÑADO: Fondo oscuro, texto claro */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))} style={styles.backBtn}>
           <ChevronLeft color="#f8fafc" size={28} />
         </TouchableOpacity>
         <View style={{alignItems: 'center'}}>
@@ -116,13 +116,13 @@ export default function InterCompanyTransferScreen({ navigation }) {
         <ArrowRightLeft color="#f8fafc" size={24} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView maximumZoomScale={1} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         
         <View style={styles.flowCard}>
           <Text style={styles.sectionLabel}>1. Dirección del Movimiento</Text>
           
           <Text style={styles.inputLabel}>EMPRESA ORIGEN</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+          <ScrollView maximumZoomScale={1} horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
             {COMPANIES.map(comp => (
               <TouchableOpacity key={comp} style={[styles.chip, formData.sourceCompany === comp && styles.chipActiveSrc]} onPress={() => setFormData({...formData, sourceCompany: comp})}>
                 <Text style={[styles.chipText, formData.sourceCompany === comp && styles.chipTextActive]}>{comp}</Text>
@@ -140,7 +140,7 @@ export default function InterCompanyTransferScreen({ navigation }) {
           </View>
 
           <Text style={styles.inputLabel}>EMPRESA DESTINO</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+          <ScrollView maximumZoomScale={1} horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
             {COMPANIES.map(comp => (
               <TouchableOpacity key={comp} style={[styles.chip, formData.destinationCompany === comp && styles.chipActiveDst]} onPress={() => setFormData({...formData, destinationCompany: comp})}>
                 <Text style={[styles.chipText, formData.destinationCompany === comp && styles.chipTextActive]}>{comp}</Text>

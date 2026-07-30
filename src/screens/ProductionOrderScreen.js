@@ -8,12 +8,14 @@ import { auth, db } from '../config/firebase';
 import { collection, query, where, getDocs, onSnapshot, serverTimestamp, addDoc, Timestamp } from 'firebase/firestore';
 import { registerMovement, createOrder, updateOrderStatus } from '../services/logisticsService';
 import { 
-  ChevronLeft, Play, Beaker, FileText, Factory, AlertCircle, Calculator, CheckCircle2, XCircle, Plus, ClipboardList, CheckSquare 
+  ChevronLeft, Play, Beaker, FileText, Factory, AlertCircle, Calculator, CheckCircle2, XCircle, Plus, ClipboardList, CheckSquare, Calendar as CalendarIcon, X 
 } from 'lucide-react-native';
+import { Calendar as CalendarPicker } from 'react-native-calendars';
+import { ChevronRight } from 'lucide-react-native';
 import { printBatchLabels } from '../services/labelService';
 import AutocompleteInput from '../components/AutocompleteInput';
 import { EQUIVALENCIES } from '../services/formulaService';
-import { PRODUCTS_MADRE_LIST } from '../config/constants';
+import { PRODUCTS_MADRE_LIST, generateBatchId } from '../config/constants';
 import { canCreateOrders } from '../config/permissions';
 import Toast from 'react-native-toast-message';
 
@@ -50,18 +52,25 @@ export default function ProductionOrderScreen({ route, navigation }) {
       setOrders(companyOrders);
       setLoadingOrders(false);
       
-      // Actualizar modal si está abierto
-      if (selectedOrder) {
-        const updated = companyOrders.find(o => o.id === selectedOrder.id);
-        if (updated) setSelectedOrder(updated);
-        else setOrderModalVisible(false);
-      }
+      // Actualizar modal si está abierto usando función de estado para evitar loop
+      setSelectedOrder(prev => {
+        if (!prev) return null;
+        const updated = companyOrders.find(o => o.id === prev.id);
+        return updated || null;
+      });
     }, (error) => {
       console.error(error);
       setLoadingOrders(false);
     });
     return () => unsubscribe();
-  }, [companyName, selectedOrder]);
+  }, [companyName]);
+
+  // Cerrar el modal automáticamente si la orden seleccionada desaparece (fue eliminada, etc.)
+  useEffect(() => {
+    if (!selectedOrder && orderModalVisible) {
+      setOrderModalVisible(false);
+    }
+  }, [selectedOrder]);
 
   // ======================================================================
   // ESTADOS DE LA VISTA CREACIÓN
@@ -73,7 +82,10 @@ export default function ProductionOrderScreen({ route, navigation }) {
   const [isCalculating, setIsCalculating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
+  const [missingItems, setMissingItems] = useState([]);
+  const [isCalendarVisible, setIsCalendarVisible] = useState(false);
   const [requirements, setRequirements] = useState(null);
+  const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   const [availableFormulas, setAvailableFormulas] = useState([]);
   
   useEffect(() => {
@@ -91,11 +103,6 @@ export default function ProductionOrderScreen({ route, navigation }) {
     fetchFormulas();
   }, []);
 
-  const generateUniqueBatch = () => {
-    const fecha = new Date().toISOString().split('T')[0].replace(/-/g, '');
-    const idUnico = Date.now().toString().slice(-4);
-    return `OP-${fecha}-${idUnico}`; 
-  };
 
   const handleCalculateNeeds = async () => {
     if (!productName.trim() || !targetQuantity.trim()) {
@@ -215,7 +222,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
   const executeProductionOrder = async () => {
     try {
       setIsSubmitting(true);
-      const batchId = generateUniqueBatch();
+      const batchId = generateBatchId();
       const currentUser = auth.currentUser?.email || 'Sistema';
 
       if (!expiryDate.trim()) {
@@ -391,7 +398,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
       
       <View style={styles.header}>
         <TouchableOpacity 
-          onPress={() => viewMode === 'CREATE' ? setViewMode('LIST') : navigation.goBack()} 
+          onPress={() => viewMode === 'CREATE' ? setViewMode('LIST') : (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))} 
           style={styles.backBtn}
         >
           <ChevronLeft color="#0f172a" size={28} />
@@ -495,16 +502,15 @@ export default function ProductionOrderScreen({ route, navigation }) {
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Fecha Vencimiento del Granel *</Text>
-              <View style={styles.inputWrapper}>
-                <Beaker color="#94a3b8" size={20} style={styles.inputIcon} />
-                <TextInput 
-                  style={styles.input} 
-                  placeholder="MM/AAAA" 
-                  value={expiryDate}
-                  onChangeText={setExpiryDate}
-                  placeholderTextColor="#94a3b8"
-                />
-              </View>
+              <TouchableOpacity 
+                style={styles.inputWrapper}
+                onPress={() => setIsCalendarVisible(true)}
+              >
+                <CalendarIcon color="#94a3b8" size={20} style={styles.inputIcon} />
+                <Text style={[styles.input, { flex: 1, color: expiryDate ? '#0f172a' : '#94a3b8', paddingVertical: 14 }]}>
+                  {expiryDate || 'MM/AAAA'}
+                </Text>
+              </TouchableOpacity>
             </View>
 
             {!requirements && (
@@ -615,6 +621,46 @@ export default function ProductionOrderScreen({ route, navigation }) {
         </ScrollView>
       )}
 
+      {/* CALENDAR MODAL */}
+      <Modal visible={isCalendarVisible} transparent={true} animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.calendarContainer}>
+            <View style={styles.calendarHeader}>
+              <Text style={styles.calendarTitle}>Fecha de Vencimiento</Text>
+              <TouchableOpacity onPress={() => setIsCalendarVisible(false)}>
+                <X color="#64748b" size={24} />
+              </TouchableOpacity>
+            </View>
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#f8fafc'}}>
+              <TouchableOpacity onPress={() => setCalendarYear(y => y - 1)} style={{padding: 10}}>
+                <ChevronLeft color="#3b82f6" size={28} />
+              </TouchableOpacity>
+              <Text style={{fontSize: 22, fontWeight: '900', color: '#0f172a'}}>{calendarYear}</Text>
+              <TouchableOpacity onPress={() => setCalendarYear(y => y + 1)} style={{padding: 10}}>
+                <ChevronRight color="#3b82f6" size={28} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{flexDirection: 'row', flexWrap: 'wrap', padding: 15, justifyContent: 'center'}}>
+              {["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"].map((m, i) => (
+                <TouchableOpacity 
+                  key={m}
+                  style={{width: '30%', paddingVertical: 15, margin: '1.5%', backgroundColor: '#f1f5f9', borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0'}}
+                  onPress={() => {
+                    const monthStr = String(i + 1).padStart(2, '0');
+                    setExpiryDate(`${monthStr}/${calendarYear}`);
+                    setIsCalendarVisible(false);
+                  }}
+                >
+                  <Text style={{fontSize: 16, fontWeight: '700', color: '#334155'}}>{m}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+
       {/* MODAL DETALLES DE ORDEN */}
       <Modal visible={orderModalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOrderModalVisible(false)}>
         <SafeAreaView style={{flex: 1, backgroundColor: '#f8fafc'}}>
@@ -635,14 +681,14 @@ export default function ProductionOrderScreen({ route, navigation }) {
                  <Text style={styles.statusText}>{selectedOrder?.status}</Text>
               </View>
               <Text style={{fontSize: 14, color: '#475569', marginBottom: 5}}>Volumen: <Text style={{fontWeight: '800', color: '#0f172a'}}>{selectedOrder?.data?.quantity} Lts</Text></Text>
-              <Text style={{fontSize: 14, color: '#475569', marginBottom: 5}}>Masa Total: <Text style={{fontWeight: '800', color: '#0f172a'}}>{selectedOrder?.data?.targetKilos?.toFixed(2)} Kg</Text></Text>
-              <Text style={{fontSize: 14, color: '#475569', marginBottom: 15}}>Densidad: <Text style={{fontWeight: '800', color: '#0f172a'}}>{selectedOrder?.data?.density}</Text></Text>
+              <Text style={{fontSize: 14, color: '#475569', marginBottom: 5}}>Masa Total: <Text style={{fontWeight: '800', color: '#0f172a'}}>{selectedOrder?.data?.targetKilos ? selectedOrder.data.targetKilos.toFixed(2) : 'N/A'} Kg</Text></Text>
+              <Text style={{fontSize: 14, color: '#475569', marginBottom: 15}}>Densidad: <Text style={{fontWeight: '800', color: '#0f172a'}}>{selectedOrder?.data?.density || 'N/A'}</Text></Text>
               
               <Text style={{fontSize: 14, fontWeight: '800', color: '#334155', marginBottom: 10, textTransform: 'uppercase'}}>Fórmula (MP Reservada)</Text>
               {selectedOrder?.data?.ingredients?.map((ing, idx) => (
                 <View key={idx} style={{backgroundColor: '#f1f5f9', padding: 10, borderRadius: 8, marginBottom: 8}}>
                   <Text style={{fontSize: 13, fontWeight: '800', color: '#1e293b'}}>{ing.name}</Text>
-                  <Text style={{fontSize: 12, color: '#64748b'}}>Consumo: {ing.required.toFixed(2)} Kg/Lts</Text>
+                  <Text style={{fontSize: 12, color: '#64748b'}}>Consumo: {(ing.required || 0).toFixed(2)} Kg/Lts</Text>
                 </View>
               ))}
             </View>
@@ -734,4 +780,9 @@ const styles = StyleSheet.create({
 
   mainButton: { backgroundColor: '#10b981', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 18, borderRadius: 14, marginTop: 20, gap: 10, elevation: 4 },
   mainButtonText: { color: '#fff', fontSize: 16, fontWeight: '900', letterSpacing: 0.5 },
+  
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
+  calendarContainer: { backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', elevation: 10 },
+  calendarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  calendarTitle: { fontSize: 16, fontWeight: '800', color: '#0f172a' }
 });

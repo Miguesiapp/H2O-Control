@@ -9,8 +9,10 @@ import {
   Alert, 
   SafeAreaView, 
   ActivityIndicator,
-  useWindowDimensions 
+  useWindowDimensions,
+  Platform 
 } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { auth } from '../config/firebase';
 import { registerMovement } from '../services/logisticsService';
 import { analyzeSystemIntelligence } from '../services/aiService'; 
@@ -41,7 +43,11 @@ export default function SmartAICargoScreen({ navigation }) {
 
   const handleAIProcess = async () => {
     if (!rawText.trim()) {
-      Alert.alert("Atención", "Pega o escribe el detalle antes de continuar.");
+      if (Platform.OS === 'web') {
+        Toast.show({ type: 'error', text1: 'Atención', text2: 'Pega o escribe el detalle antes de continuar.' });
+      } else {
+        Alert.alert("Atención", "Pega o escribe el detalle antes de continuar.");
+      }
       return;
     }
     setLoading(true);
@@ -54,7 +60,11 @@ export default function SmartAICargoScreen({ navigation }) {
       setProcessedData(result);
       if (result.operationType) setOpMode(result.operationType);
     } catch (error) {
-      Alert.alert("Error de IA", "No se pudo interpretar el texto. Verifica tu conexión.");
+      if (Platform.OS === 'web') {
+        Toast.show({ type: 'error', text1: 'Error de IA', text2: 'No se pudo interpretar el texto. Verifica tu conexión.' });
+      } else {
+        Alert.alert("Error de IA", "No se pudo interpretar el texto. Verifica tu conexión.");
+      }
     } finally {
       setLoading(false);
     }
@@ -112,15 +122,14 @@ export default function SmartAICargoScreen({ navigation }) {
 
       if (Platform.OS === 'web') {
         Toast.show({ type: 'success', text1: 'Operación Exitosa', text2: `El movimiento quedó registrado bajo el usuario: ${currentUser}` });
-        setTimeout(() => {
-          navigation.navigate('Home');
-        }, 1500);
+        setRawText('');
+        setProcessedData(null);
       } else {
         Alert.alert(
           "Operación Exitosa", 
           `El movimiento quedó registrado bajo el usuario: ${currentUser}`,
           [
-            { text: "Cerrar", onPress: () => navigation.navigate('Home') },
+            { text: "Cerrar", onPress: () => { setRawText(''); setProcessedData(null); } },
             { 
               text: opMode.includes('INGRESO') ? "IMPRIMIR QR" : "VER STOCK", 
               onPress: () => {
@@ -148,7 +157,7 @@ export default function SmartAICargoScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))} style={styles.backBtn}>
           <ChevronLeft color="#fff" size={28} />
         </TouchableOpacity>
         <View style={{alignItems: 'center'}}>
@@ -158,7 +167,7 @@ export default function SmartAICargoScreen({ navigation }) {
         <BrainCircuit color="#fff" size={24} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+      <ScrollView maximumZoomScale={1} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         
         <View style={styles.stockSelectorContainer}>
           <TouchableOpacity 

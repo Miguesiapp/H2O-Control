@@ -8,7 +8,7 @@ import { db, auth } from '../config/firebase';
 import { collection, query, where, getDocs, onSnapshot, getDoc, doc } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
 import { canAccessQualityControl } from '../config/permissions';
-import { LogOut, FlaskConical, ClipboardCheck, ChevronRight, Clock, Sparkles, Calculator, UserCheck, Database, Keyboard, Package, Truck, Beaker, Container, Box, MonitorPlay, ShoppingCart } from 'lucide-react-native';
+import { LogOut, FlaskConical, ClipboardCheck, ChevronRight, Clock, Sparkles, Calculator, UserCheck, Database, Keyboard, Package, Truck, Beaker, Container, Box, MonitorPlay, ShoppingCart, Search } from 'lucide-react-native';
 
 export default function HomeScreen({ navigation }) {
   const { width, height } = useWindowDimensions();
@@ -193,7 +193,7 @@ export default function HomeScreen({ navigation }) {
         </View>
       </View>
 
-      <ScrollView
+      <ScrollView maximumZoomScale={1}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -268,17 +268,7 @@ export default function HomeScreen({ navigation }) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Órdenes y Operativa</Text>
 
-          <TouchableOpacity activeOpacity={0.8} style={styles.labCard} onPress={() => navigation.navigate('OrdersBoard')}>
-            <View style={[styles.labIconBox, { backgroundColor: '#1e293b' }]}>
-              <MonitorPlay color="#38bdf8" size={24} />
-              {(pendingOPCount + pendingOECount + pendingODCount) > 0 && <View style={styles.notificationDot} />}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.labCardTitle, { color: '#1e293b' }]}>Tablero de Órdenes</Text>
-              <Text style={styles.labCardSub}>Monitor de estado de OP, OE y OD</Text>
-            </View>
-            <ChevronRight color="#cbd5e1" size={20} />
-          </TouchableOpacity>
+
 
           <TouchableOpacity activeOpacity={0.8} style={styles.labCard} onPress={() => navigation.navigate('ProductionOrder', { companyName: 'H2O' })}>
             <View style={[styles.labIconBox, { backgroundColor: '#f0f9ff' }]}>
@@ -414,6 +404,14 @@ export default function HomeScreen({ navigation }) {
               <Keyboard color="#334155" size={20} />
               <Text style={styles.adminSmallCardText}>Ajuste Stock</Text>
             </TouchableOpacity>
+          </View>
+          <View style={[styles.row, { marginTop: 15 }]}>
+            <TouchableOpacity style={styles.adminSmallCard} onPress={() => navigation.navigate('Traceability')}>
+              <Search color="#334155" size={20} />
+              <Text style={styles.adminSmallCardText}>Trazabilidad</Text>
+            </TouchableOpacity>
+            
+            <View style={{ flex: 1, marginHorizontal: 5 }} />
           </View>
         </View>
 

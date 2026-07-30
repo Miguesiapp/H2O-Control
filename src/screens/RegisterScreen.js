@@ -80,9 +80,9 @@ export default function RegisterScreen({ navigation }) {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
       >
-        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        <ScrollView maximumZoomScale={1} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           
-          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))}>
             <ChevronLeft color="#fff" size={28} />
           </TouchableOpacity>
 
@@ -146,7 +146,7 @@ export default function RegisterScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.footerBtn}>
+          <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))} style={styles.footerBtn}>
             <Text style={styles.footerText}>
               ¿Ya tienes una cuenta? <Text style={{fontWeight: 'bold', color: '#fff'}}>Inicia Sesión</Text>
             </Text>

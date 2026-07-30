@@ -6,10 +6,17 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth } from '../config/firebase';
 import { registerMovement } from '../services/logisticsService';
-import { ChevronLeft, Save, PackagePlus, FileText, Calendar, Building2, Truck, Droplet, Box, Circle, ClipboardList, Database, ArrowDownCircle, ArrowUpCircle } from 'lucide-react-native';
+import { ChevronLeft, Save, PackagePlus, FileText, Calendar as CalendarIcon, Building2, Truck, Droplet, Box, Circle, ClipboardList, Database, ArrowDownCircle, ArrowUpCircle, X } from 'lucide-react-native';
 import AutocompleteInput from '../components/AutocompleteInput';
+import { Calendar as CalendarPicker } from 'react-native-calendars';
+import { ChevronRight } from 'lucide-react-native';
+import { Modal } from 'react-native';
 import Toast from 'react-native-toast-message';
-import { RAW_MATERIALS_LIST, PROVIDERS_LIST, ETIQUETA_CAPACITIES, BIDON_CAPACITIES, CAJA_FORMATS, PRODUCTS_MADRE_LIST } from '../config/constants';
+import { 
+  RAW_MATERIALS_LIST, PRODUCTS_MADRE_LIST, PRODUCTS_FINAL_LIST,
+  ETIQUETA_CAPACITIES, BIDON_CAPACITIES, CAJA_FORMATS, PROVIDERS_LIST,
+  generateBatchId, BIDON_BRANDS, CAJA_BRANDS
+} from '../config/constants';
 import { printSingleLabel } from '../services/labelService';
 
 export default function InventoryAdjustmentScreen({ navigation }) {
@@ -18,6 +25,8 @@ export default function InventoryAdjustmentScreen({ navigation }) {
   const [unitType, setUnitType] = useState('Kilos'); // 'Kilos' | 'Litros'
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [category, setCategory] = useState('Bidones'); 
+  const [isCalendarVisible, setIsCalendarVisible] = useState(false);
+  const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   
   const [formData, setFormData] = useState({
     itemName: '',
@@ -26,15 +35,13 @@ export default function InventoryAdjustmentScreen({ navigation }) {
     batchProvider: '',
     expiryDate: '',
     observations: '',
-    capacity: '20L', 
-    format: 'x5'     
+    capacity: '20', 
+    format: 'x5',
+    brandBidon: 'H2O',
+    brandCaja: 'H2O CON LOGO'
   });
 
-  const generateUniqueBatch = () => {
-    const fecha = new Date().toISOString().split('T')[0].replace(/-/g, '');
-    const idUnico = Date.now().toString().slice(-4);
-    return `H2O-MAN-${fecha}-${idUnico}`;
-  };
+
 
   const handleSave = async () => {
     if (!operationType) {
@@ -89,7 +96,8 @@ export default function InventoryAdjustmentScreen({ navigation }) {
       if (formData.batchProvider.trim() !== '') {
         batchInternal = formData.batchProvider.trim().toUpperCase();
       } else {
-        batchInternal = isEgreso ? 'S/D' : generateUniqueBatch();
+        batchInternal = isEgreso || isPT || isGranel ? generateBatchId() : 'S/D';
+        if (isEgreso) batchInternal = 'S/D';
       }
       
       let finalItemName = formData.itemName.trim().toUpperCase();
@@ -100,8 +108,8 @@ export default function InventoryAdjustmentScreen({ navigation }) {
       } else if (isGranel) {
         finalUnit = unitType === 'Kilos' ? 'Kg' : 'Lts';
       } else if (!isMP) {
-        if (category === 'Bidones') finalItemName = `BIDON ${formData.capacity}`;
-        if (category === 'Cajas') finalItemName = `CAJA ${formData.format}`;
+        if (category === 'Bidones') finalItemName = `BIDON ${formData.capacity}L ${formData.brandBidon}`;
+        if (category === 'Cajas') finalItemName = `CAJA ${formData.format} ${formData.brandCaja}`;
         if (category === 'Etiquetas') finalItemName = `ETIQUETA ${formData.capacity} ${formData.itemName.trim().toUpperCase()}`;
       } else {
         finalUnit = unitType === 'Kilos' ? 'Kg' : 'Lts';
@@ -145,10 +153,10 @@ export default function InventoryAdjustmentScreen({ navigation }) {
       if (isEgreso) {
         if (Platform.OS === 'web') {
           Toast.show({ type: 'success', text1: 'Ajuste Exitoso', text2: 'El stock fue modificado en la base de datos.' });
-          navigation.goBack();
+          (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'));
         } else {
           Alert.alert("Ajuste Exitoso", "El stock fue modificado en la base de datos.", [
-            { text: "Entendido", onPress: () => navigation.goBack() }
+            { text: "Entendido", onPress: () => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home')) }
           ]);
         }
       } else {
@@ -199,7 +207,7 @@ export default function InventoryAdjustmentScreen({ navigation }) {
       <StatusBar barStyle="dark-content" />
       
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))} style={styles.backBtn}>
           <ChevronLeft color="#0f172a" size={28} />
         </TouchableOpacity>
         <View style={{alignItems: 'center'}}>
@@ -209,7 +217,7 @@ export default function InventoryAdjustmentScreen({ navigation }) {
         <PackagePlus color="#0f172a" size={24} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <ScrollView maximumZoomScale={1} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         
         {/* Toggle INGRESO / EGRESO */}
         <View style={styles.opToggleContainer}>
@@ -287,7 +295,7 @@ export default function InventoryAdjustmentScreen({ navigation }) {
             <View style={styles.inputGroup}>
               <Text style={styles.label}>{inventoryType === 'MP' ? 'Materia Prima' : (inventoryType === 'GRANEL' ? 'Producto Granel' : 'Producto / Nombre')}</Text>
               <AutocompleteInput
-                data={inventoryType === 'MP' ? RAW_MATERIALS_LIST : (inventoryType === 'GRANEL' ? PRODUCTS_MADRE_LIST : [])}
+                data={inventoryType === 'MP' ? RAW_MATERIALS_LIST : (inventoryType === 'GRANEL' ? PRODUCTS_MADRE_LIST : PRODUCTS_FINAL_LIST)}
                 value={formData.itemName}
                 onChangeText={(t) => setFormData({...formData, itemName: t})}
                 placeholder={inventoryType === 'MP' ? "Buscar MP..." : (inventoryType === 'GRANEL' ? "Buscar Granel..." : "Nombre del producto...")}
@@ -325,7 +333,21 @@ export default function InventoryAdjustmentScreen({ navigation }) {
                     onPress={() => setFormData({...formData, capacity: cap})}
                   >
                     <Droplet color={formData.capacity === cap ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
-                    <Text style={[styles.chipText, formData.capacity === cap && styles.chipTextActive]}>{cap}</Text>
+                    <Text style={[styles.chipText, formData.capacity === cap && styles.chipTextActive]}>{cap}L</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.label}>Marca del Bidón</Text>
+              <View style={styles.chipRow}>
+                {BIDON_BRANDS.map(brand => (
+                  <TouchableOpacity 
+                    key={brand} 
+                    style={[styles.chip, formData.brandBidon === brand && styles.chipActive]}
+                    onPress={() => setFormData({...formData, brandBidon: brand})}
+                  >
+                    <Building2 color={formData.brandBidon === brand ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
+                    <Text style={[styles.chipText, formData.brandBidon === brand && styles.chipTextActive]}>{brand}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -344,6 +366,20 @@ export default function InventoryAdjustmentScreen({ navigation }) {
                   >
                     <Box color={formData.format === fmt ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
                     <Text style={[styles.chipText, formData.format === fmt && styles.chipTextActive]}>{fmt}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={styles.label}>Marca de Caja</Text>
+              <View style={styles.chipRow}>
+                {CAJA_BRANDS.map(brand => (
+                  <TouchableOpacity 
+                    key={brand} 
+                    style={[styles.chip, formData.brandCaja === brand && styles.chipActive]}
+                    onPress={() => setFormData({...formData, brandCaja: brand})}
+                  >
+                    <Box color={formData.brandCaja === brand ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
+                    <Text style={[styles.chipText, formData.brandCaja === brand && styles.chipTextActive]}>{brand}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -423,16 +459,15 @@ export default function InventoryAdjustmentScreen({ navigation }) {
             {!isEgreso && (
               <View style={{flex: 1}}>
                 <Text style={styles.label}>Vencimiento {inventoryType === 'MP' && '*'}</Text>
-                <View style={styles.inputWrapper}>
-                  <Calendar color="#94a3b8" size={18} style={styles.inputIcon} />
-                  <TextInput 
-                    style={styles.input} 
-                    placeholder="MM/AAAA" 
-                    placeholderTextColor="#94a3b8"
-                    value={formData.expiryDate}
-                    onChangeText={(txt) => setFormData({...formData, expiryDate: txt})}
-                  />
-                </View>
+                <TouchableOpacity 
+                  style={styles.inputWrapper}
+                  onPress={() => setIsCalendarVisible(true)}
+                >
+                  <CalendarIcon color="#94a3b8" size={18} style={styles.inputIcon} />
+                  <Text style={[styles.input, { flex: 1, color: formData.expiryDate ? '#0f172a' : '#94a3b8' }]}>
+                    {formData.expiryDate || 'MM/AAAA'}
+                  </Text>
+                </TouchableOpacity>
               </View>
             )}
           </View>
@@ -470,6 +505,45 @@ export default function InventoryAdjustmentScreen({ navigation }) {
         
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* CALENDAR MODAL */}
+      <Modal visible={isCalendarVisible} transparent={true} animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.calendarContainer}>
+            <View style={styles.calendarHeader}>
+              <Text style={styles.calendarTitle}>Fecha de Vencimiento</Text>
+              <TouchableOpacity onPress={() => setIsCalendarVisible(false)}>
+                <X color="#64748b" size={24} />
+              </TouchableOpacity>
+            </View>
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#f8fafc'}}>
+              <TouchableOpacity onPress={() => setCalendarYear(y => y - 1)} style={{padding: 10}}>
+                <ChevronLeft color="#3b82f6" size={28} />
+              </TouchableOpacity>
+              <Text style={{fontSize: 22, fontWeight: '900', color: '#0f172a'}}>{calendarYear}</Text>
+              <TouchableOpacity onPress={() => setCalendarYear(y => y + 1)} style={{padding: 10}}>
+                <ChevronRight color="#3b82f6" size={28} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{flexDirection: 'row', flexWrap: 'wrap', padding: 15, justifyContent: 'center'}}>
+              {["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"].map((m, i) => (
+                <TouchableOpacity 
+                  key={m}
+                  style={{width: '30%', paddingVertical: 15, margin: '1.5%', backgroundColor: '#f1f5f9', borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0'}}
+                  onPress={() => {
+                    const monthStr = String(i + 1).padStart(2, '0');
+                    setFormData({...formData, expiryDate: `${monthStr}/${calendarYear}`});
+                    setIsCalendarVisible(false);
+                  }}
+                >
+                  <Text style={{fontSize: 16, fontWeight: '700', color: '#334155'}}>{m}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -529,5 +603,11 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row' },
   
   saveButton: { backgroundColor: '#10b981', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 18, borderRadius: 16, marginTop: 10, elevation: 4, shadowColor: '#10b981', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
-  saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '900', letterSpacing: 1, marginLeft: 10 }
+  saveButtonEgreso: { backgroundColor: '#ef4444', shadowColor: '#ef4444' },
+  saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '900', letterSpacing: 1, marginLeft: 10 },
+  
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
+  calendarContainer: { backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', elevation: 10 },
+  calendarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  calendarTitle: { fontSize: 16, fontWeight: '800', color: '#0f172a' }
 });

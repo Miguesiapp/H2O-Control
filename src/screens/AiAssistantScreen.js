@@ -92,7 +92,7 @@ export default function AiAssistantScreen({ navigation }) {
       <StatusBar barStyle="dark-content" />
       
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))} style={styles.backBtn}>
           <ChevronLeft color="#0f172a" size={28} />
         </TouchableOpacity>
         <View style={{ alignItems: 'center', flexDirection: 'row', gap: 10 }}>
@@ -109,7 +109,7 @@ export default function AiAssistantScreen({ navigation }) {
         style={styles.container} 
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <FlatList
+        <FlatList maximumZoomScale={1}
           ref={flatListRef}
           data={messages}
           keyExtractor={item => item.id}

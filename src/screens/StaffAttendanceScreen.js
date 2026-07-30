@@ -63,7 +63,7 @@ export default function StaffAttendanceScreen({ navigation }) {
         <Text style={styles.lockSubtitle}>
           Este dispositivo no cuenta con las credenciales de seguridad para operar como Terminal de Asistencia.
         </Text>
-        <TouchableOpacity style={styles.lockBackBtn} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={styles.lockBackBtn} onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))}>
           <ChevronLeft color="#fff" size={20} />
           <Text style={styles.whiteText}>SALIR DEL SISTEMA</Text>
         </TouchableOpacity>
@@ -169,7 +169,7 @@ export default function StaffAttendanceScreen({ navigation }) {
            <Text style={styles.headerMain}>H2O Control System</Text>
         </View>
 
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView maximumZoomScale={1} contentContainerStyle={styles.scrollContent}>
           <View style={styles.heroBox}>
              <ShieldCheck color="#10b981" size={24} />
              <Text style={styles.heroText}>Terminal de Identificación Activa</Text>
@@ -211,7 +211,7 @@ export default function StaffAttendanceScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))} style={styles.backBtn}>
             <Text style={styles.backBtnText}>SALIR DE MODO TÓTEM</Text>
           </TouchableOpacity>
         </ScrollView>
@@ -222,7 +222,7 @@ export default function StaffAttendanceScreen({ navigation }) {
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>¿Quién eres?</Text>
               <Text style={styles.modalSub}>Selecciona tu perfil para {type}</Text>
-              <ScrollView style={{maxHeight: 400}}>
+              <ScrollView maximumZoomScale={1} style={{maxHeight: 400}}>
                 {staffProfiles.map(p => (
                   <TouchableOpacity 
                     key={p.id} 

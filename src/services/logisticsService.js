@@ -7,11 +7,13 @@ import { collection, addDoc, updateDoc, doc, increment, serverTimestamp, query, 
 export const registerMovement = async (userEmail, actionType, company, data) => {
   try {
     // 1. GUARDAR SIEMPRE EN AUDITORÍA (Historial Inalterable)
+    const isFuzzyItem = Array.isArray(data.itemName);
+    
     await addDoc(collection(db, "AuditLog"), {
       user: userEmail,
       action: actionType,
       company: company,
-      itemName: data.itemName?.toUpperCase(),
+      itemName: isFuzzyItem ? data.itemName.map(i => Array.isArray(i) ? i.join('|') : i).join(' + ') : data.itemName?.toUpperCase(),
       quantity: data.quantity, // Puede ser positivo o negativo
       unit: data.unit || 'Lts',
       stockType: data.stockType || 'MP',
@@ -23,7 +25,7 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
 
     const numericQty = Number(data.quantity);
     const inventoryRef = collection(db, "Inventory");
-    const itemNameUpper = data.itemName?.toUpperCase();
+    const itemNameUpper = isFuzzyItem ? data.itemName : data.itemName?.toUpperCase();
 
     // INTERCEPCIÓN CENTRALIZADA: Si es Materia Prima, va al stock global unificado
     const effectiveCompany = (data.stockType === 'MP') ? 'STOCK_CENTRAL_MP' : company;
@@ -113,21 +115,36 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
   try {
     const inventoryRef = collection(db, "Inventory");
     // Buscamos todos los lotes de este producto que tengan stock físico (> 0)
-    const q = query(
-      inventoryRef,
-      where("company", "==", company),
-      where("itemName", "==", itemName)
-    );
+    let q;
+    const isFuzzy = Array.isArray(itemName);
+    
+    if (isFuzzy) {
+      q = query(inventoryRef, where("company", "==", company));
+    } else {
+      q = query(inventoryRef, where("company", "==", company), where("itemName", "==", itemName));
+    }
 
     const querySnapshot = await getDocs(q);
 
-    // Filtrar cantidad > 0 en memoria para evitar errores de índices compuestos en Firebase
     const docs = querySnapshot.docs
       .map(doc => ({ id: doc.id, ...doc.data() }))
-      .filter(doc => (doc.quantity || 0) > 0);
+      .filter(doc => {
+        if ((doc.quantity || 0) <= 0) return false;
+        if (isFuzzy) {
+          const name = (doc.itemName || '').toUpperCase();
+          return itemName.every(kw => {
+            if (Array.isArray(kw)) {
+              return kw.some(subKw => name.includes(subKw.toUpperCase()));
+            }
+            return name.includes(kw.toUpperCase());
+          });
+        }
+        return true;
+      });
 
     if (docs.length === 0) {
-      console.warn(`Alerta FIFO: Se intentó retirar ${itemName} pero el stock es 0 en ${company}.`);
+      const nameStr = isFuzzy ? itemName.join(' + ') : itemName;
+      console.warn(`Alerta FIFO: Se intentó retirar ${nameStr} pero el stock es 0 en ${company}.`);
       return false;
     }
 
@@ -164,7 +181,48 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
 };
 
 // ============================================================================
-// FUNCIÓN 3: CREAR ÓRDENES DE TRABAJO (Tickets)
+// FUNCIÓN 3: CONSULTAR STOCK TOTAL
+// ============================================================================
+export const checkTotalStock = async (company, itemName) => {
+  try {
+    const inventoryRef = collection(db, "Inventory");
+    let q;
+    const isFuzzy = Array.isArray(itemName);
+
+    if (isFuzzy) {
+      q = query(inventoryRef, where("company", "==", company));
+    } else {
+      q = query(inventoryRef, where("company", "==", company), where("itemName", "==", itemName));
+    }
+    const snap = await getDocs(q);
+    let total = 0;
+    snap.forEach(doc => {
+      const data = doc.data();
+      if (data.quantity > 0) {
+        if (isFuzzy) {
+          const name = (data.itemName || '').toUpperCase();
+          if (itemName.every(kw => {
+            if (Array.isArray(kw)) {
+              return kw.some(subKw => name.includes(subKw.toUpperCase()));
+            }
+            return name.includes(kw.toUpperCase());
+          })) {
+            total += Number(data.quantity);
+          }
+        } else {
+          total += Number(data.quantity);
+        }
+      }
+    });
+    return total;
+  } catch (error) {
+    console.error("Error al consultar stock total:", error);
+    return 0;
+  }
+};
+
+// ============================================================================
+// FUNCIÓN 4: CREAR ÓRDENES DE TRABAJO (Tickets)
 // ============================================================================
 export const createOrder = async (orderType, data, userEmail) => {
   try {

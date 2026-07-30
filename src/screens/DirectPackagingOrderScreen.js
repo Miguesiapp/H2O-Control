@@ -1,20 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, TextInput, 
-  TouchableOpacity, Alert, StatusBar, ActivityIndicator, FlatList, Modal
+  TouchableOpacity, Alert, StatusBar, ActivityIndicator, FlatList, Modal, Platform
 } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
 import { collection, query, where, getDocs, onSnapshot, serverTimestamp } from 'firebase/firestore';
-import { registerMovement, createOrder, updateOrderStatus } from '../services/logisticsService'; 
-import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box, Droplet, Building2, Tag, Plus, ClipboardList, Play, CheckSquare, XCircle } from 'lucide-react-native';
+import { registerMovement, createOrder, updateOrderStatus, checkTotalStock } from '../services/logisticsService'; 
+import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box, Droplet, Building2, Tag, Plus, ClipboardList, Play, CheckSquare, XCircle, ChevronDown, ChevronUp } from 'lucide-react-native';
 import AutocompleteInput from '../components/AutocompleteInput';
-import { EQUIVALENCIES_MAP } from '../config/constants';
+import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS } from '../config/constants';
 import { canCreateOrders } from '../config/permissions';
 
 const BIDON_CAPACITIES = ['20', '10', '5', '1'];
-const BIDON_BRANDS = ['H2O', 'AGROCUBE', 'ALIANZA', 'AGROFONTEZUELA'];
-const CAJA_BRANDS = ['H2O', 'AGROCUBE', 'AGROFONTEZUELA', 'GENERICAS'];
 
 export default function DirectPackagingOrderScreen({ route, navigation }) {
   const { companyName } = route.params;
@@ -62,12 +61,17 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
   const [approvedLots, setApprovedLots] = useState([]);
   const [selectedLot, setSelectedLot] = useState(null);
   const [commercialName, setCommercialName] = useState('');
+  const [expandedGroups, setExpandedGroups] = useState([]);
+  
+  const toggleGroup = (itemName) => {
+    setExpandedGroups(prev => prev.includes(itemName) ? prev.filter(name => name !== itemName) : [...prev, itemName]);
+  };
   
   const [formData, setFormData] = useState({
     presentation: '20', 
     unitsProduced: '',  
     brandBidon: 'H2O',
-    brandCaja: 'H2O', 
+    brandCaja: 'H2O CON LOGO', 
   });
 
   useEffect(() => {
@@ -108,10 +112,13 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
     const suggestions = [madre];
     
     Object.keys(EQUIVALENCIES_MAP).forEach(key => {
-      if (EQUIVALENCIES_MAP[key].toUpperCase() === madre) {
+      const equiv = EQUIVALENCIES_MAP[key].toUpperCase();
+      if (equiv.includes(madre) || madre.includes(equiv)) {
         suggestions.push(key);
       }
     });
+    
+    suggestions.push(...PRODUCTS_FINAL_LIST);
     
     return [...new Set(suggestions)];
   };
@@ -136,16 +143,65 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
 
   const handleCreateOrder = async () => {
     if (!selectedLot || units <= 0 || !commercialName.trim()) {
-      Alert.alert("Atención", "Selecciona un lote, un nombre comercial, y la cantidad de unidades obtenidas.");
-      return;
-    }
-    if (isOverdraft) {
-      Alert.alert("Quiebre de Stock", `Intentas envasar ${litersToConsume} Lts, pero el lote solo cuenta con ${selectedLot.quantity} Lts.`);
+      Toast.show({ type: 'error', text1: 'Atención', text2: 'Selecciona un lote, un nombre comercial, y la cantidad.' });
       return;
     }
 
     try {
       setIsSubmitting(true);
+      
+      // 0. VERIFICACIÓN Y CÁLCULO DE ÓRDENES PARCIALES
+      const bidonName = ["BIDON", `${presentation}L`];
+      const bidonStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', bidonName);
+      
+      const cajaName = ["CAJA", [boxFormat, `${presentation}L`]];
+      const cajaStock = appliesBox ? await checkTotalStock('STOCK_CENTRAL_INSUMOS', cajaName) : Infinity;
+
+      const baseLabelName = getBaseLabelName(commercialName);
+      const etiquetaName = `ETIQUETA ${presentation}L ${baseLabelName}`;
+      const etiquetaStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', etiquetaName);
+
+      const maxUnitsGranel = Math.floor(selectedLot.quantity / presentation);
+      
+      let maxUnitsCaja = Infinity;
+      if (presentation === 5) maxUnitsCaja = cajaStock * 4;
+      else if (presentation === 1) maxUnitsCaja = cajaStock * 12;
+
+      const maxPossibleUnits = Math.floor(Math.min(maxUnitsGranel, bidonStock, maxUnitsCaja, etiquetaStock));
+
+      if (units > maxPossibleUnits) {
+        setIsSubmitting(false);
+        
+        let limitReason = 'el Granel disponible';
+        if (maxPossibleUnits === bidonStock) limitReason = `los Bidones disponibles (${bidonStock})`;
+        else if (maxPossibleUnits === maxUnitsCaja) limitReason = `las Cajas disponibles (${cajaStock})`;
+        else if (maxPossibleUnits === etiquetaStock) limitReason = `las Etiquetas disponibles (${etiquetaStock})`;
+        
+        if (maxPossibleUnits > 0) {
+          if (Platform.OS === 'web') {
+            const confirm = window.confirm(`Stock Insuficiente (limitado por ${limitReason}). Puedes envasar máximo ${maxPossibleUnits} unidades.\n\n¿Deseas ajustar la orden a esta cantidad?`);
+            if (confirm) setFormData({...formData, unitsProduced: String(maxPossibleUnits)});
+          } else {
+            Alert.alert(
+              'Stock Insuficiente',
+              `Limitado por ${limitReason}.\nPuedes envasar como máximo ${maxPossibleUnits} unidades.\n\n¿Deseas ajustar la orden?`,
+              [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: `Ajustar a ${maxPossibleUnits}`, onPress: () => setFormData({...formData, unitsProduced: String(maxPossibleUnits)}) }
+              ]
+            );
+          }
+        } else {
+          let missing = [];
+          if (maxUnitsGranel <= 0) missing.push('Granel');
+          if (bidonStock <= 0) missing.push(`Bidones`);
+          if (appliesBox && cajaStock <= 0) missing.push(`Cajas`);
+          if (etiquetaStock <= 0) missing.push(`Etiquetas (${etiquetaName})`);
+          
+          Toast.show({ type: 'error', text1: 'Stock Insuficiente (0 Unidades)', text2: `Falta stock de: ${missing.join(', ')}` });
+        }
+        return;
+      }
       const batchId = selectedLot.batchInternal; 
       const itemName = selectedLot.itemName?.toUpperCase();
       const currentUser = auth.currentUser?.email || 'Sistema';
@@ -160,7 +216,6 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
       });
 
       // 2. DEDUCCIÓN DE INSUMOS CENTRALES (BIDONES)
-      const bidonName = `BIDON ${presentation}L ${formData.brandBidon}`;
       await registerMovement(currentUser, 'CONSUMO_INSUMO', 'STOCK_CENTRAL_INSUMOS', {
           itemName: bidonName,
           quantity: -Math.abs(units),
@@ -171,7 +226,6 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
 
       // 3. DEDUCCIÓN DE INSUMOS CENTRALES (CAJAS) SI APLICA
       if (appliesBox && requiredBoxes > 0) {
-        const cajaName = `CAJA ${boxFormat} ${formData.brandCaja}`;
         await registerMovement(currentUser, 'CONSUMO_INSUMO', 'STOCK_CENTRAL_INSUMOS', {
             itemName: cajaName,
             quantity: -Math.abs(requiredBoxes),
@@ -180,6 +234,17 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
             unit: 'Uds'
         });
       }
+
+      // 4. DEDUCCIÓN DE INSUMOS CENTRALES (ETIQUETAS)
+      const baseLabelNameForDeduction = getBaseLabelName(commercialName);
+      const finalEtiquetaName = `ETIQUETA ${presentation}L ${baseLabelNameForDeduction}`;
+      await registerMovement(currentUser, 'CONSUMO_INSUMO', 'STOCK_CENTRAL_INSUMOS', {
+          itemName: finalEtiquetaName,
+          quantity: -Math.abs(units),
+          stockType: 'INSUMOS',
+          batchInternal: batchId,
+          unit: 'Uds'
+      });
 
       const packagedItemName = `${commercialName.trim().toUpperCase()} - ${presentation}L`;
 
@@ -287,7 +352,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
       
       <View style={styles.header}>
         <TouchableOpacity 
-          onPress={() => viewMode === 'CREATE' ? setViewMode('LIST') : navigation.goBack()} 
+          onPress={() => viewMode === 'CREATE' ? setViewMode('LIST') : (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))} 
           style={styles.backBtn}
         >
           <ChevronLeft color="#0f172a" size={28} />
@@ -318,7 +383,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
               <Text style={styles.emptyText}>No hay órdenes de envasado registradas.</Text>
             </View>
           ) : (
-            <FlatList 
+            <FlatList maximumZoomScale={1} 
               data={orders}
               keyExtractor={item => item.id}
               showsVerticalScrollIndicator={false}
@@ -344,7 +409,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
           )}
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <ScrollView maximumZoomScale={1} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           
           <View style={styles.infoBanner}>
             <View style={styles.iconBox}>
@@ -367,22 +432,62 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
                 <Text style={styles.emptyText}>No hay lotes de GRANEL aprobados disponibles en esta empresa.</Text>
               </View>
             ) : (
-              approvedLots.map((lot) => (
-                <TouchableOpacity
-                  key={lot.id}
-                  style={[styles.lotCard, selectedLot?.id === lot.id && styles.lotCardSelected]}
-                  onPress={() => setSelectedLot(lot)}
-                >
-                  <View style={styles.lotHeader}>
-                    <Text style={[styles.lotName, selectedLot?.id === lot.id && styles.lotNameSelected]}>
-                      {lot.itemName}
-                    </Text>
-                    {selectedLot?.id === lot.id && <CheckCircle2 color="#3b82f6" size={20} />}
-                  </View>
-                  <Text style={styles.lotText}>Lote Interno: {lot.batchInternal}</Text>
-                  <Text style={styles.lotText}>Disponible: {lot.quantity.toFixed(2)} Lts</Text>
-                </TouchableOpacity>
-              ))
+              (() => {
+                const groupedApprovedLots = approvedLots.reduce((acc, lot) => {
+                  const name = lot.itemName || 'S/N';
+                  if (!acc[name]) {
+                    acc[name] = {
+                      itemName: name,
+                      totalQuantity: 0,
+                      lots: []
+                    };
+                  }
+                  acc[name].totalQuantity += lot.quantity;
+                  acc[name].lots.push(lot);
+                  return acc;
+                }, {});
+
+                const sortedGroupedLots = Object.values(groupedApprovedLots).sort((a, b) => a.itemName.localeCompare(b.itemName));
+
+                return sortedGroupedLots.map((group) => {
+                  const isExpanded = expandedGroups.includes(group.itemName);
+                  return (
+                    <View key={group.itemName} style={styles.groupContainer}>
+                      <TouchableOpacity 
+                        style={styles.groupHeader}
+                        onPress={() => toggleGroup(group.itemName)}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.groupTitle}>{group.itemName}</Text>
+                          <Text style={styles.groupSub}>Disponible: {group.totalQuantity.toFixed(2)} Lts ({group.lots.length} Lote/s)</Text>
+                        </View>
+                        {isExpanded ? <ChevronUp color="#64748b" size={20} /> : <ChevronDown color="#64748b" size={20} />}
+                      </TouchableOpacity>
+                      
+                      {isExpanded && (
+                        <View style={styles.groupContent}>
+                          {group.lots.map((lot) => (
+                            <TouchableOpacity
+                              key={lot.id}
+                              style={[styles.lotCard, selectedLot?.id === lot.id && styles.lotCardSelected]}
+                              onPress={() => setSelectedLot(lot)}
+                            >
+                              <View style={styles.lotHeader}>
+                                <Text style={[styles.lotName, selectedLot?.id === lot.id && styles.lotNameSelected]}>
+                                  {lot.itemName}
+                                </Text>
+                                {selectedLot?.id === lot.id && <CheckCircle2 color="#3b82f6" size={20} />}
+                              </View>
+                              <Text style={styles.lotText}>Lote Interno: {lot.batchInternal}</Text>
+                              <Text style={styles.lotText}>Disponible: {lot.quantity.toFixed(2)} Lts</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  );
+                });
+              })()
             )}
           </View>
 
@@ -399,6 +504,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
                   onChangeText={setCommercialName}
                   placeholder="Ej: ACTION"
                   icon={<Tag color="#94a3b8" size={20} />}
+                  allowCustom={true}
                 />
 
                 <Text style={styles.label}>Capacidad del Bidón</Text>
@@ -524,7 +630,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
             </View>
             <View style={{ width: 28 }} />
           </View>
-          <ScrollView style={{flex: 1, padding: 20}}>
+          <ScrollView maximumZoomScale={1} style={{flex: 1, padding: 20}}>
             <View style={styles.card}>
               <Text style={{fontSize: 20, fontWeight: '900', color: '#0f172a', marginBottom: 5}}>{selectedOrder?.data?.itemName}</Text>
               <View style={[styles.statusBadge, { alignSelf: 'flex-start', backgroundColor: getStatusColor(selectedOrder?.status), marginBottom: 15 }]}>
@@ -618,6 +724,12 @@ const styles = StyleSheet.create({
   lotName: { fontSize: 15, fontWeight: '800', color: '#334155' },
   lotNameSelected: { color: '#1e3a8a' },
   lotText: { fontSize: 12, color: '#64748b', fontWeight: '600', marginBottom: 2 },
+  
+  groupContainer: { marginBottom: 12, backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: '#e2e8f0', overflow: 'hidden' },
+  groupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, backgroundColor: '#f8fafc' },
+  groupTitle: { fontSize: 16, fontWeight: '800', color: '#1e293b', marginBottom: 2 },
+  groupSub: { fontSize: 12, color: '#64748b', fontWeight: '600' },
+  groupContent: { padding: 15, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#f1f5f9' },
   
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 15 },
   chip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f1f5f9', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#e2e8f0' },

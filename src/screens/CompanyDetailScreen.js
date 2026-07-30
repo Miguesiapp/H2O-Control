@@ -38,7 +38,7 @@ export default function CompanyDetailScreen({ route, navigation }) {
       
       {/* HEADER ENTERPRISE */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backCircle}>
+        <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))} style={styles.backCircle}>
           <ChevronLeft color="#0f172a" size={24} />
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
@@ -52,7 +52,7 @@ export default function CompanyDetailScreen({ route, navigation }) {
         </View> 
       </View>
 
-      <ScrollView 
+      <ScrollView maximumZoomScale={1} 
         showsVerticalScrollIndicator={false} 
         contentContainerStyle={styles.container}
       >

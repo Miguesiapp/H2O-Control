@@ -130,7 +130,7 @@ export default function AttendanceReportsScreen({ navigation }) {
       <StatusBar barStyle="dark-content" />
       
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))} style={styles.backBtn}>
           <ChevronLeft color="#0f172a" size={28} />
         </TouchableOpacity>
         <View style={{ alignItems: 'center' }}>
@@ -187,7 +187,7 @@ export default function AttendanceReportsScreen({ navigation }) {
             <Users color="#94a3b8" size={16} />
             <Text style={styles.sidebarLabel}>NOMINA DE PLANTA</Text>
           </View>
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView maximumZoomScale={1} showsVerticalScrollIndicator={false}>
             {staffMembers.map(member => (
               <TouchableOpacity 
                 key={member.id} 

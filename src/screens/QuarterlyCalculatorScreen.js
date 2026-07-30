@@ -75,12 +75,19 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
       const density = selectedFormula.densidadObjetivo || 1;
       const targetKilos = targetVolume * density;
 
-      // 1. CARGAMOS TODO EL STOCK MP (para evitar problemas de mayúsculas/tildes de Firebase)
+      // 1. CARGAMOS TODO EL STOCK MP Y GRANEL (para evitar problemas de mayúsculas/tildes de Firebase)
       const qAllMP = query(inventoryRef, where("stockType", "==", "MP"));
       const snapAllMP = await getDocs(qAllMP);
       const allMPStock = snapAllMP.docs.map(doc => doc.data());
 
+      const qAllGranel = query(inventoryRef, where("stockType", "==", "GRANEL"));
+      const snapAllGranel = await getDocs(qAllGranel);
+      const allGranelStock = snapAllGranel.docs.map(doc => doc.data());
+
+      const allActiveStock = [...allMPStock, ...allGranelStock];
+
       for (const ing of selectedFormula.ingredients) {
+        if (ing.type === 'NOTE') continue;
         const ingNameUpper = ing.name.trim().toUpperCase();
         const ingNameNorm = normalizeString(ing.name);
         
@@ -96,7 +103,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
 
         // Buscar en la memoria
         let totalInStock = 0;
-        allMPStock.forEach(item => {
+        allActiveStock.forEach(item => {
            const itemNameNorm = normalizeString(item.itemName);
            if (searchNamesNorm.includes(itemNameNorm) && Number(item.quantity) > 0) {
              totalInStock += Number(item.quantity);
@@ -201,7 +208,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
       <StatusBar barStyle="dark-content" />
       
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))} style={styles.backBtn}>
           <ChevronLeft color="#0f172a" size={28} />
         </TouchableOpacity>
         <View style={{alignItems: 'center'}}>
@@ -211,7 +218,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
         <Target color="#0f172a" size={24} />
       </View>
 
-      <ScrollView 
+      <ScrollView maximumZoomScale={1} 
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -358,7 +365,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
                 <X color="#64748b" size={24} />
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.modalList}>
+            <ScrollView maximumZoomScale={1} style={styles.modalList}>
               {formulas.map(f => (
                 <TouchableOpacity 
                   key={f.id} 

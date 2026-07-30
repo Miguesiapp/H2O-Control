@@ -57,6 +57,7 @@ export const RAW_MATERIALS_LIST = [
   'ETANOL / ALCOHOL ETILICO',
   'METANOL / DILUYENTE METILICO',
   'PROPILENGLICOL USP',
+  'HUCA',
   'AGUA DESTILADA'
 ];
 
@@ -69,6 +70,7 @@ export const PROVIDERS_LIST = [
   'AGRODESARROLLOS DE A.MITIDIERI S.A.',
   'AGROFONTEZUELAS S.A.',
   'AGROPRODUCTOS SRL',
+  'AGROCUBE',
   'AITIC S.A.S',
   'ALIANZA NUTRIENTES S.A.',
   'ALLIANZ ARGENTINA COMPAÑIA DE SEGUROS S.A.',
@@ -171,6 +173,10 @@ export const PRODUCTS_MADRE_LIST = [
   'GRANEL DO5037 / MOLECULA',
   'GRANEL SULFURICO / AGROTURBO',
   'GRANEL POWER / POWER FULL / POWER BLUE',
+  'GRANEL MOMENTUM NF',
+  'GRANEL ZURICH NF (BBSFQ02)',
+  'GRANEL IXIBIO BBS-FI02',
+  'GRANEL COMPATIBILIZANTE',
 ];
 
 export const PRODUCTS_FINAL_LIST = [
@@ -207,7 +213,25 @@ export const PRODUCTS_FINAL_LIST = [
   'SLOW',
   'BIOCONTROL',
   'CLEAR',
-  'PH CONTROL / ACIDO CLORHIDRICO / HCL 19%'
+  'PH CONTROL / ACIDO CLORHIDRICO / HCL 19%',
+  'KINKHO',
+  'TUTOR',
+  'HARD',
+  'VITTA IONIC',
+  'COMBATE',
+  'TOKE PLUS',
+  'VITTA FAST',
+  'ACTION',
+  'ACTION AGF',
+  'SILICONADO SHIRIKON',
+  'TOKE ULTRA',
+  'VITTA UNIQUE',
+  'MARISCAL',
+  'XTM',
+  'DROP',
+  'TOKE FULL',
+  'CLEAN',
+  'SUPRESOR'
 ];
 
 // Equivalencias: De nombre comercial a Producto Madre y viceversa
@@ -234,7 +258,40 @@ export const EQUIVALENCIES_MAP = {
   'PERCYDE': 'ACIDO PERACETICO'
 };
 
+// Helper para obtener el nombre base de la etiqueta respetando la lista de PT (ej: MOMENTUM INDRASA -> MOMENTUM)
+export const getBaseLabelName = (commercialName) => {
+  if (!commercialName) return '';
+  const upperName = commercialName.trim().toUpperCase();
+
+  // 1. Coincidencia exacta
+  if (PRODUCTS_FINAL_LIST.includes(upperName)) return upperName;
+
+  // 2. Coincidencia parcial (el nombre comercial contiene alguno de los PT de la lista)
+  // Ordenamos por longitud de mayor a menor para asegurar que 'ACTION AGF' coincida antes que 'ACTION'
+  const sortedProducts = [...PRODUCTS_FINAL_LIST].sort((a, b) => b.length - a.length);
+
+  for (const product of sortedProducts) {
+    if (upperName.includes(product)) {
+      return product;
+    }
+  }
+
+  return upperName; // Fallback
+};
+
 // Formatos de Insumos Centralizados
-export const ETIQUETA_CAPACITIES = ['20L', '10L', '5L', '1L'];
-export const BIDON_CAPACITIES = ['20L', '10L', '5L', '1L'];
-export const CAJA_FORMATS = ['x5', 'x1'];
+export const ETIQUETA_CAPACITIES = ['20L', '10L', '5L', '1L', '500cc', '250cc', '50cc'];
+export const BIDON_CAPACITIES = ['20', '10', '5', '1'];
+export const CAJA_FORMATS = ['x5', 'x1', 'x2'];
+
+export const BIDON_BRANDS = ['H2O', 'AGROCUBE', 'ALIANZA', 'AGROFONTEZUELA'];
+export const CAJA_BRANDS = ['H2O CON LOGO', 'H2O SIN LOGO', 'AGROCUBE', 'AGROFONTEZUELA', 'GENERICAS'];
+
+export const generateBatchId = () => {
+  const now = new Date();
+  const day = String(now.getDate()).padStart(2, '0');
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const year = now.getFullYear();
+  // El usuario solicitó el formato H2O-DDMMAAAA sin id único al final para respetar el día que el operario aceptó la orden
+  return `H2O-${day}${month}${year}`;
+};

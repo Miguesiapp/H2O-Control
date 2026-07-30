@@ -229,7 +229,7 @@ export default function StockView({ route, navigation }) {
       
       {/* HEADER ENTERPRISE */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))} style={styles.backBtn}>
           <ChevronLeft color="#0f172a" size={28} />
         </TouchableOpacity>
         
@@ -295,7 +295,7 @@ export default function StockView({ route, navigation }) {
           <Text style={styles.loadingText}>Auditando inventario...</Text>
         </View>
       ) : (
-        <FlatList
+        <FlatList maximumZoomScale={1}
           data={groupedItems}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}

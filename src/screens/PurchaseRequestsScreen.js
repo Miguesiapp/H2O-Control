@@ -159,7 +159,7 @@ export default function PurchaseRequestsScreen({ navigation }) {
       
       {/* HEADER */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))} style={styles.backBtn}>
           <ChevronLeft color="#0f172a" size={28} />
         </TouchableOpacity>
         <View style={{ flex: 1, paddingLeft: 10 }}>
@@ -200,7 +200,7 @@ export default function PurchaseRequestsScreen({ navigation }) {
             <Text style={styles.emptyText}>No hay pedidos registrados.</Text>
           </View>
         ) : (
-          <FlatList
+          <FlatList maximumZoomScale={1}
             data={requests}
             keyExtractor={item => item.id}
             renderItem={renderRequestCard}

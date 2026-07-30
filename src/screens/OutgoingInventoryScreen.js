@@ -84,7 +84,7 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
         
         setAllFinalStock(stockItems);
         
-        const products = [...new Set(stockItems.map(item => item.itemName.split(' - ')[0]))].sort();
+        const products = [...new Set(stockItems.map(item => item.itemName ? item.itemName.split(' - ')[0] : ''))].filter(name => name !== '').sort();
         setAvailableProducts(products);
       } catch (error) {
         console.error("Error cargando stock", error);
@@ -255,7 +255,7 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
       
       <View style={styles.header}>
         <TouchableOpacity 
-          onPress={() => viewMode === 'CREATE' ? setViewMode('LIST') : navigation.goBack()} 
+          onPress={() => viewMode === 'CREATE' ? setViewMode('LIST') : (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))} 
           style={styles.backBtn}
         >
           <ChevronLeft color="#0f172a" size={28} />
@@ -286,7 +286,7 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
               <Text style={styles.emptyText}>No hay órdenes de despacho registradas.</Text>
             </View>
           ) : (
-            <FlatList 
+            <FlatList maximumZoomScale={1} 
               data={orders}
               keyExtractor={item => item.id}
               showsVerticalScrollIndicator={false}
@@ -313,7 +313,7 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
           )}
         </View>
       ) : (
-        <ScrollView 
+        <ScrollView maximumZoomScale={1} 
           contentContainerStyle={styles.container}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -442,7 +442,7 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
                 <X color="#64748b" size={24} />
               </TouchableOpacity>
             </View>
-            <FlatList
+            <FlatList maximumZoomScale={1}
               data={availableProducts}
               keyExtractor={(item, index) => index.toString()}
               contentContainerStyle={styles.modalList}
@@ -475,7 +475,7 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
                 <X color="#64748b" size={24} />
               </TouchableOpacity>
             </View>
-            <FlatList
+            <FlatList maximumZoomScale={1}
               data={availableBatches}
               keyExtractor={(item, index) => index.toString()}
               contentContainerStyle={styles.modalList}
@@ -511,7 +511,7 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
             </View>
             <View style={{ width: 28 }} />
           </View>
-          <ScrollView style={{flex: 1, padding: 20}}>
+          <ScrollView maximumZoomScale={1} style={{flex: 1, padding: 20}}>
             <View style={styles.card}>
               <Text style={{fontSize: 20, fontWeight: '900', color: '#0f172a', marginBottom: 5}}>{selectedOrder?.data?.itemName}</Text>
               <View style={[styles.statusBadge, { alignSelf: 'flex-start', backgroundColor: getStatusColor(selectedOrder?.status), marginBottom: 15 }]}>
@@ -619,4 +619,14 @@ const styles = StyleSheet.create({
   mainButtonText: { color: '#fff', fontSize: 16, fontWeight: '900', letterSpacing: 1, marginLeft: 10 },
   emptyBox: { alignItems: 'center', padding: 20, paddingVertical: 50 },
   emptyText: { color: '#64748b', textAlign: 'center', fontWeight: '500', marginTop: 15 },
+  
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.7)', justifyContent: 'center', padding: 20 },
+  modalContainer: { backgroundColor: '#fff', borderRadius: 20, padding: 20, maxHeight: '80%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a' },
+  modalList: { paddingBottom: 20 },
+  modalItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  modalItemActive: { backgroundColor: '#f8fafc', paddingHorizontal: 10, borderRadius: 10, borderBottomWidth: 0 },
+  modalItemText: { fontSize: 16, color: '#475569', fontWeight: '600' },
+  modalItemTextActive: { color: '#1e3a8a', fontWeight: '800' }
 });

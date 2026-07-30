@@ -164,13 +164,13 @@ export default function AddFormulaScreen({ route, navigation }) {
       if (isEditing) {
         await updateDoc(doc(db, "Formulas_Maestras", formulaToEdit.id), formulaData);
         Toast.show({ type: 'success', text1: 'Fórmula Actualizada', text2: `La receta de ${productName.toUpperCase()} fue actualizada.` });
-        navigation.goBack();
+        (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'));
       } else {
         formulaData.creadaPor = auth.currentUser?.email || 'Sistema';
         formulaData.fechaCreacion = serverTimestamp();
         await addDoc(collection(db, "Formulas_Maestras"), formulaData);
         Toast.show({ type: 'success', text1: 'Fórmula Registrada', text2: `La receta de ${productName.toUpperCase()} se guardó exitosamente.` });
-        navigation.goBack();
+        (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'));
       }
     } catch (error) {
       console.error(error);
@@ -203,7 +203,7 @@ export default function AddFormulaScreen({ route, navigation }) {
       <StatusBar barStyle="dark-content" />
       
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))} style={styles.backBtn}>
           <ChevronLeft color="#2e4a3b" size={28} />
         </TouchableOpacity>
         <View style={{ alignItems: 'center' }}>
@@ -218,7 +218,7 @@ export default function AddFormulaScreen({ route, navigation }) {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
       >
-        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <ScrollView maximumZoomScale={1} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           
           <Text style={styles.sectionTitle}>Parámetros Generales</Text>
         <View style={styles.card}>

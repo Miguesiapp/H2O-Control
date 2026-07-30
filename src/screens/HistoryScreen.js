@@ -147,8 +147,8 @@ export default function HistoryScreen({ navigation }) {
 
         <View style={styles.logRight}>
           <View style={styles.logHeader}>
-            <Text style={[styles.logAction, { color: theme.color }]}>{item.action?.replace(/_/g, ' ')}</Text>
-            <Text style={styles.logDate}>{item.formattedDate}</Text>
+            <Text style={[styles.logAction, { color: theme.color, flexShrink: 1, marginRight: 8 }]} numberOfLines={2}>{item.action?.replace(/_/g, ' ')}</Text>
+            <Text style={[styles.logDate, { flexShrink: 0 }]}>{item.formattedDate}</Text>
           </View>
 
           <View style={styles.logBody}>
@@ -166,12 +166,12 @@ export default function HistoryScreen({ navigation }) {
           <View style={styles.logFooter}>
             <View style={styles.userRow}>
               <User color="#94a3b8" size={12} />
-              <Text style={styles.logUser}>{item.user || 'Sistema'}</Text>
+              <Text style={styles.logUser} numberOfLines={1}>{item.user || 'Sistema'}</Text>
             </View>
             
-            <View style={{alignItems: 'flex-end'}}>
-               {item.batchInternal && <Text style={styles.logBatch}>Lote Int: {item.batchInternal}</Text>}
-               {item.loteProveedor && <Text style={[styles.logBatch, {marginTop: 4, backgroundColor: '#fef3c7', color: '#b45309'}]}>Lote Prov: {item.loteProveedor}</Text>}
+            <View style={{alignItems: 'flex-end', flexShrink: 1, marginLeft: 8}}>
+               {item.batchInternal && <Text style={styles.logBatch} numberOfLines={2}>Lote Int: {item.batchInternal}</Text>}
+               {item.loteProveedor && <Text style={[styles.logBatch, {marginTop: 4, backgroundColor: '#fef3c7', color: '#b45309'}]} numberOfLines={2}>Lote Prov: {item.loteProveedor}</Text>}
             </View>
           </View>
         </View>
@@ -231,7 +231,7 @@ export default function HistoryScreen({ navigation }) {
       
       {/* HEADER ENTERPRISE (Tono oscuro para la bóveda) */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))} style={styles.backBtn}>
           <ChevronLeft color="#f8fafc" size={28} />
         </TouchableOpacity>
         <View style={{ alignItems: 'center' }}>
@@ -245,7 +245,7 @@ export default function HistoryScreen({ navigation }) {
         
         {/* TABS DE FILTRO */}
         <View style={styles.filterContainer}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+          <ScrollView maximumZoomScale={1} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
             {FILTER_TABS.map(tab => (
               <TouchableOpacity
                 key={tab.id}
@@ -266,7 +266,7 @@ export default function HistoryScreen({ navigation }) {
             <Text style={styles.loadingText}>Desencriptando registros...</Text>
           </View>
         ) : (
-          <FlatList
+          <FlatList maximumZoomScale={1}
             data={sections}
             keyExtractor={item => item.title}
             contentContainerStyle={styles.list}
@@ -354,10 +354,10 @@ const styles = StyleSheet.create({
   logQty: { fontSize: 16, fontWeight: '900' },
   logUnit: { fontSize: 11, fontWeight: '700', color: '#64748b' },
   
-  logFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  userRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  logUser: { fontSize: 11, color: '#64748b', fontStyle: 'italic', fontWeight: '500' },
-  logBatch: { fontSize: 10, color: '#94a3b8', fontWeight: '800', backgroundColor: '#f1f5f9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  logFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingTop: 8 },
+  userRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
+  logUser: { fontSize: 11, color: '#64748b', fontStyle: 'italic', fontWeight: '500', flexShrink: 1 },
+  logBatch: { fontSize: 10, color: '#94a3b8', fontWeight: '800', backgroundColor: '#f1f5f9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, textAlign: 'right' },
 
   emptyContainer: { alignItems: 'center', marginTop: 80 },
   emptyText: { marginTop: 15, color: '#94a3b8', fontWeight: '600', fontSize: 13 }

@@ -19,10 +19,15 @@ if (Platform.OS === 'web') {
       overflow-y: scroll; 
       display: flex; 
       flex-direction: column; 
-      touch-action: pan-x pan-y; /* Previene double-tap zoom */
     }
   `;
   document.head.appendChild(style);
+
+  // Para PWA: Forzar meta viewport para evitar zoom
+  const metaViewport = document.createElement('meta');
+  metaViewport.name = 'viewport';
+  metaViewport.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
+  document.head.appendChild(metaViewport);
 
   // Evitar que Google Chrome traduzca la aplicación automáticamente
   document.documentElement.lang = 'es';
@@ -117,7 +122,15 @@ export default function App() {
     <NavigationContainer>
       <StatusBar barStyle="dark-content" />
       <AppNavigator user={user} />
-      <Toast />
+      {Platform.OS === 'web' ? (
+        <View style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 99999, pointerEvents: 'none' }}>
+          <View style={{ pointerEvents: 'auto' }}>
+            <Toast />
+          </View>
+        </View>
+      ) : (
+        <Toast />
+      )}
     </NavigationContainer>
   );
 }

@@ -345,7 +345,7 @@ export default function OrdersBoardScreen({ navigation }) {
       
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))} style={styles.backBtn}>
           <ChevronLeft color="#f8fafc" size={28} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
@@ -359,7 +359,7 @@ export default function OrdersBoardScreen({ navigation }) {
       <View style={styles.boardWrapper}>
         {isDesktop ? (
           // DESKTOP HORIZONTAL SCROLL WRAPPER
-          <ScrollView horizontal showsHorizontalScrollIndicator={true} style={styles.hScroll}>
+          <ScrollView maximumZoomScale={1} horizontal showsHorizontalScrollIndicator={true} style={styles.hScroll}>
             <View style={{ minWidth: 1200 }}>
               {/* Table Header */}
               <View style={styles.dTableHeader}>
@@ -371,7 +371,7 @@ export default function OrdersBoardScreen({ navigation }) {
                 <Text style={[styles.dTh, { width: 150, textAlign: 'right' }]}>ESTADO / AVANCE</Text>
               </View>
               {/* List */}
-              <FlatList
+              <FlatList maximumZoomScale={1}
                 data={orders}
                 keyExtractor={(item) => item.id}
                 renderItem={renderDesktopItem}
@@ -384,7 +384,7 @@ export default function OrdersBoardScreen({ navigation }) {
           </ScrollView>
         ) : (
           // MOBILE VERTICAL LIST
-          <FlatList
+          <FlatList maximumZoomScale={1}
             data={orders}
             keyExtractor={(item) => item.id}
             renderItem={renderMobileItem}

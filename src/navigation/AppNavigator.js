@@ -18,7 +18,7 @@ import ProductionOrderScreen from '../screens/ProductionOrderScreen';
 import PackagingOrderScreen from '../screens/PackagingOrderScreen';
 import DirectPackagingOrderScreen from '../screens/DirectPackagingOrderScreen';
 import InterCompanyTransferScreen from '../screens/InterCompanyTransferScreen'; 
-import OrdersBoardScreen from '../screens/OrdersBoardScreen';
+
 
 // 4. Módulos de Laboratorio (H2O), Calidad (BBS) y Reportes
 import FormulationScreen from '../screens/FormulationScreen'; 
@@ -26,6 +26,7 @@ import AddFormulaScreen from '../screens/AddFormulaScreen';
 import QuarterlyCalculatorScreen from '../screens/QuarterlyCalculatorScreen'; 
 import QualityControlScreen from '../screens/QualityControlScreen'; 
 import HistoryScreen from '../screens/HistoryScreen';
+import TraceabilityScreen from '../screens/TraceabilityScreen';
 
 // 5. Módulos de Inteligencia IA
 import SmartAICargoScreen from '../screens/SmartAICargoScreen'; 
@@ -80,10 +81,11 @@ export default function AppNavigator({ user }) {
       <Stack.Screen name="PackagingOrder" component={PackagingOrderScreen} />
       <Stack.Screen name="DirectPackagingOrder" component={DirectPackagingOrderScreen} />
       <Stack.Screen name="InterCompanyTransfer" component={InterCompanyTransferScreen} />
-      <Stack.Screen name="OrdersBoard" component={OrdersBoardScreen} />
+
       
       {/* SECCIÓN: MÓDULOS DE LABORATORIO E HISTORIAL */}
       <Stack.Screen name="History" component={HistoryScreen} />
+      <Stack.Screen name="Traceability" component={TraceabilityScreen} />
       <Stack.Screen name="Formulation" component={FormulationScreen} />
       <Stack.Screen name="AddFormula" component={AddFormulaScreen} />
       <Stack.Screen name="QualityControl" component={QualityControlScreen} />
