@@ -310,22 +310,22 @@ export default function AddFormulaScreen({ route, navigation }) {
             calculatedPercentage = total > 0 ? ((toDecimal(ing.amount) / total) * 100).toFixed(2) : 0;
           }
           return (
-          <View key={ing.id} style={styles.ingredientBlock}>
+          <View key={ing.id} style={[styles.ingredientBlock, { zIndex: 100 - idx }]}>
             <View style={styles.ingRow}>
-              <View style={{ flex: 2 }}>
+              <View style={{ width: '65%' }}>
                 <AutocompleteInput 
                   data={[...new Set([...mergedMaterialsList, ...PRODUCTS_MADRE_LIST, ...dynamicProducts])].sort()}
                   value={ing.name}
                   onChangeText={(val) => updateIngredient(idx, 'name', val)}
-                  placeholder="Ingrediente"
+                  placeholder="MP"
                   icon={<FileText color="#94a3b8" size={18} />}
                   containerStyle={{ marginBottom: 0, zIndex: 100 - idx }}
-                  allowCustom={true}
+                  allowCustom={false}
                 />
               </View>
               <TextInput 
-                style={[styles.input, { flex: 1, marginLeft: 10 }]} 
-                placeholder={inputMode === 'PERCENTAGE' ? "Cant (%)" : "Cant (Kg)"} 
+                style={[styles.input, { width: '32%', marginLeft: '3%' }]} 
+                placeholder={inputMode === 'PERCENTAGE' ? "Cant" : "Cant"} 
                 keyboardType="decimal-pad"
                 value={ing.amount}
                 onChangeText={(val) => updateIngredient(idx, 'amount', val)}

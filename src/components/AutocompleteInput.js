@@ -102,6 +102,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginBottom: 15,
     zIndex: 1000,
+    width: '100%',
   },
   inputWrapper: {
     flexDirection: 'row',
@@ -111,6 +112,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e2e8f0',
     paddingHorizontal: 15,
+    width: '100%',
   },
   icon: {
     marginRight: 10,
@@ -123,6 +125,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   dropdown: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
     backgroundColor: '#ffffff',
     borderRadius: 12,
     borderWidth: 1,
