@@ -5,8 +5,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { ChevronLeft, Search, PackageOpen, AlertTriangle, ShieldCheck, X, FlaskConical, Droplet, Box, Tag, Printer, ChevronDown, ChevronUp } from 'lucide-react-native';
+import { collection, query, where, onSnapshot, writeBatch, doc } from 'firebase/firestore';
+import { ChevronLeft, Search, PackageOpen, AlertTriangle, ShieldCheck, X, FlaskConical, Droplet, Box, Tag, Printer, ChevronDown, ChevronUp, Edit2 } from 'lucide-react-native';
 import { printMultipleLabels } from '../services/labelService';
 import { RAW_MATERIALS_LIST, PRODUCTS_MADRE_LIST } from '../config/constants';
 
@@ -36,6 +36,36 @@ export default function StockView({ route, navigation }) {
 
   const toggleExpand = (id) => {
     setExpandedItems(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
+
+  const [minStockModalVisible, setMinStockModalVisible] = useState(false);
+  const [selectedMinStockItem, setSelectedMinStockItem] = useState(null);
+  const [newMinStock, setNewMinStock] = useState('');
+  const [isUpdatingMin, setIsUpdatingMin] = useState(false);
+
+  const handleSaveMinStock = async () => {
+    if (!selectedMinStockItem) return;
+    const val = Number(newMinStock);
+    if (isNaN(val) || val < 0) {
+      Alert.alert("Error", "Ingrese una cantidad válida.");
+      return;
+    }
+    try {
+      setIsUpdatingMin(true);
+      const batch = writeBatch(db);
+      selectedMinStockItem.lotes.forEach(lote => {
+        lote.rawDocs.forEach(docId => {
+          batch.update(doc(db, "Inventory", docId), { minStock: val });
+        });
+      });
+      await batch.commit();
+      setMinStockModalVisible(false);
+    } catch (e) {
+      console.error(e);
+      Alert.alert("Error", "No se pudo actualizar el mínimo.");
+    } finally {
+      setIsUpdatingMin(false);
+    }
   };
 
   useEffect(() => {
@@ -156,15 +186,22 @@ export default function StockView({ route, navigation }) {
     const isExpanded = expandedItems.includes(item.id);
 
     return (
-      <View style={[styles.itemCard, { borderTopColor: status.color }]}>
+      <View style={[styles.itemCard, { backgroundColor: status.bg, borderColor: status.color, borderWidth: 1 }]}>
         <TouchableOpacity activeOpacity={0.7} onPress={() => toggleExpand(item.id)}>
           <View style={styles.itemHeader}>
             <Text style={styles.itemName}>{item.itemName}</Text>
             <View style={{flexDirection: 'row', alignItems: 'center'}}>
-              <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
-                <StatusIcon color={status.color} size={12} style={{marginRight: 4}} />
-                <Text style={[styles.statusBadgeText, { color: status.color }]}>{status.label}</Text>
-              </View>
+              <TouchableOpacity 
+                style={[styles.statusBadge, { backgroundColor: '#fff', borderWidth: 1, borderColor: status.color }]}
+                onPress={() => {
+                  setSelectedMinStockItem(item);
+                  setNewMinStock(String(item.minStock));
+                  setMinStockModalVisible(true);
+                }}
+              >
+                <Edit2 color={status.color} size={12} style={{marginRight: 4}} />
+                <Text style={[styles.statusBadgeText, { color: status.color }]}>EDITAR MÍNIMO</Text>
+              </TouchableOpacity>
               {isExpanded ? <ChevronUp color="#64748b" size={20} style={{marginLeft: 10}} /> : <ChevronDown color="#64748b" size={20} style={{marginLeft: 10}} />}
             </View>
           </View>
@@ -376,6 +413,43 @@ export default function StockView({ route, navigation }) {
                 </TouchableOpacity>
               </>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL EDITAR MINIMO */}
+      <Modal visible={minStockModalVisible} transparent={true} animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Editar Stock Mínimo</Text>
+              <TouchableOpacity onPress={() => setMinStockModalVisible(false)}>
+                <X color="#64748b" size={24} />
+              </TouchableOpacity>
+            </View>
+            
+            <View>
+              <Text style={{fontSize: 14, color: '#475569', marginBottom: 15}}>
+                {selectedMinStockItem?.itemName}
+              </Text>
+              
+              <Text style={{fontWeight: '600', marginBottom: 5}}>Mínimo Requerido ({selectedMinStockItem?.unit}):</Text>
+              <TextInput 
+                style={styles.modalInput}
+                keyboardType="decimal-pad"
+                value={newMinStock}
+                onChangeText={setNewMinStock}
+                autoFocus
+              />
+
+              <TouchableOpacity 
+                style={[styles.printConfirmBtn, isUpdatingMin && {opacity: 0.7}]} 
+                onPress={handleSaveMinStock}
+                disabled={isUpdatingMin}
+              >
+                <Text style={{color: '#fff', fontWeight: 'bold', textAlign: 'center'}}>{isUpdatingMin ? 'Guardando...' : 'GUARDAR'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
