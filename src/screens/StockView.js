@@ -141,7 +141,11 @@ export default function StockView({ route, navigation }) {
   const groupedItems = Object.values(groupedItemsMap).map(group => {
     return {
       ...group,
-      lotes: Object.values(group.lotesMap)
+      quantity: parseFloat(Number(group.quantity).toFixed(2)),
+      lotes: Object.values(group.lotesMap).map(lote => ({
+         ...lote,
+         quantity: parseFloat(Number(lote.quantity).toFixed(2))
+      }))
     };
   }).sort((a, b) => a.itemName.localeCompare(b.itemName));
 
