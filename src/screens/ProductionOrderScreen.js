@@ -152,7 +152,8 @@ export default function ProductionOrderScreen({ route, navigation }) {
         const percentageValue = ingredient.percentage !== undefined ? ingredient.percentage / 100 : 0;
         const requiredQty = Number((targetKilos * percentageValue).toFixed(2));
         
-        const ingUpper = ingredient.name.trim().toUpperCase();
+        const ingUpper = (ingredient.name || '').trim().toUpperCase();
+        if (!ingUpper) continue;
         const eqIngs = EQUIVALENCIES[ingUpper] || [];
         const possibleIngredients = [ingUpper, ...eqIngs];
         const possibleNorm = possibleIngredients.map(n => normalizeString(n));
@@ -172,7 +173,8 @@ export default function ProductionOrderScreen({ route, navigation }) {
                      batchInternal: item.batchInternal || 'S/D',
                      batchProvider: item.batchProvider || 'S/D',
                      quantity: item.quantity,
-                     createdAt: item._createdAt
+                     createdAt: item._createdAt,
+                     realItemName: item.itemName
                   });
                   currentStock += item.quantity || 0;
               }
@@ -189,7 +191,8 @@ export default function ProductionOrderScreen({ route, navigation }) {
            batchesToConsume.push({
               batchInternal: b.batchInternal,
               batchProvider: b.batchProvider,
-              consumed: consumeQty
+              consumed: consumeQty,
+              realItemName: b.realItemName
            });
            remainingRequired = Number((remainingRequired - consumeQty).toFixed(2));
         }
@@ -236,7 +239,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
         if (req.batchesToConsume && req.batchesToConsume.length > 0) {
           for (const b of req.batchesToConsume) {
             await registerMovement(currentUser, 'RETIRO_PRODUCCION', req.isGranel ? 'H2O' : companyName, {
-              itemName: req.name,
+              itemName: b.realItemName || req.name,
               quantity: -Math.abs(b.consumed), 
               stockType: req.isGranel ? 'GRANEL' : 'MP',
               batchInternal: b.batchInternal,

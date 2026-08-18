@@ -37,7 +37,7 @@ export default function AutocompleteInput({
   }, [inputText, data, showSuggestions]);
 
   const handleSelect = (item) => {
-    const displayName = item.split('/')[0].trim();
+    const displayName = item;
     setInputText(displayName);
     onChangeText(displayName);
     setShowSuggestions(false);

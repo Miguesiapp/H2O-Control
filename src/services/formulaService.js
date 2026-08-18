@@ -38,11 +38,27 @@ export const EQUIVALENCIES = {
 const allLists = [...RAW_MATERIALS_LIST, ...PRODUCTS_MADRE_LIST];
 allLists.forEach(item => {
   if (item && typeof item === 'string' && item.includes('/')) {
+    const fullItem = item.trim().toUpperCase();
     const parts = item.split('/').map(p => p.trim().toUpperCase());
+    
+    if (!EQUIVALENCIES[fullItem]) EQUIVALENCIES[fullItem] = [];
+    
     parts.forEach(part => {
+      // Mapear el string completo a esta parte
+      if (!EQUIVALENCIES[fullItem].includes(part)) {
+        EQUIVALENCIES[fullItem].push(part);
+      }
+      
       if (!EQUIVALENCIES[part]) {
         EQUIVALENCIES[part] = [];
       }
+      
+      // Mapear esta parte al string completo
+      if (!EQUIVALENCIES[part].includes(fullItem)) {
+        EQUIVALENCIES[part].push(fullItem);
+      }
+      
+      // Mapear partes entre sí
       parts.forEach(otherPart => {
         if (otherPart !== part && !EQUIVALENCIES[part].includes(otherPart)) {
           EQUIVALENCIES[part].push(otherPart);
