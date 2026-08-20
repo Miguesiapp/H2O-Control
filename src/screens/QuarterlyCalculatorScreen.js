@@ -9,7 +9,8 @@ import { collection, getDocs, query, where, addDoc, serverTimestamp } from 'fire
 import { ChevronLeft, Calculator, AlertCircle, CheckCircle2, ShoppingCart, Target, Beaker, Factory, ChevronDown, X, ClipboardList, Download } from 'lucide-react-native';
 
 import { EQUIVALENCIES } from '../services/formulaService';
-
+import { PRODUCTS_MADRE_LIST } from '../config/constants';
+import AutocompleteInput from '../components/AutocompleteInput';
 const normalizeString = (str) => {
   if (!str) return '';
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
@@ -18,7 +19,7 @@ const normalizeString = (str) => {
 export default function QuarterlyCalculatorScreen({ navigation }) {
   const [formulas, setFormulas] = useState([]);
   const [selectedFormula, setSelectedFormula] = useState(null);
-  const [modalVisible, setModalVisible] = useState(false);
+  const [productName, setProductName] = useState('');
   const [goal, setGoal] = useState('');
   const [results, setResults] = useState([]);
   const [granelStock, setGranelStock] = useState(null);
@@ -35,6 +36,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
         setFormulas(data);
         if (data.length > 0) {
           setSelectedFormula(data[0]);
+          setProductName(data[0].productName);
         }
       } catch (error) {
         Alert.alert("Error de Conexión", "No se pudo sincronizar el catálogo de fórmulas.");
@@ -239,18 +241,25 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
             </Text>
           </View>
         ) : (
-          <TouchableOpacity 
-            style={[styles.inputWrapper, { paddingVertical: 18, justifyContent: 'space-between' }]}
-            onPress={() => setModalVisible(true)}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Beaker color="#94a3b8" size={20} style={{ marginRight: 10 }} />
-              <Text style={{ fontSize: 16, color: '#0f172a', fontWeight: '700' }}>
-                {selectedFormula ? selectedFormula.productName : 'Seleccionar Producto...'}
-              </Text>
-            </View>
-            <ChevronDown color="#94a3b8" size={20} />
-          </TouchableOpacity>
+          <AutocompleteInput 
+            data={[...new Set([...formulas.map(f => f.productName), ...PRODUCTS_MADRE_LIST])].sort()}
+            value={productName}
+            onChangeText={(text) => {
+               setProductName(text);
+               // Buscar coincidencia exacta primero
+               let found = formulas.find(f => f.productName === text);
+               
+               // Si no hay coincidencia exacta (ej: tocó algo con " / "), buscar por contención
+               if (!found) {
+                 found = formulas.find(f => text.includes(f.productName) || f.productName.includes(text));
+               }
+               
+               setSelectedFormula(found || null);
+            }}
+            placeholder="Seleccionar o escribir producto..."
+            icon={<Beaker color="#94a3b8" size={18} />}
+            containerStyle={{ zIndex: 2000 }}
+          />
         )}
 
         <Text style={styles.label}>2. Volumen Deseado (Litros)</Text>
@@ -350,42 +359,6 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* MODAL PARA SELECCIONAR FORMULA */}
-      <Modal
-        visible={modalVisible}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Seleccionar Producto</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <X color="#64748b" size={24} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView maximumZoomScale={1} style={styles.modalList}>
-              {formulas.map(f => (
-                <TouchableOpacity 
-                  key={f.id} 
-                  style={[styles.modalItem, selectedFormula?.id === f.id && styles.modalItemActive]}
-                  onPress={() => {
-                    setSelectedFormula(f);
-                    setModalVisible(false);
-                  }}
-                >
-                  <Text style={[styles.modalItemText, selectedFormula?.id === f.id && styles.modalItemTextActive]}>
-                    {f.productName}
-                  </Text>
-                  {selectedFormula?.id === f.id && <CheckCircle2 color="#3b82f6" size={20} />}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
     </SafeAreaView>
   );
 }
@@ -440,16 +413,6 @@ const styles = StyleSheet.create({
   calcBtn: { backgroundColor: '#3b82f6', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 20, borderRadius: 16, marginTop: 30, gap: 12, elevation: 4, shadowColor: '#3b82f6', shadowOpacity: 0.3, shadowRadius: 8 },
   calcBtnText: { color: '#fff', fontSize: 16, fontWeight: '900', letterSpacing: 0.5 },
   
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
-  modalContainer: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '80%', paddingBottom: 20 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  modalTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a' },
-  modalList: { paddingHorizontal: 20, paddingTop: 10 },
-  modalItem: { paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  modalItemActive: { backgroundColor: '#eff6ff', borderRadius: 12, paddingHorizontal: 15, borderBottomWidth: 0, marginVertical: 4 },
-  modalItemText: { fontSize: 15, color: '#334155', fontWeight: '600' },
-  modalItemTextActive: { color: '#1e3a8a', fontWeight: '800' },
-
   resultsContainer: { marginTop: 40, paddingBottom: 50 },
   resultsTitle: { fontSize: 13, fontWeight: '800', color: '#64748b', marginBottom: 15, textTransform: 'uppercase', letterSpacing: 1 },
   
