@@ -199,6 +199,41 @@ export default function HomeScreen({ navigation }) {
         showsVerticalScrollIndicator={false}
       >
 
+        {/* ENTRADAS DE STOCK - MOVIDO ARRIBA */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Ingresos de Stock</Text>
+
+          <TouchableOpacity
+            style={[styles.mainCard, { borderColor: '#6366f1', backgroundColor: '#eef2ff' }]}
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('SmartAICargo', { companyName: 'STOCK_CENTRAL_MP' })}
+          >
+            <View style={[styles.mainCardIcon, { backgroundColor: '#6366f1' }]}>
+              <Sparkles color="#fff" size={24} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.mainCardTitle, { color: '#3730a3' }]}>Ingreso con IA</Text>
+              <Text style={styles.mainCardSub}>Lectura inteligente de remitos</Text>
+            </View>
+            <ChevronRight color="#6366f1" size={24} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.mainCard, { borderColor: '#64748b', backgroundColor: '#f8fafc' }]}
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('IncomingInventory', { companyName: 'STOCK_CENTRAL_MP' })}
+          >
+            <View style={[styles.mainCardIcon, { backgroundColor: '#64748b' }]}>
+              <Keyboard color="#fff" size={24} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.mainCardTitle, { color: '#0f172a' }]}>Ingreso Manual</Text>
+              <Text style={styles.mainCardSub}>MP e Insumos (Bidones, Cajas, Etiquetas)</Text>
+            </View>
+            <ChevronRight color="#64748b" size={24} />
+          </TouchableOpacity>
+        </View>
+
         {/* INVENTARIO CENTRAL */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Inventarios Centrales</Text>
@@ -415,20 +450,6 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
 
-        {/* ENTRADAS DE STOCK */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Ingresos de Stock</Text>
-          <View style={styles.row}>
-            <TouchableOpacity style={styles.adminSmallCard} onPress={() => navigation.navigate('SmartAICargo', { companyName: 'STOCK_CENTRAL_MP' })}>
-              <Sparkles color="#3b82f6" size={20} />
-              <Text style={styles.adminSmallCardText}>Ingreso IA</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.adminSmallCard} onPress={() => navigation.navigate('IncomingInventory', { companyName: 'STOCK_CENTRAL_MP' })}>
-              <Keyboard color="#64748b" size={20} />
-              <Text style={styles.adminSmallCardText}>Ingreso Manual</Text>
-            </TouchableOpacity>
-          </View>
         </View>
 
         <View style={{ height: 90 }} />

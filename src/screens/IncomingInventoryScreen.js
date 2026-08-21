@@ -35,6 +35,7 @@ export default function IncomingInventoryScreen({ navigation }) {
     providerName: '',
     batchProvider: '',
     expiryDate: '',
+    remitNumber: '',
     observations: '',
     capacity: '20', 
     format: 'x5',
@@ -133,6 +134,7 @@ export default function IncomingInventoryScreen({ navigation }) {
         batchProvider: formData.batchProvider.trim() || 'S/D',
         providerName: formData.providerName.trim() || 'S/D',
         expiryDate: formData.expiryDate.trim() || 'S/V',
+        remitNumber: formData.remitNumber.trim() || 'S/D',
         observations: formData.observations.trim(),
         category: isMP ? 'Materia Prima' : category,
         stockType: isMP ? 'MP' : 'INSUMOS',
@@ -161,6 +163,7 @@ export default function IncomingInventoryScreen({ navigation }) {
           providerName: '',
           batchProvider: '',
           expiryDate: '',
+          remitNumber: '',
           observations: '',
           capacity: '20L', 
           format: 'x5'     
@@ -434,6 +437,22 @@ export default function IncomingInventoryScreen({ navigation }) {
                 </View>
               </View>
             </View>
+
+        <View style={styles.card}>
+          <Text style={styles.label}>Número de Remito</Text>
+          <View style={styles.inputWrapper}>
+            <FileText color="#94a3b8" size={18} style={styles.inputIcon} />
+            <TextInput 
+              style={styles.input} 
+              placeholder="Ej: R-0001-00001234" 
+              placeholderTextColor="#94a3b8"
+              autoCapitalize="characters"
+              value={formData.remitNumber}
+              onChangeText={(txt) => setFormData({...formData, remitNumber: txt})}
+            />
+          </View>
+        </View>
+
         <View style={styles.card}>
           <Text style={styles.label}>Observaciones / Justificación</Text>
           <View style={[styles.inputWrapper, { height: 80, alignItems: 'flex-start', paddingTop: 10 }]}>

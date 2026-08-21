@@ -74,6 +74,8 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
       const isExactDeduction = 
         actionType === 'EGRESO_DESPACHO_CLIENTE' || 
         actionType === 'CONSUMO_ENVASADO' ||
+        actionType === 'CONSUMO_ENVASADO_BIDON' ||
+        actionType === 'CONSUMO_ENVASADO_CAJA' ||
         actionType === 'RETIRO_PRODUCCION' ||
         ((actionType === 'EGRESO_CLEARING' || actionType === 'BAJA_POR_AJUSTE') && data.batchInternal && data.batchInternal !== 'S/D');
 

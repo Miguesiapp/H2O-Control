@@ -157,11 +157,13 @@ export default function PackagingOrderScreen({ route, navigation }) {
 
     try {
       // 0. VERIFICACIÓN Y CÁLCULO DE ÓRDENES PARCIALES
-      const bidonName = ["BIDON", `${presentation}L`];
-      const bidonStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', bidonName);
+      // Bidones: los bidones son genéricos, se descuenta por capacidad y marca
+      const exactBidonName = `BIDON ${presentation}L ${formData.brandBidon}`;
+      const bidonStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', exactBidonName);
       
-      const cajaName = ["CAJA", [boxFormat, `${presentation}L`]];
-      const cajaStock = appliesBox ? await checkTotalStock('STOCK_CENTRAL_INSUMOS', cajaName) : Infinity;
+      // Cajas: exactamente la marca que el usuario eligió
+      const exactCajaName = appliesBox ? `CAJA ${boxFormat} ${formData.brandCaja}` : null;
+      const cajaStock = appliesBox ? await checkTotalStock('STOCK_CENTRAL_INSUMOS', exactCajaName) : Infinity;
 
       const baseLabelName = getBaseLabelName(commercialName);
       const etiquetaName = `ETIQUETA ${presentation}L ${baseLabelName}`;
@@ -223,19 +225,19 @@ export default function PackagingOrderScreen({ route, navigation }) {
           unit: 'Lts'
       });
 
-      // 2. DEDUCCIÓN DE INSUMOS CENTRALES (BIDONES)
-      await registerMovement(currentUser, 'CONSUMO_INSUMO', 'STOCK_CENTRAL_INSUMOS', {
-          itemName: bidonName,
+      // 2. DEDUCCIÓN DE INSUMOS CENTRALES (BIDONES) - por marca exacta
+      await registerMovement(currentUser, 'CONSUMO_ENVASADO_BIDON', 'STOCK_CENTRAL_INSUMOS', {
+          itemName: exactBidonName,
           quantity: -Math.abs(units),
           stockType: 'INSUMOS',
           batchInternal: batchId,
           unit: 'Uds'
       });
 
-      // 3. DEDUCCIÓN DE INSUMOS CENTRALES (CAJAS) SI APLICA
-      if (appliesBox && requiredBoxes > 0) {
-        await registerMovement(currentUser, 'CONSUMO_INSUMO', 'STOCK_CENTRAL_INSUMOS', {
-            itemName: cajaName,
+      // 3. DEDUCCIÓN DE INSUMOS CENTRALES (CAJAS) - por marca exacta si aplica
+      if (appliesBox && requiredBoxes > 0 && exactCajaName) {
+        await registerMovement(currentUser, 'CONSUMO_ENVASADO_CAJA', 'STOCK_CENTRAL_INSUMOS', {
+            itemName: exactCajaName,
             quantity: -Math.abs(requiredBoxes),
             stockType: 'INSUMOS',
             batchInternal: batchId,
@@ -287,7 +289,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
         presentation: '20', 
         unitsProduced: '',  
         brandBidon: 'H2O',
-        brandCaja: 'H2O', 
+        brandCaja: 'H2O CON LOGO', 
       });
     } catch (error) {
       console.error(error);

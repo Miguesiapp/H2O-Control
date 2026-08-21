@@ -290,10 +290,10 @@ export const getBaseLabelName = (commercialName) => {
 // Formatos de Insumos Centralizados
 export const ETIQUETA_CAPACITIES = ['20L', '10L', '5L', '1L', '500cc', '250cc', '50cc'];
 export const BIDON_CAPACITIES = ['20', '10', '5', '1'];
-export const CAJA_FORMATS = ['x5', 'x1', 'x2'];
+export const CAJA_FORMATS = ['x5', 'x1'];
 
 export const BIDON_BRANDS = ['H2O', 'AGROCUBE', 'ALIANZA', 'AGROFONTEZUELA'];
-export const CAJA_BRANDS = ['H2O CON LOGO', 'H2O SIN LOGO', 'AGROCUBE', 'AGROFONTEZUELA', 'GENERICAS'];
+export const CAJA_BRANDS = ['H2O CON LOGO', 'H2O SIN LOGO', 'AGROCUBE', 'AGROFONTEZUELA', 'GENERICAS', 'BIOACKER'];
 
 export const generateBatchId = () => {
   const now = new Date();
