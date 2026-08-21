@@ -9,7 +9,7 @@ import { collection, query, where, getDocs, onSnapshot, serverTimestamp } from '
 import { registerMovement, createOrder, updateOrderStatus, checkTotalStock } from '../services/logisticsService'; 
 import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box, Droplet, Building2, Tag, Plus, ClipboardList, Play, CheckSquare, XCircle, ChevronDown, ChevronUp } from 'lucide-react-native';
 import AutocompleteInput from '../components/AutocompleteInput';
-import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS } from '../config/constants';
+import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS, getCommercialNamesForGranel } from '../config/constants';
 import { canCreateOrders, canChangeStatus } from '../config/permissions';
 import Toast from 'react-native-toast-message';
 
@@ -115,19 +115,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
 
   const getCommercialNameSuggestions = () => {
     if (!selectedLot) return [];
-    const madre = selectedLot.itemName.toUpperCase();
-    const suggestions = [madre];
-    
-    Object.keys(EQUIVALENCIES_MAP).forEach(key => {
-      const equiv = EQUIVALENCIES_MAP[key].toUpperCase();
-      if (equiv.includes(madre) || madre.includes(equiv)) {
-        suggestions.push(key);
-      }
-    });
-    
-    suggestions.push(...PRODUCTS_FINAL_LIST);
-    
-    return [...new Set(suggestions)];
+    return getCommercialNamesForGranel(selectedLot.itemName);
   };
 
   const units = Number(formData.unitsProduced) || 0;
