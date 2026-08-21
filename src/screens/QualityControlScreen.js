@@ -103,25 +103,46 @@ export default function QualityControlScreen({ navigation }) {
     }
 
     try {
-      await updateDoc(doc(db, "Inventory", lot.id), {
+      const updatePayload = {
         status: status, 
         measuredPh: Number(phVal) || null,
         measuredDensity: Number(densityVal) || null,
         qualityObs: analysis.obs.trim() || 'Sin observaciones.',
         authorizedBy: userEmail,
         authorizedAt: new Date().toISOString()
-      });
+      };
+
+      // Si el lote es RECHAZADO, ponemos quantity en 0 como capa extra de seguridad
+      // para que nunca sea contado en el stock disponible, incluso si el filtro
+      // por status fallara. El historial de auditoría queda intacto (AuditLog).
+      if (status === 'RECHAZADO') {
+        updatePayload.originalQuantity = lot.quantity; // Preservar cantidad original para historial
+        updatePayload.quantity = 0;
+      }
+
+      await updateDoc(doc(db, "Inventory", lot.id), updatePayload);
+
+      let toastText2, alertMsg;
+      if (status === 'APTO') {
+        toastText2 = `El lote ${lot.batchInternal} fue liberado y ya está disponible en stock.`;
+        alertMsg = `El lote ${lot.batchInternal} fue liberado y está disponible en el inventario.\nFirmado por: ${userEmail}`;
+      } else {
+        toastText2 = `El lote ${lot.batchInternal} fue rechazado. No será sumado al stock disponible.`;
+        alertMsg = activeTab === 'GRANEL'
+          ? `El lote ${lot.batchInternal} fue RECHAZADO.\n\n⚠️ Las Materias Primas utilizadas ya fueron descontadas del inventario (son parte del proceso productivo).\n\nEl Granel NO será agregado al stock disponible.\n\nFirmado por: ${userEmail}`
+          : `El lote ${lot.batchInternal} fue RECHAZADO.\n\nNo será sumado al stock disponible. Queda registrado en el historial de BBS Calidad.\n\nFirmado por: ${userEmail}`;
+      }
 
       if (Platform.OS === 'web') {
         Toast.show({ 
           type: status === 'APTO' ? 'success' : 'error', 
-          text1: status === 'APTO' ? "Lote Liberado" : "Lote Rechazado", 
-          text2: `El lote ${lot.batchInternal} ha sido actualizado.` 
+          text1: status === 'APTO' ? "✅ Lote Liberado" : "❌ Lote Rechazado", 
+          text2: toastText2
         });
       } else {
         Alert.alert(
-          status === 'APTO' ? "Lote Liberado" : "Lote Rechazado", 
-          `El lote ${lot.batchInternal} ha sido actualizado a estado ${status} bajo la firma de ${userEmail}.`
+          status === 'APTO' ? "✅ Lote Liberado" : "❌ Lote Rechazado", 
+          alertMsg
         );
       }
       

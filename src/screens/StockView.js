@@ -78,7 +78,12 @@ export default function StockView({ route, navigation }) {
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const stockData = [];
       querySnapshot.forEach((doc) => {
-        stockData.push({ ...doc.data(), id: doc.id });
+        const data = doc.data();
+        // CUARENTENA: Excluir lotes pendientes de aprobación BBS Calidad del stock disponible
+        const pendingStatuses = ['PENDIENTE', 'PENDIENTE_LABORATORIO'];
+        if (!pendingStatuses.includes(data.status)) {
+          stockData.push({ ...data, id: doc.id });
+        }
       });
       
       // Ordenamos alfabéticamente

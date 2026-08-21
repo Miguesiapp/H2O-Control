@@ -130,6 +130,9 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
       .map(doc => ({ id: doc.id, ...doc.data() }))
       .filter(doc => {
         if ((doc.quantity || 0) <= 0) return false;
+        // CUARENTENA: No consumir lotes que aún no fueron aprobados por Calidad
+        const pendingStatuses = ['PENDIENTE', 'PENDIENTE_LABORATORIO'];
+        if (pendingStatuses.includes(doc.status)) return false;
         if (isFuzzy) {
           const name = (doc.itemName || '').toUpperCase();
           return itemName.every(kw => {
@@ -198,6 +201,9 @@ export const checkTotalStock = async (company, itemName) => {
     let total = 0;
     snap.forEach(doc => {
       const data = doc.data();
+      // CUARENTENA: No contar stock que aún no fue aprobado por BBS Calidad
+      const pendingStatuses = ['PENDIENTE', 'PENDIENTE_LABORATORIO'];
+      if (pendingStatuses.includes(data.status)) return;
       if (data.quantity > 0) {
         if (isFuzzy) {
           const name = (data.itemName || '').toUpperCase();
