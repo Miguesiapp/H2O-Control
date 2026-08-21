@@ -12,6 +12,8 @@ import { Calendar as CalendarPicker } from 'react-native-calendars';
 import { ChevronRight } from 'lucide-react-native';
 import { Modal } from 'react-native';
 import Toast from 'react-native-toast-message';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../config/firebase';
 import { 
   RAW_MATERIALS_LIST, PRODUCTS_MADRE_LIST, PRODUCTS_FINAL_LIST,
   ETIQUETA_CAPACITIES, BIDON_CAPACITIES, CAJA_FORMATS, PROVIDERS_LIST,
@@ -27,6 +29,7 @@ export default function InventoryAdjustmentScreen({ navigation }) {
   const [category, setCategory] = useState('Bidones'); 
   const [isCalendarVisible, setIsCalendarVisible] = useState(false);
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
+  const [availableLots, setAvailableLots] = useState([]);
   
   const [formData, setFormData] = useState({
     itemName: '',
@@ -41,7 +44,44 @@ export default function InventoryAdjustmentScreen({ navigation }) {
     brandCaja: 'H2O CON LOGO'
   });
 
+  useEffect(() => {
+    const fetchLots = async () => {
+      if (operationType !== 'EGRESO') return;
+      
+      let finalItemName = formData.itemName.trim().toUpperCase();
+      let companyDest = 'STOCK_CENTRAL_INSUMOS';
+      if (inventoryType === 'MP') companyDest = 'STOCK_CENTRAL_MP';
+      if (inventoryType === 'PT' || inventoryType === 'GRANEL') companyDest = 'H2O';
 
+      if (inventoryType === 'INSUMOS') {
+        if (category === 'Bidones') finalItemName = `BIDON ${formData.capacity}L ${formData.brandBidon}`;
+        if (category === 'Cajas') finalItemName = `CAJA ${formData.format} ${formData.brandCaja}`;
+        if (category === 'Etiquetas') finalItemName = `ETIQUETA ${formData.capacity} ${formData.itemName.trim().toUpperCase()}`;
+      }
+
+      if (!finalItemName) {
+        setAvailableLots([]);
+        return;
+      }
+
+      try {
+        const q = query(
+          collection(db, "Inventory"),
+          where("company", "==", companyDest),
+          where("itemName", "==", finalItemName)
+        );
+        const querySnapshot = await getDocs(q);
+        const lots = querySnapshot.docs
+          .map(doc => doc.data())
+          .filter(doc => (doc.quantity || 0) > 0)
+          .map(doc => doc.batchInternal);
+        setAvailableLots([...new Set(lots)]);
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    fetchLots();
+  }, [operationType, formData.itemName, inventoryType, category, formData.capacity, formData.brandBidon, formData.brandCaja, formData.format]);
 
   const handleSave = async () => {
     if (!operationType) {
@@ -219,6 +259,13 @@ export default function InventoryAdjustmentScreen({ navigation }) {
 
       <ScrollView maximumZoomScale={1} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         
+        <View style={{ backgroundColor: '#fef2f2', padding: 12, borderRadius: 12, marginBottom: 15, borderWidth: 1, borderColor: '#fca5a5', flexDirection: 'row', alignItems: 'center' }}>
+          <AlertCircle color="#ef4444" size={20} style={{ marginRight: 10 }} />
+          <Text style={{ flex: 1, fontSize: 13, color: '#991b1b', fontWeight: '500' }}>
+            FUNCIÓN EXTRAORDINARIA: Utiliza este módulo solo para corregir descuadres de stock físicos u operativos puntuales.
+          </Text>
+        </View>
+
         {/* Toggle INGRESO / EGRESO */}
         <View style={styles.opToggleContainer}>
           <TouchableOpacity 
@@ -445,16 +492,26 @@ export default function InventoryAdjustmentScreen({ navigation }) {
           <View style={styles.row}>
             <View style={{flex: 1, marginRight: !isEgreso ? 10 : 0}}>
               <Text style={styles.label}>{isEgreso ? 'Lote Específico' : `Lote Proveedor ${inventoryType === 'MP' ? '*' : ''}`}</Text>
-              <View style={styles.inputWrapper}>
-                <Truck color="#94a3b8" size={18} style={styles.inputIcon} />
-                <TextInput 
-                  style={styles.input} 
-                  placeholder={isEgreso ? "Si lo dejas vacío, descontará FIFO" : "BCK-990"} 
-                  placeholderTextColor="#94a3b8"
+              {isEgreso ? (
+                <AutocompleteInput
+                  data={availableLots.length > 0 ? availableLots : ['S/D']}
                   value={formData.batchProvider}
-                  onChangeText={(txt) => setFormData({...formData, batchProvider: txt})}
+                  onChangeText={(txt) => setFormData({...formData, batchProvider: txt === 'S/D' ? '' : txt})}
+                  placeholder="Buscar Lote (dejar vacío para FIFO)"
+                  icon={<Truck color="#94a3b8" size={18} />}
                 />
-              </View>
+              ) : (
+                <View style={styles.inputWrapper}>
+                  <Truck color="#94a3b8" size={18} style={styles.inputIcon} />
+                  <TextInput 
+                    style={styles.input} 
+                    placeholder="BCK-990" 
+                    placeholderTextColor="#94a3b8"
+                    value={formData.batchProvider}
+                    onChangeText={(txt) => setFormData({...formData, batchProvider: txt})}
+                  />
+                </View>
+              )}
             </View>
             {!isEgreso && (
               <View style={{flex: 1}}>
