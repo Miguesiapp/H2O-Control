@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth } from '../config/firebase';
 import { registerMovement } from '../services/logisticsService';
-import { ChevronLeft, Save, PackagePlus, FileText, Calendar as CalendarIcon, Building2, Truck, Droplet, Box, Circle, ClipboardList, Database, ArrowDownCircle, ArrowUpCircle, X } from 'lucide-react-native';
+import { ChevronLeft, Save, PackagePlus, FileText, Calendar as CalendarIcon, Building2, Truck, Droplet, Box, Circle, ClipboardList, Database, ArrowDownCircle, ArrowUpCircle, X, AlertCircle } from 'lucide-react-native';
 import AutocompleteInput from '../components/AutocompleteInput';
 import { Calendar as CalendarPicker } from 'react-native-calendars';
 import { ChevronRight } from 'lucide-react-native';
