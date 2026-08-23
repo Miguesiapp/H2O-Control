@@ -436,8 +436,6 @@ export default function HomeScreen({ navigation }) {
               <Search color="#334155" size={20} />
               <Text style={styles.adminSmallCardText}>Trazabilidad</Text>
             </TouchableOpacity>
-            
-            <View style={{ flex: 1, marginHorizontal: 5 }} />
           </View>
         </View>
 
