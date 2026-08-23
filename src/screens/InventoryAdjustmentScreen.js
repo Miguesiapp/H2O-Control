@@ -50,8 +50,17 @@ export default function InventoryAdjustmentScreen({ navigation }) {
       
       let finalItemName = formData.itemName.trim().toUpperCase();
       let companyDest = 'STOCK_CENTRAL_INSUMOS';
-      if (inventoryType === 'MP') companyDest = 'STOCK_CENTRAL_MP';
-      if (inventoryType === 'PT' || inventoryType === 'GRANEL') companyDest = 'H2O';
+      if (inventoryType === 'MP') {
+        companyDest = 'STOCK_CENTRAL_MP';
+        const match = RAW_MATERIALS_LIST.find(rm => rm.toUpperCase().includes(finalItemName));
+        if (match) finalItemName = match.toUpperCase();
+      }
+      if (inventoryType === 'PT' || inventoryType === 'GRANEL') {
+        companyDest = 'H2O';
+        const listToUse = inventoryType === 'GRANEL' ? PRODUCTS_MADRE_LIST : PRODUCTS_FINAL_LIST;
+        const match = listToUse.find(pt => pt.toUpperCase().includes(finalItemName));
+        if (match) finalItemName = match.toUpperCase();
+      }
 
       if (inventoryType === 'INSUMOS') {
         if (category === 'Bidones') finalItemName = `BIDON ${formData.capacity}L ${formData.brandBidon}`;
@@ -142,6 +151,18 @@ export default function InventoryAdjustmentScreen({ navigation }) {
       
       let finalItemName = formData.itemName.trim().toUpperCase();
       let finalUnit = 'Uds';
+
+      // Auto-completar si el usuario tipeó una parte del nombre (ej: "ATMP") en lugar de seleccionarlo
+      if (isMP && finalItemName) {
+        const match = RAW_MATERIALS_LIST.find(rm => rm.toUpperCase().includes(finalItemName));
+        if (match) finalItemName = match.toUpperCase();
+      } else if (isGranel && finalItemName) {
+        const match = PRODUCTS_MADRE_LIST.find(gr => gr.toUpperCase().includes(finalItemName));
+        if (match) finalItemName = match.toUpperCase();
+      } else if (isPT && finalItemName) {
+        const match = PRODUCTS_FINAL_LIST.find(pt => pt.toUpperCase().includes(finalItemName));
+        if (match) finalItemName = match.toUpperCase();
+      }
       
       if (isPT) {
         finalUnit = unitType === 'Kilos' ? 'Kg' : (unitType === 'Litros' ? 'Lts' : 'Uds');
