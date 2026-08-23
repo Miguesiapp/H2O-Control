@@ -1,6 +1,21 @@
 import { db } from '../config/firebase';
-import { collection, addDoc, updateDoc, doc, increment, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, increment, serverTimestamp, query, where, getDocs, getDoc, deleteDoc } from 'firebase/firestore';
 
+// Helper: Elimina el documento de inventario si la cantidad llega a 0 o menos
+const checkAndCleanupEmptyStock = async (docRef) => {
+  try {
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const currentQty = snap.data().quantity || 0;
+      if (currentQty <= 0) {
+        await deleteDoc(docRef);
+        console.log(`Lote ${docRef.id} eliminado porque su stock llegó a ${currentQty}`);
+      }
+    }
+  } catch (error) {
+    console.error("Error limpiando stock en 0:", error);
+  }
+};
 // ============================================================================
 // FUNCIÓN 1: REGISTRAR MOVIMIENTOS (El Director de Orquesta)
 // ============================================================================
@@ -91,10 +106,12 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
         
         if (!snapExact.empty) {
           const itemDoc = snapExact.docs[0];
-          await updateDoc(doc(db, "Inventory", itemDoc.id), {
+          const docRef = doc(db, "Inventory", itemDoc.id);
+          await updateDoc(docRef, {
             quantity: increment(-absQty),
             lastUpdated: serverTimestamp()
           });
+          await checkAndCleanupEmptyStock(docRef);
         } else {
           console.warn(`Alerta: No se encontró el lote exacto ${data.batchInternal} para descontar.`);
         }
@@ -166,10 +183,12 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
       const deduction = Number(Math.min(availableQty, remainingToDeduct).toFixed(2));
 
       // Actualizamos la base de datos restando lo correspondiente de este lote
-      await updateDoc(doc(db, "Inventory", item.id), {
+      const docRef = doc(db, "Inventory", item.id);
+      await updateDoc(docRef, {
         quantity: increment(-deduction),
         lastUpdated: serverTimestamp()
       });
+      await checkAndCleanupEmptyStock(docRef);
 
       remainingToDeduct = Number((remainingToDeduct - deduction).toFixed(2));
     }
