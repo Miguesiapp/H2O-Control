@@ -74,7 +74,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
       });
       setGranelStock(currentGranelStock);
 
-      const density = selectedFormula.densidadObjetivo || 1;
+      const density = selectedFormula.densidadObjetivo || selectedFormula.densidad || 1;
       const targetKilos = targetVolume * density;
 
       // 1. CARGAMOS TODO EL STOCK MP Y GRANEL (para evitar problemas de mayúsculas/tildes de Firebase)

@@ -131,7 +131,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
       }
 
       const formulaData = formulaSnap.docs[0].data();
-      const density = formulaData.densidadObjetivo || 1;
+      const density = formulaData.densidadObjetivo || formulaData.densidad || 1;
       const targetKilos = targetVolume * density;
       const calculatedNeeds = [];
 
