@@ -61,6 +61,7 @@ export const RAW_MATERIALS_LIST = [
   'HUCA',
   'AGUA DESTILADA',
   'ZURICH PLUS',
+  'MOMENTUM MP'
 ];
 
 export const PROVIDERS_LIST = [
