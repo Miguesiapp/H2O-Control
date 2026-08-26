@@ -5,10 +5,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase'; 
-import { collection, query, where, getDocs, onSnapshot, serverTimestamp, addDoc, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot, serverTimestamp, addDoc, Timestamp, updateDoc, doc } from 'firebase/firestore';
 import { registerMovement, createOrder, updateOrderStatus } from '../services/logisticsService';
 import { 
-  ChevronLeft, Play, Beaker, FileText, Factory, AlertCircle, Calculator, CheckCircle2, XCircle, Plus, ClipboardList, CheckSquare, Calendar as CalendarIcon, X 
+  ChevronLeft, Play, Beaker, FileText, Factory, AlertCircle, Calculator, CheckCircle2, XCircle, Plus, ClipboardList, CheckSquare, Calendar as CalendarIcon, X, Pencil, RotateCcw 
 } from 'lucide-react-native';
 import { Calendar as CalendarPicker } from 'react-native-calendars';
 import { ChevronRight } from 'lucide-react-native';
@@ -87,6 +87,14 @@ export default function ProductionOrderScreen({ route, navigation }) {
   const [requirements, setRequirements] = useState(null);
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   const [availableFormulas, setAvailableFormulas] = useState([]);
+
+  // ======================================================================
+  // ESTADOS PARA EDICIÓN DE CANTIDADES REALES DE MP
+  // ======================================================================
+  const [editIngModalVisible, setEditIngModalVisible] = useState(false);
+  const [editingIngredient, setEditingIngredient] = useState(null); // { index, name, formulaQty, batchesToConsume, isGranel }
+  const [editQtyInput, setEditQtyInput] = useState('');
+  const [editNoteInput, setEditNoteInput] = useState('');
   
   useEffect(() => {
     const fetchFormulas = async () => {
@@ -234,7 +242,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
         return;
       }
 
-      // 1. DESCONTA INMEDIATAMENTE LAS MATERIAS PRIMAS (Reserva física)
+      // 1. DESCONTAR INMEDIATAMENTE LAS MP (Stock comprometido = ya no aparece en inventario)
       for (const req of requirements.needs) {
         if (req.batchesToConsume && req.batchesToConsume.length > 0) {
           for (const b of req.batchesToConsume) {
@@ -245,7 +253,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
               batchInternal: b.batchInternal,
               loteProveedor: b.batchProvider, 
               unit: 'Kg/Lts',
-              details: `OP ${batchId}`
+              details: `OP ${batchId} - Reserva Fórmula`
             });
           }
         } else {
@@ -273,7 +281,11 @@ export default function ProductionOrderScreen({ route, navigation }) {
         expiryDate: expiryDate.trim(),
         unit: 'Lts',
         company: companyName,
-        ingredients: requirements.needs
+        ingredients: requirements.needs,
+        // mpDeducted: true porque el descuento se hace al emitir.
+        // actualIngredients se llenará si el operario ajusta cantidades reales.
+        mpDeducted: true,
+        actualIngredients: null
       };
 
       await createOrder('OP', orderData, currentUser);
@@ -306,11 +318,53 @@ export default function ProductionOrderScreen({ route, navigation }) {
       setProcessingOrder(true);
       const currentUser = auth.currentUser?.email || 'Sistema';
       await updateOrderStatus(selectedOrder.id, 'EN_PROCESO', currentUser);
-      Alert.alert("Orden Aceptada", "El tiempo de proceso ha comenzado.");
+      Alert.alert("Orden Aceptada", "El tiempo de proceso ha comenzado. Puedes ajustar las cantidades reales usadas de cada MP antes de finalizar.");
     } catch (error) {
       Alert.alert("Error", "No se pudo aceptar la orden.");
     } finally {
       setProcessingOrder(false);
+    }
+  };
+
+  // Abre el modal de edición para un ingrediente
+  const handleOpenEditIngredient = (ing, index) => {
+    setEditingIngredient({ index, ...ing });
+    // Pre-cargar con la cantidad ajustada existente, o la de fórmula
+    const currentActual = selectedOrder?.data?.actualIngredients;
+    const existing = currentActual ? currentActual.find(a => a.name === ing.name) : null;
+    setEditQtyInput(existing ? String(existing.actualQty) : String(ing.required || 0));
+    setEditNoteInput(existing?.note || '');
+    setEditIngModalVisible(true);
+  };
+
+  // Guarda el ajuste de cantidad real en Firestore
+  const handleSaveIngredientAdjustment = async () => {
+    if (!editingIngredient || !selectedOrder) return;
+    const newQty = parseFloat(editQtyInput.replace(',', '.'));
+    if (isNaN(newQty) || newQty < 0) {
+      Alert.alert('Error', 'Ingresa una cantidad válida (puede ser 0).');
+      return;
+    }
+    try {
+      const existingActual = selectedOrder.data?.actualIngredients || [];
+      // Reemplazar o agregar el ajuste para este ingrediente
+      const updated = existingActual.filter(a => a.name !== editingIngredient.name);
+      updated.push({
+        name: editingIngredient.name,
+        formulaQty: editingIngredient.required || 0,
+        actualQty: newQty,
+        batchesToConsume: editingIngredient.batchesToConsume || [],
+        isGranel: editingIngredient.isGranel || false,
+        note: editNoteInput.trim()
+      });
+      await updateDoc(doc(db, 'Orders', selectedOrder.id), {
+        'data.actualIngredients': updated
+      });
+      Toast.show({ type: 'success', text1: 'Ajuste guardado', text2: `${editingIngredient.name}: ${newQty} Kg/Lts` });
+      setEditIngModalVisible(false);
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Error', 'No se pudo guardar el ajuste.');
     }
   };
 
@@ -319,12 +373,58 @@ export default function ProductionOrderScreen({ route, navigation }) {
     try {
       setProcessingOrder(true);
       const currentUser = auth.currentUser?.email || 'Sistema';
-      
+      const orderData = selectedOrder.data;
+      const batchId = orderData.batchInternal;
+
+      // ====================================================================
+      // RECONCILIACIÓN DE MP: comparar fórmula vs. uso real
+      // Al emitir la OP ya se descontó la cantidad de la fórmula.
+      // Ahora ajustamos la diferencia: si se usó menos → devolver sobrante;
+      // si se usó más → descontar la diferencia adicional.
+      // ====================================================================
+      const actualIngredients = orderData.actualIngredients || [];
+      const formulaIngredients = orderData.ingredients || [];
+
+      for (const formulaIng of formulaIngredients) {
+        const actual = actualIngredients.find(a => a.name === formulaIng.name);
+        if (!actual) continue; // Sin ajuste → no hay diferencia a reconciliar
+
+        const diff = Number((actual.actualQty - formulaIng.required).toFixed(2));
+        if (diff === 0) continue;
+
+        const isGranel = formulaIng.isGranel || false;
+        const batchRef = formulaIng.batchesToConsume?.[0]?.batchInternal || batchId;
+        const realName = formulaIng.batchesToConsume?.[0]?.realItemName || formulaIng.name;
+
+        if (diff < 0) {
+          // Usó MENOS → devolver sobrante al stock
+          await registerMovement(currentUser, 'DEVOLUCION_SOBRANTE_OP', isGranel ? 'H2O' : companyName, {
+            itemName: realName,
+            quantity: Math.abs(diff), // positivo = ingresa al stock
+            stockType: isGranel ? 'GRANEL' : 'MP',
+            batchInternal: batchRef,
+            loteProveedor: formulaIng.batchesToConsume?.[0]?.batchProvider || 'S/D',
+            unit: 'Kg/Lts',
+            details: `Sobrante OP ${batchId} | Real: ${actual.actualQty} | Fórmula: ${formulaIng.required} | ${actual.note || 'Sin nota'}`
+          });
+        } else {
+          // Usó MÁS → descontar diferencia extra del stock
+          await registerMovement(currentUser, 'EXTRA_CONSUMO_OP', isGranel ? 'H2O' : companyName, {
+            itemName: realName,
+            quantity: -diff, // negativo = sale del stock
+            stockType: isGranel ? 'GRANEL' : 'MP',
+            batchInternal: batchRef,
+            loteProveedor: formulaIng.batchesToConsume?.[0]?.batchProvider || 'S/D',
+            unit: 'Kg/Lts',
+            details: `Consumo extra OP ${batchId} | Real: ${actual.actualQty} | Fórmula: ${formulaIng.required} | ${actual.note || 'Sin nota'}`
+          });
+        }
+      }
+
       // 1. Finalizar Ticket
       await updateOrderStatus(selectedOrder.id, 'FINALIZADO', currentUser);
 
-      // 2. Inyectar Granel en Laboratorio (PENDIENTE)
-      const orderData = selectedOrder.data;
+      // 2. Inyectar Granel en Laboratorio
       await registerMovement(currentUser, 'INGRESO_OP', orderData.company, {
         itemName: orderData.itemName,
         quantity: orderData.quantity, 
@@ -339,7 +439,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
 
       Alert.alert(
         "Orden Finalizada",
-        "El producto ha sido enviado a BBS Calidad.\n¿Desea imprimir el set de etiquetas Zebra (Granel + Saldos MP)?",
+        `Reconciliación completada.\n${actualIngredients.length} ajuste(s) de MP aplicados.\nEl producto fue enviado a BBS Calidad.\n¿Desea imprimir el set de etiquetas?`,
         [
           { text: "No, gracias", style: "cancel", onPress: () => setOrderModalVisible(false) },
           { text: "Imprimir Lote", onPress: async () => {
@@ -352,20 +452,19 @@ export default function ProductionOrderScreen({ route, navigation }) {
                   quantity: orderData.quantity,
                   unit: orderData.unit
                 };
-                
                 const rawMaterialsLabels = (orderData.ingredients || []).map(ing => {
+                  const actual = (orderData.actualIngredients || []).find(a => a.name === ing.name);
+                  const usedQty = actual ? actual.actualQty : ing.required;
                   const usedBatches = ing.batchesToConsume?.map(b => b.batchProvider).join(', ') || 'S/L';
-                  const remaining = (ing.stock - ing.required).toFixed(2);
                   return {
                     type: 'MP',
                     name: ing.name,
                     batch: usedBatches,
-                    expiration: 'SALDO',
-                    quantity: remaining,
+                    expiration: actual ? `Ajustado (${actual.note || 'sin nota'})` : 'Según fórmula',
+                    quantity: usedQty,
                     unit: 'Kg/L'
                   };
                 });
-                
                 await printBatchLabels(productLabel, rawMaterialsLabels);
               } catch (e) {
                 Alert.alert("Error de Impresión", "No se pudieron generar las etiquetas.");
@@ -377,6 +476,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
         ]
       );
     } catch (error) {
+      console.error(error);
       Alert.alert("Error", "No se pudo finalizar la orden.");
     } finally {
       setProcessingOrder(false);
@@ -687,13 +787,43 @@ export default function ProductionOrderScreen({ route, navigation }) {
               <Text style={{fontSize: 14, color: '#475569', marginBottom: 5}}>Masa Total: <Text style={{fontWeight: '800', color: '#0f172a'}}>{selectedOrder?.data?.targetKilos ? selectedOrder.data.targetKilos.toFixed(2) : 'N/A'} Kg</Text></Text>
               <Text style={{fontSize: 14, color: '#475569', marginBottom: 15}}>Densidad: <Text style={{fontWeight: '800', color: '#0f172a'}}>{selectedOrder?.data?.density || 'N/A'}</Text></Text>
               
-              <Text style={{fontSize: 14, fontWeight: '800', color: '#334155', marginBottom: 10, textTransform: 'uppercase'}}>Fórmula (MP Reservada)</Text>
-              {selectedOrder?.data?.ingredients?.map((ing, idx) => (
-                <View key={idx} style={{backgroundColor: '#f1f5f9', padding: 10, borderRadius: 8, marginBottom: 8}}>
-                  <Text style={{fontSize: 13, fontWeight: '800', color: '#1e293b'}}>{ing.name}</Text>
-                  <Text style={{fontSize: 12, color: '#64748b'}}>Consumo: {(ing.required || 0).toFixed(2)} Kg/Lts</Text>
-                </View>
-              ))}
+              <Text style={{fontSize: 14, fontWeight: '800', color: '#334155', marginBottom: 4, textTransform: 'uppercase'}}>MP Comprometida (Fórmula)</Text>
+              {selectedOrder?.status === 'EN_PROCESO' && (
+                <Text style={{fontSize: 11, color: '#3b82f6', fontWeight: '700', marginBottom: 10}}>
+                  ✏️ Toca el lápiz para ajustar la cantidad real usada
+                </Text>
+              )}
+              {selectedOrder?.data?.ingredients?.map((ing, idx) => {
+                const actual = selectedOrder?.data?.actualIngredients?.find(a => a.name === ing.name);
+                const hasAdjustment = !!actual;
+                return (
+                  <View key={idx} style={[styles.ingRow, hasAdjustment && styles.ingRowAdjusted]}>
+                    <View style={{flex: 1}}>
+                      <Text style={{fontSize: 13, fontWeight: '800', color: '#1e293b'}}>{ing.name}</Text>
+                      <Text style={{fontSize: 12, color: '#64748b'}}>
+                        Fórmula: {(ing.required || 0).toFixed(2)} Kg/Lts
+                      </Text>
+                      {hasAdjustment && (
+                        <>
+                          <Text style={{fontSize: 12, color: '#10b981', fontWeight: '800'}}>
+                            Real: {actual.actualQty.toFixed(2)} Kg/Lts
+                            {actual.actualQty < ing.required ? ` (sobrante: ${(ing.required - actual.actualQty).toFixed(2)})` : actual.actualQty > ing.required ? ` (extra: ${(actual.actualQty - ing.required).toFixed(2)})` : ' (sin diferencia)'}
+                          </Text>
+                          {actual.note ? <Text style={{fontSize: 11, color: '#64748b', fontStyle: 'italic'}}>📝 {actual.note}</Text> : null}
+                        </>
+                      )}
+                    </View>
+                    {selectedOrder?.status === 'EN_PROCESO' && (
+                      <TouchableOpacity
+                        style={styles.editIngBtn}
+                        onPress={() => handleOpenEditIngredient(ing, idx)}
+                      >
+                        <Pencil color={hasAdjustment ? '#10b981' : '#3b82f6'} size={18} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                );
+              })}
             </View>
 
             {selectedOrder?.status === 'ENVIADO' && (
@@ -721,6 +851,70 @@ export default function ProductionOrderScreen({ route, navigation }) {
             <View style={{height: 40}}/>
           </ScrollView>
         </SafeAreaView>
+      </Modal>
+
+      {/* MODAL AJUSTE DE CANTIDAD REAL DE MP */}
+      <Modal visible={editIngModalVisible} transparent animationType="slide" onRequestClose={() => setEditIngModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.calendarContainer, {padding: 24}]}>
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
+              <Text style={{fontSize: 16, fontWeight: '900', color: '#0f172a', flex: 1}}>Ajuste de Uso Real</Text>
+              <TouchableOpacity onPress={() => setEditIngModalVisible(false)} style={{padding: 4}}>
+                <X color="#64748b" size={22} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{fontSize: 13, fontWeight: '800', color: '#334155', marginBottom: 4}}>{editingIngredient?.name}</Text>
+            <Text style={{fontSize: 12, color: '#64748b', marginBottom: 16}}>
+              Cantidad según fórmula: {(editingIngredient?.required || 0).toFixed(2)} Kg/Lts
+            </Text>
+
+            <Text style={{fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 6, textTransform: 'uppercase'}}>Cantidad Real Utilizada (Kg/Lts)</Text>
+            <View style={styles.inputWrapper}>
+              <Beaker color="#94a3b8" size={18} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="0.00"
+                keyboardType="numeric"
+                value={editQtyInput}
+                onChangeText={setEditQtyInput}
+                placeholderTextColor="#94a3b8"
+              />
+            </View>
+
+            <Text style={{fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 6, marginTop: 14, textTransform: 'uppercase'}}>Motivo del ajuste (opcional)</Text>
+            <View style={[styles.inputWrapper, {height: 70, alignItems: 'flex-start', paddingTop: 10}]}>
+              <TextInput
+                style={[styles.input, {flex: 1}]}
+                placeholder="Ej: Se agotó el lote, se añadió menos por pH alto..."
+                multiline
+                value={editNoteInput}
+                onChangeText={setEditNoteInput}
+                placeholderTextColor="#94a3b8"
+              />
+            </View>
+
+            <View style={{flexDirection: 'row', gap: 10, marginTop: 20}}>
+              <TouchableOpacity
+                style={{flex: 1, backgroundColor: '#f1f5f9', padding: 14, borderRadius: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6}}
+                onPress={() => {
+                  setEditQtyInput(String(editingIngredient?.required || 0));
+                  setEditNoteInput('');
+                }}
+              >
+                <RotateCcw color="#64748b" size={16} />
+                <Text style={{color: '#64748b', fontWeight: '700'}}>Restablecer</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{flex: 2, backgroundColor: '#10b981', padding: 14, borderRadius: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6}}
+                onPress={handleSaveIngredientAdjustment}
+              >
+                <CheckCircle2 color="#fff" size={18} />
+                <Text style={{color: '#fff', fontWeight: '900', fontSize: 15}}>Guardar Ajuste</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -770,6 +964,9 @@ const styles = StyleSheet.create({
   requirementsCard: { backgroundColor: '#fff', padding: 20, borderRadius: 16, elevation: 2, borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 20 },
   reqTitle: { fontSize: 16, fontWeight: '900', color: '#0f172a' },
   reqRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  ingRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f1f5f9', padding: 10, borderRadius: 8, marginBottom: 8 },
+  ingRowAdjusted: { backgroundColor: '#ecfdf5', borderWidth: 1, borderColor: '#6ee7b7' },
+  editIngBtn: { backgroundColor: '#eff6ff', padding: 8, borderRadius: 10, marginLeft: 10 },
   reqName: { fontSize: 14, fontWeight: '800', color: '#334155' },
   reqDetail: { fontSize: 12, color: '#64748b', marginTop: 2 },
   missingText: { fontSize: 11, color: '#ef4444', fontWeight: '800', marginTop: 2 },
