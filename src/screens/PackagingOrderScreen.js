@@ -13,7 +13,8 @@ import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, 
 import { canCreateOrders, canChangeStatus } from '../config/permissions';
 import Toast from 'react-native-toast-message';
 
-const BIDON_CAPACITIES = ['20', '10', '5', '1'];
+const BIDON_CAPACITIES = ['1000', '20', '10', '5', '1'];
+const BIDON_LABELS = { '1000': '1000L (Contenedor)', '20': '20L', '10': '10L', '5': '5L', '1': '1L' };
 
 export default function PackagingOrderScreen({ route, navigation }) {
   const { companyName } = route.params;
@@ -120,11 +121,14 @@ export default function PackagingOrderScreen({ route, navigation }) {
 
   const units = Number(formData.unitsProduced) || 0;
   const presentation = Number(formData.presentation);
-  const litersToConsume = units * presentation;
+  const isContainer = formData.presentation === '1000';
+  // Para contenedor: 'units' es directamente en Lts. Para bidones: units * presentacion
+  const litersToConsume = isContainer ? units : units * presentation;
   const remainingLiters = selectedLot ? (selectedLot.quantity - litersToConsume) : 0;
   const isOverdraft = selectedLot && remainingLiters < 0;
 
-  const appliesBox = presentation === 5 || presentation === 1;
+  // Cajas solo aplican para bidones de 5L y 1L (nunca para contenedor)
+  const appliesBox = !isContainer && (presentation === 5 || presentation === 1);
   let requiredBoxes = 0;
   let boxFormat = '';
   
@@ -144,65 +148,71 @@ export default function PackagingOrderScreen({ route, navigation }) {
     setIsSubmitting(true);
 
     try {
-      // 0. VERIFICACIÓN Y CÁLCULO DE ÓRDENES PARCIALES
-      // Bidones: los bidones son genéricos, se descuenta por capacidad y marca
-      const exactBidonName = `BIDON ${presentation}L ${formData.brandBidon}`;
-      const bidonStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', exactBidonName);
-      
-      // Cajas: exactamente la marca que el usuario eligió
-      const exactCajaName = appliesBox ? `CAJA ${boxFormat} ${formData.brandCaja}` : null;
-      const cajaStock = appliesBox ? await checkTotalStock('STOCK_CENTRAL_INSUMOS', exactCajaName) : Infinity;
-
-      const baseLabelName = getBaseLabelName(commercialName);
-      const etiquetaName = `ETIQUETA ${presentation}L ${baseLabelName}`;
-      const etiquetaStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', etiquetaName);
-
-      const maxUnitsGranel = Math.floor(selectedLot.quantity / presentation);
-      
-      let maxUnitsCaja = Infinity;
-      if (presentation === 5) maxUnitsCaja = cajaStock * 4;
-      else if (presentation === 1) maxUnitsCaja = cajaStock * 12;
-
-      const maxPossibleUnits = Math.floor(Math.min(maxUnitsGranel, bidonStock, maxUnitsCaja, etiquetaStock));
-
-      if (units > maxPossibleUnits) {
-        setIsSubmitting(false);
-        
-        let limitReason = 'el Granel disponible';
-        if (maxPossibleUnits === bidonStock) limitReason = `los Bidones disponibles (${bidonStock})`;
-        else if (maxPossibleUnits === maxUnitsCaja) limitReason = `las Cajas disponibles (${cajaStock})`;
-        else if (maxPossibleUnits === etiquetaStock) limitReason = `las Etiquetas disponibles (${etiquetaStock})`;
-        
-        if (maxPossibleUnits > 0) {
-          if (Platform.OS === 'web') {
-            const confirm = window.confirm(`Stock Insuficiente (limitado por ${limitReason}). Puedes envasar máximo ${maxPossibleUnits} unidades.\n\n¿Deseas ajustar la orden a esta cantidad?`);
-            if (confirm) setFormData({...formData, unitsProduced: String(maxPossibleUnits)});
-          } else {
-            Alert.alert(
-              'Stock Insuficiente',
-              `Limitado por ${limitReason}.\nPuedes envasar como máximo ${maxPossibleUnits} unidades.\n\n¿Deseas ajustar la orden?`,
-              [
-                { text: 'Cancelar', style: 'cancel' },
-                { text: `Ajustar a ${maxPossibleUnits}`, onPress: () => setFormData({...formData, unitsProduced: String(maxPossibleUnits)}) }
-              ]
-            );
-          }
-        } else {
-          let missing = [];
-          if (maxUnitsGranel <= 0) missing.push('Granel');
-          if (bidonStock <= 0) missing.push(`Bidones`);
-          if (appliesBox && cajaStock <= 0) missing.push(`Cajas`);
-          if (etiquetaStock <= 0) missing.push(`Etiquetas (${etiquetaName})`);
-          
-          Toast.show({ type: 'error', text1: 'Stock Insuficiente (0 Unidades)', text2: `Falta stock de: ${missing.join(', ')}` });
-        }
-        return;
-      }
-
-      // 1. DEDUCCIÓN DE GRANEL (FIFO - Lote Específico)
+      const currentUser = auth.currentUser?.email || 'Sistema';
       const batchId = selectedLot.batchInternal; 
       const itemName = selectedLot.itemName?.toUpperCase();
-      const currentUser = auth.currentUser?.email || 'Sistema';
+
+      if (isContainer) {
+        // === MODO CONTENEDOR: sin bidones, cajas ni etiquetas ===
+        // Solo se verifica el granel disponible
+        if (units > selectedLot.quantity) {
+          setIsSubmitting(false);
+          Toast.show({ type: 'error', text1: 'Granel Insuficiente', text2: `Disponible: ${selectedLot.quantity.toFixed(2)} Lts. Solicitado: ${units} Lts.` });
+          return;
+        }
+      } else {
+        // === MODO BIDÓN: verificar insumos ===
+        // 0. VERIFICACIÓN Y CÁLCULO DE ÓRDENES PARCIALES
+        const exactBidonName = `BIDON ${presentation}L ${formData.brandBidon}`;
+        const bidonStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', exactBidonName);
+        
+        const exactCajaName = appliesBox ? `CAJA ${boxFormat} ${formData.brandCaja}` : null;
+        const cajaStock = appliesBox ? await checkTotalStock('STOCK_CENTRAL_INSUMOS', exactCajaName) : Infinity;
+
+        const baseLabelName = getBaseLabelName(commercialName);
+        const etiquetaName = `ETIQUETA ${presentation}L ${baseLabelName}`;
+        const etiquetaStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', etiquetaName);
+
+        const maxUnitsGranel = Math.floor(selectedLot.quantity / presentation);
+        let maxUnitsCaja = Infinity;
+        if (presentation === 5) maxUnitsCaja = cajaStock * 4;
+        else if (presentation === 1) maxUnitsCaja = cajaStock * 12;
+        const maxPossibleUnits = Math.floor(Math.min(maxUnitsGranel, bidonStock, maxUnitsCaja, etiquetaStock));
+
+        if (units > maxPossibleUnits) {
+          setIsSubmitting(false);
+          let limitReason = 'el Granel disponible';
+          if (maxPossibleUnits === bidonStock) limitReason = `los Bidones disponibles (${bidonStock})`;
+          else if (maxPossibleUnits === maxUnitsCaja) limitReason = `las Cajas disponibles (${cajaStock})`;
+          else if (maxPossibleUnits === etiquetaStock) limitReason = `las Etiquetas disponibles (${etiquetaStock})`;
+          
+          if (maxPossibleUnits > 0) {
+            if (Platform.OS === 'web') {
+              const confirm = window.confirm(`Stock Insuficiente (limitado por ${limitReason}). Puedes envasar máximo ${maxPossibleUnits} unidades.\n\n¿Deseas ajustar la orden a esta cantidad?`);
+              if (confirm) setFormData({...formData, unitsProduced: String(maxPossibleUnits)});
+            } else {
+              Alert.alert(
+                'Stock Insuficiente',
+                `Limitado por ${limitReason}.\nPuedes envasar como máximo ${maxPossibleUnits} unidades.\n\n¿Deseas ajustar la orden?`,
+                [
+                  { text: 'Cancelar', style: 'cancel' },
+                  { text: `Ajustar a ${maxPossibleUnits}`, onPress: () => setFormData({...formData, unitsProduced: String(maxPossibleUnits)}) }
+                ]
+              );
+            }
+          } else {
+            let missing = [];
+            if (maxUnitsGranel <= 0) missing.push('Granel');
+            if (bidonStock <= 0) missing.push('Bidones');
+            if (appliesBox && cajaStock <= 0) missing.push('Cajas');
+            if (etiquetaStock <= 0) missing.push(`Etiquetas (${etiquetaName})`);
+            Toast.show({ type: 'error', text1: 'Stock Insuficiente (0 Unidades)', text2: `Falta stock de: ${missing.join(', ')}` });
+          }
+          return;
+        }
+        // Guardar para uso posterior
+        setIsSubmitting(true); // mantener activo
+      }
 
       // 1. DEDUCCIÓN AUTOMÁTICA DEL LÍQUIDO A GRANEL
       await registerMovement(currentUser, 'CONSUMO_ENVASADO', companyName, {
@@ -213,53 +223,61 @@ export default function PackagingOrderScreen({ route, navigation }) {
           unit: 'Lts'
       });
 
-      // 2. DEDUCCIÓN DE INSUMOS CENTRALES (BIDONES) - por marca exacta
-      await registerMovement(currentUser, 'CONSUMO_ENVASADO_BIDON', 'STOCK_CENTRAL_INSUMOS', {
-          itemName: exactBidonName,
-          quantity: -Math.abs(units),
-          stockType: 'INSUMOS',
-          batchInternal: batchId,
-          unit: 'Uds'
-      });
+      if (!isContainer) {
 
-      // 3. DEDUCCIÓN DE INSUMOS CENTRALES (CAJAS) - por marca exacta si aplica
-      if (appliesBox && requiredBoxes > 0 && exactCajaName) {
-        await registerMovement(currentUser, 'CONSUMO_ENVASADO_CAJA', 'STOCK_CENTRAL_INSUMOS', {
-            itemName: exactCajaName,
-            quantity: -Math.abs(requiredBoxes),
+        // 2. DEDUCCIÓN DE INSUMOS CENTRALES (BIDONES) - por marca exacta
+        const exactBidonName = `BIDON ${presentation}L ${formData.brandBidon}`;
+        await registerMovement(currentUser, 'CONSUMO_ENVASADO_BIDON', 'STOCK_CENTRAL_INSUMOS', {
+            itemName: exactBidonName,
+            quantity: -Math.abs(units),
             stockType: 'INSUMOS',
             batchInternal: batchId,
             unit: 'Uds'
         });
-      }
 
-      // 4. DEDUCCIÓN DE INSUMOS CENTRALES (ETIQUETAS)
-      const baseLabelNameForDeduction = getBaseLabelName(commercialName);
-      const finalEtiquetaName = `ETIQUETA ${presentation}L ${baseLabelNameForDeduction}`;
-      await registerMovement(currentUser, 'CONSUMO_INSUMO', 'STOCK_CENTRAL_INSUMOS', {
-          itemName: finalEtiquetaName,
-          quantity: -Math.abs(units),
-          stockType: 'INSUMOS',
-          batchInternal: batchId,
-          unit: 'Uds'
-      });
+        // 3. DEDUCCIÓN DE INSUMOS CENTRALES (CAJAS) - por marca exacta si aplica
+        if (appliesBox && requiredBoxes > 0) {
+          const exactCajaName = `CAJA ${boxFormat} ${formData.brandCaja}`;
+          await registerMovement(currentUser, 'CONSUMO_ENVASADO_CAJA', 'STOCK_CENTRAL_INSUMOS', {
+              itemName: exactCajaName,
+              quantity: -Math.abs(requiredBoxes),
+              stockType: 'INSUMOS',
+              batchInternal: batchId,
+              unit: 'Uds'
+          });
+        }
 
-      const packagedItemName = `${commercialName.trim().toUpperCase()} - ${presentation}L`;
+        // 4. DEDUCCIÓN DE INSUMOS CENTRALES (ETIQUETAS)
+        const baseLabelNameForDeduction = getBaseLabelName(commercialName);
+        const finalEtiquetaName = `ETIQUETA ${presentation}L ${baseLabelNameForDeduction}`;
+        await registerMovement(currentUser, 'CONSUMO_INSUMO', 'STOCK_CENTRAL_INSUMOS', {
+            itemName: finalEtiquetaName,
+            quantity: -Math.abs(units),
+            stockType: 'INSUMOS',
+            batchInternal: batchId,
+            unit: 'Uds'
+        });
+      } // fin !isContainer
+
+      // Nombre del producto final envasado
+      const packagedItemName = isContainer
+        ? `${commercialName.trim().toUpperCase()} - CONTENEDOR 1000L`
+        : `${commercialName.trim().toUpperCase()} - ${presentation}L`;
 
       // 4. CREA LA ORDEN EN MÁQUINA DE ESTADOS (Ticket ENVIADO)
       const orderData = {
         itemName: packagedItemName,
-        quantity: units,
+        quantity: isContainer ? litersToConsume : units,
         litersConsumed: litersToConsume,
-        presentation: presentation,
-        brandBidon: formData.brandBidon,
+        presentation: isContainer ? 1000 : presentation,
+        brandBidon: isContainer ? 'CONTENEDOR' : formData.brandBidon,
         brandCaja: appliesBox ? formData.brandCaja : null,
         requiredBoxes: appliesBox ? requiredBoxes : 0,
         batchInternal: batchId,
         batchProvider: selectedLot.batchProvider || 'S/D',
         expiryDate: selectedLot.expiryDate || 'S/V',
-        unit: 'Uds',
         company: companyName,
+        unit: isContainer ? 'Lts' : 'Uds'
       };
 
       await createOrder('OE', orderData, currentUser);
@@ -400,7 +418,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
                     </View>
                   </View>
                   <Text style={styles.orderCardSub}>Lote: {item.data.batchInternal}</Text>
-                  <Text style={styles.orderCardSub}>Cantidad: <Text style={{fontWeight: '700', color: '#0f172a'}}>{item.data.quantity} Bidones ({item.data.presentation}L)</Text></Text>
+                  <Text style={styles.orderCardSub}>Cantidad: <Text style={{fontWeight: '700', color: '#0f172a'}}>{item.data.quantity} {item.data.unit === 'Lts' ? 'Lts' : 'Uds'}</Text></Text>
                 </TouchableOpacity>
               )}
             />
@@ -505,36 +523,40 @@ export default function PackagingOrderScreen({ route, navigation }) {
                   allowCustom={true}
                 />
 
-                <Text style={styles.label}>Capacidad del Bidón</Text>
+                <Text style={styles.label}>Capacidad / Tipo de Envase</Text>
                 <View style={styles.chipRow}>
                   {BIDON_CAPACITIES.map(cap => (
                     <TouchableOpacity 
                       key={cap} 
-                      style={[styles.chip, formData.presentation === cap && styles.chipActive]}
+                      style={[styles.chip, formData.presentation === cap && styles.chipActive, cap === 1000 && styles.chipContainer]}
                       onPress={() => setFormData({...formData, presentation: cap})}
                     >
-                      <Droplet color={formData.presentation === cap ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
-                      <Text style={[styles.chipText, formData.presentation === cap && styles.chipTextActive]}>{cap}L</Text>
+                      <Droplet color={formData.presentation === cap ? '#fff' : (cap === 1000 ? '#7c3aed' : '#64748b')} size={14} style={{marginRight: 4}}/>
+                      <Text style={[styles.chipText, formData.presentation === cap && styles.chipTextActive]}>{BIDON_LABELS[cap] || `${cap}L`}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
 
-                <Text style={styles.label}>Marca del Bidón</Text>
-                <View style={styles.chipRow}>
-                  {BIDON_BRANDS.map(brand => (
-                    <TouchableOpacity 
-                      key={brand} 
-                      style={[styles.chip, formData.brandBidon === brand && styles.chipActive]}
-                      onPress={() => setFormData({...formData, brandBidon: brand})}
-                    >
-                      <Building2 color={formData.brandBidon === brand ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
-                      <Text style={[styles.chipText, formData.brandBidon === brand && styles.chipTextActive]}>{brand}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                {!isContainer && (
+                  <>
+                    <Text style={styles.label}>Marca del Bidón</Text>
+                    <View style={styles.chipRow}>
+                      {BIDON_BRANDS.map(brand => (
+                        <TouchableOpacity 
+                          key={brand} 
+                          style={[styles.chip, formData.brandBidon === brand && styles.chipActive]}
+                          onPress={() => setFormData({...formData, brandBidon: brand})}
+                        >
+                          <Building2 color={formData.brandBidon === brand ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
+                          <Text style={[styles.chipText, formData.brandBidon === brand && styles.chipTextActive]}>{brand}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </>
+                )}
 
                 <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Unidades (Bidones) a Envasar</Text>
+                  <Text style={styles.label}>{isContainer ? 'Litros a Envasar (Contenedor)' : 'Unidades (Bidones) a Envasar'}</Text>
                   <View style={styles.inputWrapper}>
                     <Container color="#94a3b8" size={20} style={styles.inputIcon} />
                     <TextInput 
@@ -734,6 +756,7 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: '#0f172a', borderColor: '#0f172a' },
   chipText: { fontSize: 12, fontWeight: '700', color: '#64748b' },
   chipTextActive: { color: '#fff' },
+  chipContainer: { borderColor: '#7c3aed', borderWidth: 1.5 },
 
   inputGroup: { marginTop: 10 },
   inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 15 },
