@@ -10,7 +10,8 @@ import { registerMovement, createOrder, updateOrderStatus } from '../services/lo
 import { ChevronLeft, Truck, Send, PackageMinus, MapPin, Hash, ClipboardType, Plus, ClipboardList, CheckSquare, CheckCircle2, Play, Droplet, ChevronDown, X } from 'lucide-react-native';
 import { canCreateOrders } from '../config/permissions';
 
-const BIDON_CAPACITIES = ['20', '10', '5', '1'];
+const BIDON_CAPACITIES = ['1000', '20', '10', '5', '1'];
+const BIDON_LABELS = { '1000': '1000L (Contenedor)', '20': '20L', '10': '10L', '5': '5L', '1': '1L' };
 
 export default function OutgoingInventoryScreen({ route, navigation }) {
   const { companyName } = route.params;
@@ -97,7 +98,10 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
 
   useEffect(() => {
     if (formData.productName && formData.presentation) {
-      const targetItemName = `${formData.productName.toUpperCase()} - ${formData.presentation}L`;
+      const isContainer = formData.presentation === '1000';
+      const targetItemName = isContainer
+        ? `${formData.productName.toUpperCase()} - CONTENEDOR 1000L`
+        : `${formData.productName.toUpperCase()} - ${formData.presentation}L`;
       const batches = allFinalStock
         .filter(item => item.itemName.toUpperCase() === targetItemName)
         .map(item => item.batchInternal);
@@ -121,9 +125,13 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
 
     try {
       setIsSubmitting(true);
-      const itemName = `${formData.productName.trim().toUpperCase()} - ${formData.presentation}L`;
+      const isContainer = formData.presentation === '1000';
+      const itemName = isContainer
+        ? `${formData.productName.trim().toUpperCase()} - CONTENEDOR 1000L`
+        : `${formData.productName.trim().toUpperCase()} - ${formData.presentation}L`;
       const batchId = formData.batchInternal.trim().toUpperCase();
       const currentUser = auth.currentUser?.email || 'Sistema';
+      const dispatchUnit = isContainer ? 'Lts' : 'Uds';
 
       // 1. VERIFICACIÓN PREVIA DE STOCK
       const inventoryRef = collection(db, 'Inventory');
@@ -166,7 +174,7 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
           loteProveedor: batchProvider,
           details: `Destino: ${formData.destination.trim()} | Transporte: ${formData.transportName.trim()}`,
           stockType: 'FINAL', 
-          unit: 'Uds'
+          unit: dispatchUnit
         }
       );
 
@@ -179,14 +187,14 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
         transportName: formData.transportName.trim(),
         batchProvider: batchProvider,
         company: companyName,
-        unit: 'Uds'
+        unit: dispatchUnit
       };
 
       await createOrder('OD', orderData, currentUser);
 
       Alert.alert(
         "Orden de Despacho Emitida", 
-        `Se ha reservado stock y enviado a la cola de despacho.\nLote: ${batchId}\nCantidad: ${qtyNormalized} Uds.`,
+        `Se ha reservado stock y enviado a la cola de despacho.\nLote: ${batchId}\nCantidad: ${qtyNormalized} ${dispatchUnit}.`,
         [{ text: "Entendido", onPress: () => {
           setViewMode('LIST');
           setFormData({
@@ -341,23 +349,23 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
               <ChevronDown color="#94a3b8" size={20} />
             </TouchableOpacity>
 
-            <Text style={styles.label}>Presentación (Litros)</Text>
+            <Text style={styles.label}>Presentación</Text>
             <View style={styles.chipRow}>
               {BIDON_CAPACITIES.map(cap => (
                 <TouchableOpacity 
                   key={cap} 
-                  style={[styles.chip, formData.presentation === cap && styles.chipActive]}
+                  style={[styles.chip, formData.presentation === cap && styles.chipActive, cap === '1000' && styles.chipContainer]}
                   onPress={() => setFormData({...formData, presentation: cap, batchInternal: ''})}
                 >
-                  <Droplet color={formData.presentation === cap ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
-                  <Text style={[styles.chipText, formData.presentation === cap && styles.chipTextActive]}>{cap}L</Text>
+                  <Droplet color={formData.presentation === cap ? '#fff' : (cap === '1000' ? '#7c3aed' : '#64748b')} size={14} style={{marginRight: 4}}/>
+                  <Text style={[styles.chipText, formData.presentation === cap && styles.chipTextActive]}>{BIDON_LABELS[cap] || `${cap}L`}</Text>
                 </TouchableOpacity>
               ))}
             </View>
 
             <View style={styles.row}>
               <View style={{ flex: 1, marginRight: 10 }}>
-                <Text style={styles.label}>Cant. Unidades</Text>
+                <Text style={styles.label}>{formData.presentation === '1000' ? 'Cant. Lts (Contenedor)' : 'Cant. Unidades'}</Text>
                 <TextInput 
                   style={styles.inputPlain} 
                   placeholder="Ej: 48" 
@@ -601,6 +609,7 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: '#0f172a', borderColor: '#0f172a' },
   chipText: { fontSize: 12, fontWeight: '700', color: '#64748b' },
   chipTextActive: { color: '#fff' },
+  chipContainer: { borderColor: '#7c3aed', borderWidth: 1.5 },
 
   inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, paddingHorizontal: 12, marginBottom: 15 },
   inputIcon: { marginRight: 8 },
