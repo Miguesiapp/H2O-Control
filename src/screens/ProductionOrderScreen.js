@@ -773,7 +773,9 @@ export default function ProductionOrderScreen({ route, navigation }) {
             </TouchableOpacity>
             <View style={{alignItems: 'center'}}>
               <Text style={styles.headerTitle}>Detalle de OP</Text>
-              <Text style={styles.headerSub}>{selectedOrder?.data?.batchInternal}</Text>
+              <View style={styles.batchBadge}>
+                <Text style={styles.batchBadgeText}>{selectedOrder?.data?.batchInternal}</Text>
+              </View>
             </View>
             <View style={{ width: 28 }} />
           </View>
@@ -796,12 +798,21 @@ export default function ProductionOrderScreen({ route, navigation }) {
               {selectedOrder?.data?.ingredients?.map((ing, idx) => {
                 const actual = selectedOrder?.data?.actualIngredients?.find(a => a.name === ing.name);
                 const hasAdjustment = !!actual;
+                
+                // Formatear lotes de la MP
+                const usedBatches = ing.batchesToConsume
+                  ?.map(b => b.batchProvider && b.batchProvider !== 'S/D' && b.batchProvider !== 'S/L' ? `${b.batchInternal} (${b.batchProvider})` : b.batchInternal)
+                  .join(' | ') || 'S/L';
+
                 return (
                   <View key={idx} style={[styles.ingRow, hasAdjustment && styles.ingRowAdjusted]}>
                     <View style={{flex: 1}}>
                       <Text style={{fontSize: 13, fontWeight: '800', color: '#1e293b'}}>{ing.name}</Text>
                       <Text style={{fontSize: 12, color: '#64748b'}}>
                         Fórmula: {(ing.required || 0).toFixed(2)} Kg/Lts
+                      </Text>
+                      <Text style={{fontSize: 11, color: '#94a3b8', marginTop: 2, marginBottom: hasAdjustment ? 4 : 0}}>
+                        Lote(s): {usedBatches}
                       </Text>
                       {hasAdjustment && (
                         <>
@@ -930,6 +941,8 @@ const styles = StyleSheet.create({
   backBtn: { padding: 5 },
   headerTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a' },
   headerSub: { fontSize: 11, color: '#64748b', textTransform: 'uppercase', fontWeight: '800', letterSpacing: 0.5 },
+  batchBadge: { backgroundColor: '#e0f2fe', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, marginTop: 2 },
+  batchBadgeText: { fontSize: 12, color: '#0369a1', fontWeight: '900', letterSpacing: 0.5 },
   
   container: { padding: 20 },
   sectionTitle: { fontSize: 14, fontWeight: '800', color: '#334155', marginBottom: 15, textTransform: 'uppercase', letterSpacing: 0.5 },
