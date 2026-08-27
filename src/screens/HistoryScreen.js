@@ -33,7 +33,7 @@ export default function HistoryScreen({ navigation }) {
     setOpDetails(null);
     try {
       // 1. Fetch Order
-      const qOrder = query(collection(db, 'Orders'), where('batchInternal', '==', log.batchInternal));
+      const qOrder = query(collection(db, 'Orders'), where('data.batchInternal', '==', log.batchInternal));
       const snapOrder = await getDocs(qOrder);
       
       // 2. Fetch Granel from Inventory
