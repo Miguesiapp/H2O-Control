@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, StatusBar, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, StatusBar, ScrollView, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
-import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
-import { ChevronLeft, Clock, ArrowDownToLine, ArrowUpFromLine, Activity, User, ArrowRightLeft, Filter, ChevronDown, ChevronUp, FileText } from 'lucide-react-native';
+import { collection, onSnapshot, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
+import { ChevronLeft, Clock, ArrowDownToLine, ArrowUpFromLine, Activity, User, ArrowRightLeft, Filter, ChevronDown, ChevronUp, FileText, X } from 'lucide-react-native';
 import { generateAuditSummary } from '../services/aiService';
 import { generateAndSharePDF } from '../services/reportService';
 
@@ -21,6 +21,40 @@ export default function HistoryScreen({ navigation }) {
   const [activeFilter, setActiveFilter] = useState('ALL');
   const [expandedMonths, setExpandedMonths] = useState({});
   const [generatingPdfFor, setGeneratingPdfFor] = useState(null);
+
+  const [selectedOPLog, setSelectedOPLog] = useState(null);
+  const [opDetails, setOpDetails] = useState(null);
+  const [loadingOpDetails, setLoadingOpDetails] = useState(false);
+
+  const handleOpenOPDetails = async (log) => {
+    if (!log.action?.includes('INGRESO_OP')) return;
+    setSelectedOPLog(log);
+    setLoadingOpDetails(true);
+    setOpDetails(null);
+    try {
+      // 1. Fetch Order
+      const qOrder = query(collection(db, 'Orders'), where('batchInternal', '==', log.batchInternal));
+      const snapOrder = await getDocs(qOrder);
+      
+      // 2. Fetch Granel from Inventory
+      const qInv = query(collection(db, 'Inventory'), where('batchInternal', '==', log.batchInternal), where('stockType', '==', 'GRANEL'));
+      const snapInv = await getDocs(qInv);
+      
+      let orderData = snapOrder.empty ? null : snapOrder.docs[0].data();
+      let invData = snapInv.empty ? null : snapInv.docs[0].data();
+      
+      setOpDetails({
+        ingredients: orderData?.data?.actualIngredients || orderData?.data?.ingredients || [],
+        ph: invData?.measuredPh || orderData?.data?.ph || 'Pendiente BBS',
+        density: invData?.measuredDensity || orderData?.data?.density || 'Pendiente BBS'
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Error cargando detalles");
+    } finally {
+      setLoadingOpDetails(false);
+    }
+  };
 
   useEffect(() => {
     // Escucha en tiempo real de la colección AuditLog
@@ -137,7 +171,12 @@ export default function HistoryScreen({ navigation }) {
     const isNegative = Number(item.quantity) < 0;
 
     return (
-      <View style={styles.logCard} key={item.id}>
+      <TouchableOpacity 
+        style={styles.logCard} 
+        key={item.id}
+        activeOpacity={item.action?.includes('INGRESO_OP') ? 0.7 : 1}
+        onPress={() => item.action?.includes('INGRESO_OP') && handleOpenOPDetails(item)}
+      >
         <View style={styles.logLeft}>
           {!isLast && <View style={styles.timelineLine} />}
           <View style={[styles.iconBox, { backgroundColor: theme.bg, borderColor: theme.color }]}>
@@ -175,7 +214,7 @@ export default function HistoryScreen({ navigation }) {
             </View>
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -281,6 +320,77 @@ export default function HistoryScreen({ navigation }) {
           />
         )}
       </View>
+
+      {/* MODAL DETALLES DE OP */}
+      <Modal visible={!!selectedOPLog} transparent animationType="slide" onRequestClose={() => setSelectedOPLog(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Detalles de OP Completada</Text>
+              <TouchableOpacity onPress={() => setSelectedOPLog(null)}>
+                <X color="#64748b" size={24} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{padding: 20}}>
+               <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15}}>
+                 <View>
+                   <Text style={{fontSize: 12, color: '#64748b'}}>Lote OP</Text>
+                   <Text style={{fontSize: 16, fontWeight: '900', color: '#0f172a'}}>{selectedOPLog?.batchInternal}</Text>
+                 </View>
+                 <View style={{alignItems: 'flex-end'}}>
+                   <Text style={{fontSize: 12, color: '#64748b'}}>Fecha</Text>
+                   <Text style={{fontSize: 14, fontWeight: '700', color: '#334155'}}>{selectedOPLog?.formattedDate}</Text>
+                 </View>
+               </View>
+
+               <View style={{backgroundColor: '#f1f5f9', padding: 15, borderRadius: 12, marginBottom: 20}}>
+                 <Text style={{fontSize: 12, color: '#64748b', textTransform: 'uppercase', fontWeight: '800'}}>Producto</Text>
+                 <Text style={{fontSize: 18, fontWeight: '900', color: '#3b82f6', marginBottom: 5}}>{selectedOPLog?.itemName}</Text>
+                 <Text style={{fontSize: 14, color: '#475569'}}>Cantidad Producida: <Text style={{fontWeight: '800', color: '#0f172a'}}>{selectedOPLog?.quantity} {selectedOPLog?.unit}</Text></Text>
+                 <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 5}}>
+                   <User size={14} color="#64748b" />
+                   <Text style={{fontSize: 12, color: '#64748b'}}>{selectedOPLog?.user}</Text>
+                 </View>
+               </View>
+
+               {loadingOpDetails ? (
+                 <View style={{padding: 30, alignItems: 'center'}}>
+                    <ActivityIndicator size="large" color="#3b82f6" />
+                    <Text style={{marginTop: 10, color: '#64748b'}}>Cargando auditoría de materias primas...</Text>
+                 </View>
+               ) : (
+                 <>
+                   <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20}}>
+                     <View style={{flex: 1, backgroundColor: '#eff6ff', padding: 12, borderRadius: 10, marginRight: 10, borderWidth: 1, borderColor: '#bfdbfe'}}>
+                        <Text style={{fontSize: 11, color: '#1e40af', fontWeight: '800'}}>DENSIDAD (BBS)</Text>
+                        <Text style={{fontSize: 16, fontWeight: '900', color: '#1e3a8a'}}>{opDetails?.density || '-'}</Text>
+                     </View>
+                     <View style={{flex: 1, backgroundColor: '#eff6ff', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#bfdbfe'}}>
+                        <Text style={{fontSize: 11, color: '#1e40af', fontWeight: '800'}}>pH (BBS)</Text>
+                        <Text style={{fontSize: 16, fontWeight: '900', color: '#1e3a8a'}}>{opDetails?.ph || '-'}</Text>
+                     </View>
+                   </View>
+
+                   <Text style={{fontSize: 14, fontWeight: '800', color: '#334155', marginBottom: 10, textTransform: 'uppercase'}}>Materias Primas Consumidas</Text>
+                   {opDetails?.ingredients?.length > 0 ? opDetails.ingredients.map((ing, idx) => {
+                     const batches = ing.batchesToConsume?.map(b => b.batchProvider && b.batchProvider !== 'S/D' && b.batchProvider !== 'S/L' ? `${b.batchInternal} (${b.batchProvider})` : b.batchInternal).join(' | ') || 'S/L';
+                     return (
+                       <View key={idx} style={{backgroundColor: '#fff', padding: 12, borderRadius: 10, marginBottom: 8, borderWidth: 1, borderColor: '#e2e8f0'}}>
+                         <Text style={{fontSize: 14, fontWeight: '800', color: '#0f172a'}}>{ing.name}</Text>
+                         <Text style={{fontSize: 13, color: '#10b981', fontWeight: '700', marginTop: 2}}>Uso Real: {ing.actualQty !== undefined ? ing.actualQty.toFixed(2) : (ing.required || 0).toFixed(2)} Kg/L</Text>
+                         <Text style={{fontSize: 11, color: '#64748b', marginTop: 4}}>Lotes: {batches}</Text>
+                       </View>
+                     )
+                   }) : (
+                     <Text style={{color: '#94a3b8', fontStyle: 'italic', marginBottom: 20}}>No hay detalle de ingredientes disponible.</Text>
+                   )}
+                 </>
+               )}
+               <View style={{height: 40}} />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -298,6 +408,11 @@ const styles = StyleSheet.create({
   
   container: { flex: 1, backgroundColor: '#f8fafc', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 10 },
   
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
+  modalContainer: { backgroundColor: '#f8fafc', borderRadius: 16, overflow: 'hidden', elevation: 10, maxHeight: '80%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  modalTitle: { fontSize: 16, fontWeight: '900', color: '#0f172a' },
+
   filterContainer: { borderBottomWidth: 1, borderBottomColor: '#e2e8f0', backgroundColor: '#f8fafc', borderTopLeftRadius: 24, borderTopRightRadius: 24 },
   filterScroll: { paddingHorizontal: 15, paddingVertical: 12, gap: 8 },
   filterTab: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', elevation: 1 },
