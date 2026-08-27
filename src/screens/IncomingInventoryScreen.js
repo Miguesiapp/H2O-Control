@@ -230,7 +230,7 @@ export default function IncomingInventoryScreen({ navigation }) {
             onPress={() => setInventoryType('MP')}
           >
             <Database color={inventoryType === 'MP' ? '#fff' : '#64748b'} size={18} style={{marginRight: 6}} />
-            <Text style={[styles.masterToggleText, inventoryType === 'MP' && styles.masterToggleTextActive]}>MATERIA PRIMA GRAL</Text>
+            <Text style={[styles.masterToggleText, inventoryType === 'MP' && styles.masterToggleTextActive]}>MATERIA PRIMA GRAL (Q1-A)</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -238,7 +238,7 @@ export default function IncomingInventoryScreen({ navigation }) {
             onPress={() => setInventoryType('INSUMOS')}
           >
             <Box color={inventoryType === 'INSUMOS' ? '#fff' : '#64748b'} size={18} style={{marginRight: 6}} />
-            <Text style={[styles.masterToggleText, inventoryType === 'INSUMOS' && styles.masterToggleTextActive]}>STOCK GENERAL INSUMOS</Text>
+            <Text style={[styles.masterToggleText, inventoryType === 'INSUMOS' && styles.masterToggleTextActive]}>STOCK GENERAL INSUMOS (Q1-B,C)</Text>
           </TouchableOpacity>
         </View>
 
@@ -253,7 +253,9 @@ export default function IncomingInventoryScreen({ navigation }) {
                   style={[styles.catButton, category === cat && styles.catButtonActive]}
                   onPress={() => setCategory(cat)}
                 >
-                  <Text style={[styles.catText, category === cat && styles.catTextActive]}>{cat}</Text>
+                  <Text style={[styles.catText, category === cat && styles.catTextActive]}>
+                    {cat === 'Bidones' ? 'Bidones (Q1-B)' : cat === 'Cajas' ? 'Cajas (Q1-C)' : cat}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>

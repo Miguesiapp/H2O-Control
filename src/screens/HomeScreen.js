@@ -214,7 +214,7 @@ export default function HomeScreen({ navigation }) {
               <Keyboard color="#fff" size={24} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.mainCardTitle, { color: '#0f172a' }]}>Ingreso Manual</Text>
+              <Text style={[styles.mainCardTitle, { color: '#0f172a' }]}>Ingreso Manual (Q1)</Text>
               <Text style={styles.mainCardSub}>MP e Insumos (Bidones, Cajas, Etiquetas)</Text>
             </View>
             <ChevronRight color="#64748b" size={24} />
@@ -298,7 +298,7 @@ export default function HomeScreen({ navigation }) {
             </View>
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={styles.labCardTitle}>Orden de Producción (OP)</Text>
+                <Text style={styles.labCardTitle}>Orden de Producción (OP) (Q2)</Text>
                 {pendingOPCount > 0 && (
                   <View style={styles.badgeCount}>
                     <Text style={styles.badgeCountText}>{pendingOPCount}</Text>
@@ -316,7 +316,7 @@ export default function HomeScreen({ navigation }) {
             </View>
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={styles.labCardTitle}>Orden de Envasado (OE)</Text>
+                <Text style={styles.labCardTitle}>Orden de Envasado (OE) (Q3)</Text>
                 {pendingOECount > 0 && (
                   <View style={styles.badgeCount}>
                     <Text style={styles.badgeCountText}>{pendingOECount}</Text>
@@ -347,7 +347,7 @@ export default function HomeScreen({ navigation }) {
             </View>
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={styles.labCardTitle}>Orden de Despacho (OD)</Text>
+                <Text style={styles.labCardTitle}>Orden de Despacho (OD) (Q5)</Text>
                 {pendingODCount > 0 && (
                   <View style={styles.badgeCount}>
                     <Text style={styles.badgeCountText}>{pendingODCount}</Text>
