@@ -162,8 +162,22 @@ export default function ProductionOrderScreen({ route, navigation }) {
         
         const ingUpper = (ingredient.name || '').trim().toUpperCase();
         if (!ingUpper) continue;
-        const eqIngs = EQUIVALENCIES[ingUpper] || [];
-        const possibleIngredients = [ingUpper, ...eqIngs];
+        
+        // El nombre en la fórmula puede ser un string viejo (ej: A / B)
+        // Separamos por barras para buscar equivalencias de cualquier parte
+        let possibleIngredients = [ingUpper];
+        if (ingUpper.includes('/')) {
+           possibleIngredients.push(...ingUpper.split('/').map(p => p.trim()));
+        }
+        
+        const allEquivalencies = [];
+        possibleIngredients.forEach(p => {
+           if (EQUIVALENCIES[p]) {
+              allEquivalencies.push(...EQUIVALENCIES[p]);
+           }
+        });
+        
+        possibleIngredients = [...new Set([...possibleIngredients, ...allEquivalencies])];
         const possibleNorm = possibleIngredients.map(n => normalizeString(n));
 
         const isGranel = PRODUCTS_MADRE_LIST.some(pm => pm.split('/')[0].trim() === ingUpper);

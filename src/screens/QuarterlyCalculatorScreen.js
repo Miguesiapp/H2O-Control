@@ -96,11 +96,19 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
         const amountNeeded = (targetKilos * Number(ing.percentage)) / 100;
 
         // BÚSQUEDA INTELIGENTE CON SINÓNIMOS
-        const searchNamesUpper = [ingNameUpper];
-        if (EQUIVALENCIES[ingNameUpper]) {
-          searchNamesUpper.push(...EQUIVALENCIES[ingNameUpper]);
+        let searchNamesUpper = [ingNameUpper];
+        if (ingNameUpper.includes('/')) {
+           searchNamesUpper.push(...ingNameUpper.split('/').map(p => p.trim()));
         }
         
+        const allEquivalencies = [];
+        searchNamesUpper.forEach(p => {
+           if (EQUIVALENCIES[p]) {
+              allEquivalencies.push(...EQUIVALENCIES[p]);
+           }
+        });
+        
+        searchNamesUpper = [...new Set([...searchNamesUpper, ...allEquivalencies])];
         const searchNamesNorm = searchNamesUpper.map(n => normalizeString(n));
 
         // Buscar en la memoria
@@ -112,11 +120,37 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
            }
         });
 
+        // Buscar fórmulas compartidas
+        const sharedFormulas = [];
+        formulas.forEach(otherF => {
+          if (otherF.id !== selectedFormula.id && otherF.ingredients) {
+            const usesIng = otherF.ingredients.some(oi => {
+              if (oi.type === 'NOTE') return false;
+              let oiUpper = oi.name.trim().toUpperCase();
+              let oiParts = [oiUpper];
+              if (oiUpper.includes('/')) {
+                oiParts.push(...oiUpper.split('/').map(p => p.trim()));
+              }
+              const oiEquivs = [];
+              oiParts.forEach(p => {
+                if (EQUIVALENCIES[p]) oiEquivs.push(...EQUIVALENCIES[p]);
+              });
+              const allOiNames = [...new Set([...oiParts, ...oiEquivs])];
+              const oiNorms = allOiNames.map(n => normalizeString(n));
+              return oiNorms.some(n => searchNamesNorm.includes(n));
+            });
+            if (usesIng) {
+              sharedFormulas.push(otherF.productName);
+            }
+          }
+        });
+
         calculation.push({
           name: ingNameUpper,
           needed: amountNeeded,
           stock: totalInStock,
-          balance: totalInStock - amountNeeded
+          balance: totalInStock - amountNeeded,
+          sharedWith: sharedFormulas
         });
       }
       setResults(calculation);
@@ -241,25 +275,26 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
             </Text>
           </View>
         ) : (
-          <AutocompleteInput 
-            data={[...new Set([...formulas.map(f => f.productName), ...PRODUCTS_MADRE_LIST])].sort()}
-            value={productName}
-            onChangeText={(text) => {
-               setProductName(text);
-               // Buscar coincidencia exacta primero
-               let found = formulas.find(f => f.productName === text);
-               
-               // Si no hay coincidencia exacta (ej: tocó algo con " / "), buscar por contención
-               if (!found) {
-                 found = formulas.find(f => text.includes(f.productName) || f.productName.includes(text));
-               }
-               
-               setSelectedFormula(found || null);
-            }}
-            placeholder="Seleccionar o escribir producto..."
-            icon={<Beaker color="#94a3b8" size={18} />}
-            containerStyle={{ zIndex: 2000 }}
-          />
+          <View style={{ zIndex: 2000, position: 'relative' }}>
+            <AutocompleteInput 
+              data={[...new Set([...formulas.map(f => f.productName), ...PRODUCTS_MADRE_LIST])].sort()}
+              value={productName}
+              onChangeText={(text) => {
+                 setProductName(text);
+                 // Buscar coincidencia exacta primero
+                 let found = formulas.find(f => f.productName === text);
+                 
+                 // Si no hay coincidencia exacta (ej: tocó algo con " / "), buscar por contención
+                 if (!found) {
+                   found = formulas.find(f => text.includes(f.productName) || f.productName.includes(text));
+                 }
+                 
+                 setSelectedFormula(found || null);
+              }}
+              placeholder="Seleccionar o escribir producto..."
+              icon={<Beaker color="#94a3b8" size={18} />}
+            />
+          </View>
         )}
 
         <Text style={styles.label}>2. Volumen Deseado (Litros)</Text>
@@ -330,6 +365,15 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
                        <ShoppingCart color="#b91c1c" size={16} />
                     </View>
                     <Text style={styles.buyText}>REPOSICIÓN CRÍTICA: Faltan {Math.abs(item.balance).toFixed(1)} Kg/Lts</Text>
+                  </View>
+                )}
+
+                {item.sharedWith && item.sharedWith.length > 0 && (
+                  <View style={{ backgroundColor: '#fff7ed', padding: 10, borderRadius: 8, marginTop: item.balance < 0 ? 5 : 10, flexDirection: 'row', alignItems: 'center' }}>
+                    <AlertCircle color="#ea580c" size={16} />
+                    <Text style={{ fontSize: 11, color: '#c2410c', marginLeft: 6, flex: 1 }}>
+                      Esta MP también se utiliza para: <Text style={{ fontWeight: 'bold' }}>{item.sharedWith.join(', ')}</Text>
+                    </Text>
                   </View>
                 )}
               </View>
@@ -407,7 +451,7 @@ const styles = StyleSheet.create({
   formulaChipText: { color: '#64748b', fontWeight: '800', fontSize: 13 },
   formulaChipTextActive: { color: '#fff' },
   
-  inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 16, paddingHorizontal: 15, elevation: 1 },
+  inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 16, paddingHorizontal: 15, zIndex: 1 },
   input: { flex: 1, paddingVertical: 18, fontSize: 22, color: '#0f172a', fontWeight: '900' },
   
   calcBtn: { backgroundColor: '#3b82f6', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 20, borderRadius: 16, marginTop: 30, gap: 12, elevation: 4, shadowColor: '#3b82f6', shadowOpacity: 0.3, shadowRadius: 8 },

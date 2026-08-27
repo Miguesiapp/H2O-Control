@@ -211,10 +211,10 @@ export default function HomeScreen({ navigation }) {
             onPress={() => navigation.navigate('IncomingInventory', { companyName: 'STOCK_CENTRAL_MP' })}
           >
             <View style={[styles.mainCardIcon, { backgroundColor: '#64748b' }]}>
-              <Keyboard color="#fff" size={24} />
+              <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800' }}>Q1</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.mainCardTitle, { color: '#0f172a' }]}>Ingreso Manual (Q1)</Text>
+              <Text style={[styles.mainCardTitle, { color: '#0f172a' }]}>Ingreso Manual</Text>
               <Text style={styles.mainCardSub}>MP e Insumos (Bidones, Cajas, Etiquetas)</Text>
             </View>
             <ChevronRight color="#64748b" size={24} />
@@ -294,11 +294,11 @@ export default function HomeScreen({ navigation }) {
 
           <TouchableOpacity activeOpacity={0.8} style={styles.labCard} onPress={() => navigation.navigate('ProductionOrder', { companyName: 'H2O' })}>
             <View style={[styles.labIconBox, { backgroundColor: '#f0f9ff' }]}>
-              <Beaker color="#0ea5e9" size={24} />
+              <Text style={{ color: '#0ea5e9', fontSize: 18, fontWeight: '800' }}>Q2</Text>
             </View>
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={styles.labCardTitle}>Orden de Producción (OP) (Q2)</Text>
+                <Text style={styles.labCardTitle}>Orden de Producción (OP)</Text>
                 {pendingOPCount > 0 && (
                   <View style={styles.badgeCount}>
                     <Text style={styles.badgeCountText}>{pendingOPCount}</Text>
@@ -312,11 +312,11 @@ export default function HomeScreen({ navigation }) {
 
           <TouchableOpacity activeOpacity={0.8} style={styles.labCard} onPress={() => navigation.navigate('PackagingOrder', { companyName: 'H2O' })}>
             <View style={[styles.labIconBox, { backgroundColor: '#fdf4ff' }]}>
-              <Box color="#c026d3" size={24} />
+              <Text style={{ color: '#c026d3', fontSize: 18, fontWeight: '800' }}>Q3</Text>
             </View>
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={styles.labCardTitle}>Orden de Envasado (OE) (Q3)</Text>
+                <Text style={styles.labCardTitle}>Orden de Envasado (OE)</Text>
                 {pendingOECount > 0 && (
                   <View style={styles.badgeCount}>
                     <Text style={styles.badgeCountText}>{pendingOECount}</Text>
@@ -343,11 +343,11 @@ export default function HomeScreen({ navigation }) {
 
           <TouchableOpacity activeOpacity={0.8} style={styles.labCard} onPress={() => navigation.navigate('OutgoingInventory', { companyName: 'H2O' })}>
             <View style={[styles.labIconBox, { backgroundColor: '#fef2f2' }]}>
-              <Truck color="#ef4444" size={24} />
+              <Text style={{ color: '#ef4444', fontSize: 18, fontWeight: '800' }}>Q5</Text>
             </View>
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={styles.labCardTitle}>Orden de Despacho (OD) (Q5)</Text>
+                <Text style={styles.labCardTitle}>Orden de Despacho (OD)</Text>
                 {pendingODCount > 0 && (
                   <View style={styles.badgeCount}>
                     <Text style={styles.badgeCountText}>{pendingODCount}</Text>
