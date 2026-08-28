@@ -7,8 +7,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
 import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { registerMovement, createOrder, updateOrderStatus } from '../services/logisticsService';
-import { ChevronLeft, Truck, Send, PackageMinus, MapPin, Hash, ClipboardType, Plus, ClipboardList, CheckSquare, CheckCircle2, Play, Droplet, ChevronDown, X } from 'lucide-react-native';
+import { ChevronLeft, Truck, Send, PackageMinus, MapPin, Hash, ClipboardType, Plus, ClipboardList, CheckSquare, CheckCircle2, Play, Droplet, ChevronDown, X, Printer } from 'lucide-react-native';
 import { canCreateOrders } from '../config/permissions';
+import { printOrder } from '../services/printService';
 
 const BIDON_CAPACITIES = ['1000', '20', '10', '5', '1'];
 const BIDON_LABELS = { '1000': '1000L (Contenedor)', '20': '20L', '10': '10L', '5': '5L', '1': '1L' };
@@ -517,7 +518,9 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
               <Text style={styles.headerTitle}>Detalle de OD</Text>
               <Text style={styles.headerSub}>{selectedOrder?.data?.batchInternal}</Text>
             </View>
-            <View style={{ width: 28 }} />
+            <TouchableOpacity onPress={() => selectedOrder && printOrder(selectedOrder)} style={{ padding: 8, backgroundColor: '#3b82f6', borderRadius: 8 }}>
+              <Printer color="#fff" size={20} />
+            </TouchableOpacity>
           </View>
           <ScrollView maximumZoomScale={1} style={{flex: 1, padding: 20}}>
             <View style={styles.card}>
@@ -537,6 +540,11 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
                 <Text style={{fontSize: 12, color: '#64748b'}}>Transporte</Text>
                 <Text style={{fontSize: 14, fontWeight: '800', color: '#1e293b'}}>{selectedOrder?.data?.transportName}</Text>
               </View>
+              
+              <TouchableOpacity onPress={() => selectedOrder && printOrder(selectedOrder)} style={[styles.mainButton, { backgroundColor: '#3b82f6', marginTop: 15 }]}>
+                <Printer color="#fff" size={20} />
+                <Text style={[styles.mainButtonText, { color: '#fff' }]}>Imprimir / Exportar PDF</Text>
+              </TouchableOpacity>
             </View>
 
             {selectedOrder?.status === 'ENVIADO' && (

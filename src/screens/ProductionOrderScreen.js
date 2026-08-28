@@ -8,11 +8,12 @@ import { auth, db } from '../config/firebase';
 import { collection, query, where, getDocs, onSnapshot, serverTimestamp, addDoc, Timestamp, updateDoc, doc } from 'firebase/firestore';
 import { registerMovement, createOrder, updateOrderStatus } from '../services/logisticsService';
 import { 
-  ChevronLeft, Play, Beaker, FileText, Factory, AlertCircle, Calculator, CheckCircle2, XCircle, Plus, ClipboardList, CheckSquare, Calendar as CalendarIcon, X, Pencil, RotateCcw 
+  ChevronLeft, Play, Beaker, FileText, Factory, AlertCircle, Calculator, CheckCircle2, XCircle, Plus, ClipboardList, CheckSquare, Calendar as CalendarIcon, X, Pencil, RotateCcw, Printer 
 } from 'lucide-react-native';
 import { Calendar as CalendarPicker } from 'react-native-calendars';
 import { ChevronRight } from 'lucide-react-native';
 import { printBatchLabels } from '../services/labelService';
+import { printOrder } from '../services/printService';
 import AutocompleteInput from '../components/AutocompleteInput';
 import { EQUIVALENCIES } from '../services/formulaService';
 import { PRODUCTS_MADRE_LIST, generateBatchId } from '../config/constants';
@@ -791,7 +792,9 @@ export default function ProductionOrderScreen({ route, navigation }) {
                 <Text style={styles.batchBadgeText}>{selectedOrder?.data?.batchInternal}</Text>
               </View>
             </View>
-            <View style={{ width: 28 }} />
+            <TouchableOpacity onPress={() => selectedOrder && printOrder(selectedOrder)} style={{ padding: 8, backgroundColor: '#3b82f6', borderRadius: 8 }}>
+              <Printer color="#fff" size={20} />
+            </TouchableOpacity>
           </View>
           <ScrollView style={{flex: 1, padding: 20}}>
             <View style={styles.card}>
@@ -849,6 +852,11 @@ export default function ProductionOrderScreen({ route, navigation }) {
                   </View>
                 );
               })}
+              
+              <TouchableOpacity onPress={() => selectedOrder && printOrder(selectedOrder)} style={[styles.mainButton, { backgroundColor: '#3b82f6', marginTop: 25 }]}>
+                <Printer color="#fff" size={20} />
+                <Text style={styles.mainButtonText}>Imprimir / Exportar PDF</Text>
+              </TouchableOpacity>
             </View>
 
             {selectedOrder?.status === 'ENVIADO' && (

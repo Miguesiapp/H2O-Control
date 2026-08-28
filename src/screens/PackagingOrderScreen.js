@@ -7,10 +7,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
 import { collection, query, where, getDocs, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { registerMovement, createOrder, updateOrderStatus, checkTotalStock } from '../services/logisticsService'; 
-import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box, Droplet, Building2, Tag, Plus, ClipboardList, Play, CheckSquare, XCircle, ChevronDown, ChevronUp } from 'lucide-react-native';
+import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box, Droplet, Building2, Tag, Plus, ClipboardList, Play, CheckSquare, XCircle, ChevronDown, ChevronUp, Printer } from 'lucide-react-native';
 import AutocompleteInput from '../components/AutocompleteInput';
 import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS, getCommercialNamesForGranel } from '../config/constants';
 import { canCreateOrders, canChangeStatus } from '../config/permissions';
+import { printOrder } from '../services/printService';
 import Toast from 'react-native-toast-message';
 
 const BIDON_CAPACITIES = ['1000', '20', '10', '5', '1'];
@@ -648,7 +649,9 @@ export default function PackagingOrderScreen({ route, navigation }) {
               <Text style={styles.headerTitle}>Detalle de OE</Text>
               <Text style={styles.headerSub}>{selectedOrder?.data?.batchInternal}</Text>
             </View>
-            <View style={{ width: 28 }} />
+            <TouchableOpacity onPress={() => selectedOrder && printOrder(selectedOrder)} style={{ padding: 8, backgroundColor: '#3b82f6', borderRadius: 8 }}>
+              <Printer color="#fff" size={20} />
+            </TouchableOpacity>
           </View>
           <ScrollView maximumZoomScale={1} style={{flex: 1, padding: 20}}>
             <View style={styles.card}>
@@ -671,6 +674,11 @@ export default function PackagingOrderScreen({ route, navigation }) {
                   <Text style={{fontSize: 12, color: '#64748b'}}>Consumo: {selectedOrder?.data?.requiredBoxes} Uds</Text>
                 </View>
               )}
+              
+              <TouchableOpacity onPress={() => selectedOrder && printOrder(selectedOrder)} style={[styles.mainButton, { backgroundColor: '#3b82f6', marginTop: 15 }]}>
+                <Printer color="#fff" size={20} />
+                <Text style={[styles.submitText, { color: '#fff' }]}>Imprimir / Exportar PDF</Text>
+              </TouchableOpacity>
             </View>
 
             {selectedOrder?.status === 'ENVIADO' && (
