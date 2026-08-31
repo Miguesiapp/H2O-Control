@@ -8,7 +8,8 @@ import { db, auth } from '../config/firebase';
 import { collection, query, where, getDocs, onSnapshot, getDoc, doc } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
 import { canAccessQualityControl } from '../config/permissions';
-import { LogOut, FlaskConical, ClipboardCheck, ChevronRight, Clock, Sparkles, Calculator, UserCheck, Database, Keyboard, Package, Truck, Beaker, Container, Box, MonitorPlay, ShoppingCart, Search } from 'lucide-react-native';
+import { ALLOWED_ATTENDANCE_EMAILS } from '../config/constants';
+import { LogOut, FlaskConical, ClipboardCheck, ChevronRight, Clock, Sparkles, Calculator, UserCheck, Database, Keyboard, Package, Truck, Beaker, Container, Box, MonitorPlay, ShoppingCart, Search, ShieldAlert } from 'lucide-react-native';
 
 export default function HomeScreen({ navigation }) {
   const { width, height } = useWindowDimensions();
@@ -396,12 +397,16 @@ export default function HomeScreen({ navigation }) {
 
           <View style={styles.row}>
 
-            <TouchableOpacity style={styles.qualityCard} onPress={() => navigation.navigate('StaffAttendance')}>
-              <View style={[styles.qualityIconBox, { backgroundColor: '#f0f9ff' }]}>
-                <UserCheck color="#0ea5e9" size={24} />
-              </View>
-              <Text style={styles.qualityCardText}>Tótem Asistencia</Text>
-            </TouchableOpacity>
+            {ALLOWED_ATTENDANCE_EMAILS.includes(currentUserEmail.toLowerCase()) ? (
+              <TouchableOpacity style={styles.qualityCard} onPress={() => navigation.navigate('StaffAttendance')}>
+                <View style={[styles.qualityIconBox, { backgroundColor: '#f0f9ff' }]}>
+                  <UserCheck color="#0ea5e9" size={24} />
+                </View>
+                <Text style={styles.qualityCardText}>Tótem Asistencia</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={[styles.qualityCard, { opacity: 0 }]} pointerEvents="none" />
+            )}
 
             <TouchableOpacity style={styles.qualityCard} onPress={() => navigation.navigate('PurchaseRequests')}>
               <View style={[styles.qualityIconBox, { backgroundColor: '#fef2f2' }]}>
@@ -436,6 +441,15 @@ export default function HomeScreen({ navigation }) {
               <Search color="#334155" size={20} />
               <Text style={styles.adminSmallCardText}>Trazabilidad</Text>
             </TouchableOpacity>
+          </View>
+          <View style={[styles.row, { marginTop: 15 }]}>
+            <TouchableOpacity
+              style={[styles.adminSmallCard, { borderColor: '#2a7d7b', backgroundColor: '#2a7d7b', justifyContent: 'center' }]}
+              onPress={() => navigation.navigate('EIGPanel')}
+            >
+              <Text style={[styles.adminSmallCardText, { color: '#fff', fontSize: 14, textAlign: 'center' }]}>Panel EIG</Text>
+            </TouchableOpacity>
+            <View style={{ flex: 1 }} />
           </View>
         </View>
 

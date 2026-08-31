@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, TextInput, 
-  TouchableOpacity, Alert, StatusBar, ActivityIndicator, FlatList, Modal
+  TouchableOpacity, Alert, StatusBar, ActivityIndicator, FlatList, Modal, Linking
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
 import { collection, query, where, getDocs, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { registerMovement, createOrder, updateOrderStatus, checkTotalStock } from '../services/logisticsService'; 
-import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box, Droplet, Building2, Tag, Plus, ClipboardList, Play, CheckSquare, XCircle, ChevronDown, ChevronUp, Printer } from 'lucide-react-native';
+import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box, Droplet, Building2, Tag, Plus, ClipboardList, Play, CheckSquare, XCircle, ChevronDown, ChevronUp, Printer, ShieldAlert, FileText, X } from 'lucide-react-native';
 import AutocompleteInput from '../components/AutocompleteInput';
 import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS, getCommercialNamesForGranel } from '../config/constants';
 import { canCreateOrders, canChangeStatus } from '../config/permissions';
@@ -29,6 +29,8 @@ export default function PackagingOrderScreen({ route, navigation }) {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [orderModalVisible, setOrderModalVisible] = useState(false);
   const [processingOrder, setProcessingOrder] = useState(false);
+  const [eigDocs, setEigDocs] = useState([]);
+  const [eigModalDoc, setEigModalDoc] = useState(null);
 
   useEffect(() => {
     // Escuchar órdenes de tipo OE
@@ -59,6 +61,14 @@ export default function PackagingOrderScreen({ route, navigation }) {
     });
     return () => unsubscribe();
   }, [companyName]);
+
+  useEffect(() => {
+    const unsub = onSnapshot(
+      query(collection(db, 'EIG_Documents')),
+      (snap) => setEigDocs(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
+    return () => unsub();
+  }, []);
 
   // ======================================================================
   // ESTADOS DE LA VISTA CREACIÓN
@@ -108,17 +118,13 @@ export default function PackagingOrderScreen({ route, navigation }) {
   }, [companyName, viewMode]);
 
   useEffect(() => {
-    if (selectedLot) {
-      setCommercialName(selectedLot.itemName);
-    } else {
-      setCommercialName('');
-    }
-  }, [selectedLot]);
+    // Si cambia el PT, limpiamos el lote seleccionado porque podría no corresponder
+    setSelectedLot(null);
+  }, [commercialName]);
 
-  const getCommercialNameSuggestions = () => {
-    if (!selectedLot) return [];
-    return getCommercialNamesForGranel(selectedLot.itemName);
-  };
+  const mappedGranelStr = commercialName ? (EQUIVALENCIES_MAP[commercialName.trim().toUpperCase()] || commercialName.trim().toUpperCase()) : '';
+  const synonyms = mappedGranelStr.split('/').map(s => s.trim().toUpperCase());
+  const filteredApprovedLots = commercialName ? approvedLots.filter(l => synonyms.some(syn => l.itemName?.toUpperCase().includes(syn))) : [];
 
   const units = Number(formData.unitsProduced) || 0;
   const presentation = Number(formData.presentation);
@@ -162,17 +168,21 @@ export default function PackagingOrderScreen({ route, navigation }) {
           return;
         }
       } else {
-        // === MODO BIDÓN: verificar insumos ===
+        // === MODO BIDÓN: verificar insumos (Búsqueda Generalizada / Fuzzy) ===
         // 0. VERIFICACIÓN Y CÁLCULO DE ÓRDENES PARCIALES
-        const exactBidonName = `BIDON ${presentation}L ${formData.brandBidon}`;
-        const bidonStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', exactBidonName);
         
-        const exactCajaName = appliesBox ? `CAJA ${boxFormat} ${formData.brandCaja}` : null;
-        const cajaStock = appliesBox ? await checkTotalStock('STOCK_CENTRAL_INSUMOS', exactCajaName) : Infinity;
+        const capacityKeywords = [`${presentation}L`, `${presentation} L`, `${presentation} LTS`, `${presentation}LTS`];
+        const fuzzyBidon = ['BIDON', capacityKeywords, formData.brandBidon];
+        const bidonStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyBidon);
+        
+        const boxKeywords = [boxFormat, `${presentation}L`, `${presentation} L`, `X ${presentation}L`, `X${presentation}L`];
+        const fuzzyCaja = appliesBox ? ['CAJA', boxKeywords, formData.brandCaja] : null;
+        const cajaStock = appliesBox ? await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyCaja) : Infinity;
 
         const baseLabelName = getBaseLabelName(commercialName);
-        const etiquetaName = `ETIQUETA ${presentation}L ${baseLabelName}`;
-        const etiquetaStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', etiquetaName);
+        const labelKeywords = [baseLabelName, commercialName];
+        const fuzzyEtiqueta = ['ETIQUETA', capacityKeywords, labelKeywords];
+        const etiquetaStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyEtiqueta);
 
         const maxUnitsGranel = Math.floor(selectedLot.quantity / presentation);
         let maxUnitsCaja = Infinity;
@@ -206,7 +216,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
             if (maxUnitsGranel <= 0) missing.push('Granel');
             if (bidonStock <= 0) missing.push('Bidones');
             if (appliesBox && cajaStock <= 0) missing.push('Cajas');
-            if (etiquetaStock <= 0) missing.push(`Etiquetas (${etiquetaName})`);
+            if (etiquetaStock <= 0) missing.push(`Etiquetas (${baseLabelName})`);
             Toast.show({ type: 'error', text1: 'Stock Insuficiente (0 Unidades)', text2: `Falta stock de: ${missing.join(', ')}` });
           }
           return;
@@ -226,21 +236,19 @@ export default function PackagingOrderScreen({ route, navigation }) {
 
       if (!isContainer) {
 
-        // 2. DEDUCCIÓN DE INSUMOS CENTRALES (BIDONES) - por marca exacta
-        const exactBidonName = `BIDON ${presentation}L ${formData.brandBidon}`;
+        // 2. DEDUCCIÓN DE INSUMOS CENTRALES (BIDONES) - Búsqueda Generalizada FIFO
         await registerMovement(currentUser, 'CONSUMO_ENVASADO_BIDON', 'STOCK_CENTRAL_INSUMOS', {
-            itemName: exactBidonName,
+            itemName: fuzzyBidon,
             quantity: -Math.abs(units),
             stockType: 'INSUMOS',
             batchInternal: batchId,
             unit: 'Uds'
         });
 
-        // 3. DEDUCCIÓN DE INSUMOS CENTRALES (CAJAS) - por marca exacta si aplica
+        // 3. DEDUCCIÓN DE INSUMOS CENTRALES (CAJAS) - Búsqueda Generalizada FIFO si aplica
         if (appliesBox && requiredBoxes > 0) {
-          const exactCajaName = `CAJA ${boxFormat} ${formData.brandCaja}`;
           await registerMovement(currentUser, 'CONSUMO_ENVASADO_CAJA', 'STOCK_CENTRAL_INSUMOS', {
-              itemName: exactCajaName,
+              itemName: fuzzyCaja,
               quantity: -Math.abs(requiredBoxes),
               stockType: 'INSUMOS',
               batchInternal: batchId,
@@ -248,11 +256,9 @@ export default function PackagingOrderScreen({ route, navigation }) {
           });
         }
 
-        // 4. DEDUCCIÓN DE INSUMOS CENTRALES (ETIQUETAS)
-        const baseLabelNameForDeduction = getBaseLabelName(commercialName);
-        const finalEtiquetaName = `ETIQUETA ${presentation}L ${baseLabelNameForDeduction}`;
+        // 4. DEDUCCIÓN DE INSUMOS CENTRALES (ETIQUETAS) - Búsqueda Generalizada FIFO
         await registerMovement(currentUser, 'CONSUMO_INSUMO', 'STOCK_CENTRAL_INSUMOS', {
-            itemName: finalEtiquetaName,
+            itemName: fuzzyEtiqueta,
             quantity: -Math.abs(units),
             stockType: 'INSUMOS',
             batchInternal: batchId,
@@ -438,31 +444,47 @@ export default function PackagingOrderScreen({ route, navigation }) {
             </View>
           </View>
 
-          {/* 1. SELECCIÓN DE LOTE GRANEL */}
-          <Text style={styles.sectionTitle}>1. Lote de Granel Aprobado</Text>
+          {/* 1. SELECCIÓN DE PRODUCTO TERMINADO */}
+          <Text style={styles.sectionTitle}>1. Producto a Envasar (PT)</Text>
           <View style={styles.card}>
-            {loading ? (
-              <ActivityIndicator color="#3b82f6" size="large" style={{ marginVertical: 20 }} />
-            ) : approvedLots.length === 0 ? (
-              <View style={styles.emptyBox}>
-                <AlertCircle color="#94a3b8" size={32} style={{marginBottom: 10}}/>
-                <Text style={styles.emptyText}>No hay lotes de GRANEL aprobados disponibles en esta empresa.</Text>
-              </View>
-            ) : (
-              (() => {
-                const groupedApprovedLots = approvedLots.reduce((acc, lot) => {
-                  const name = lot.itemName || 'S/N';
-                  if (!acc[name]) {
-                    acc[name] = {
-                      itemName: name,
-                      totalQuantity: 0,
-                      lots: []
-                    };
-                  }
-                  acc[name].totalQuantity += lot.quantity;
-                  acc[name].lots.push(lot);
-                  return acc;
-                }, {});
+            <Text style={styles.label}>Nombre Comercial del Producto Final</Text>
+            <AutocompleteInput 
+              data={PRODUCTS_FINAL_LIST}
+              value={commercialName}
+              onChangeText={setCommercialName}
+              placeholder="Ej: ACTION"
+              icon={<Tag color="#94a3b8" size={20} />}
+              allowCustom={true}
+            />
+          </View>
+
+          {/* 2. SELECCIÓN DE LOTE GRANEL */}
+          {commercialName ? (
+            <>
+              <Text style={styles.sectionTitle}>2. Lote de Granel Aprobado</Text>
+              <View style={styles.card}>
+                {loading ? (
+                  <ActivityIndicator color="#3b82f6" size="large" style={{ marginVertical: 20 }} />
+                ) : filteredApprovedLots.length === 0 ? (
+                  <View style={styles.emptyBox}>
+                    <AlertCircle color="#94a3b8" size={32} style={{marginBottom: 10}}/>
+                    <Text style={styles.emptyText}>No hay lotes de GRANEL aprobados disponibles para este producto.</Text>
+                  </View>
+                ) : (
+                  (() => {
+                    const groupedApprovedLots = filteredApprovedLots.reduce((acc, lot) => {
+                      const name = lot.itemName || 'S/N';
+                      if (!acc[name]) {
+                        acc[name] = {
+                          itemName: name,
+                          totalQuantity: 0,
+                          lots: []
+                        };
+                      }
+                      acc[name].totalQuantity += lot.quantity;
+                      acc[name].lots.push(lot);
+                      return acc;
+                    }, {});
 
                 const sortedGroupedLots = Object.values(groupedApprovedLots).sort((a, b) => a.itemName.localeCompare(b.itemName));
 
@@ -507,22 +529,14 @@ export default function PackagingOrderScreen({ route, navigation }) {
               })()
             )}
           </View>
+            </>
+          ) : null}
 
-          {/* 2. PARÁMETROS DE ENVASADO E INSUMOS */}
+          {/* 3. PARÁMETROS DE ENVASADO E INSUMOS */}
           {selectedLot && (
             <>
-              <Text style={styles.sectionTitle}>2. Insumos Utilizados</Text>
+              <Text style={styles.sectionTitle}>3. Parámetros de Envasado e Insumos</Text>
               <View style={styles.card}>
-                
-                <Text style={styles.label}>Nombre Comercial del Producto Final</Text>
-                <AutocompleteInput 
-                  data={getCommercialNameSuggestions()}
-                  value={commercialName}
-                  onChangeText={setCommercialName}
-                  placeholder="Ej: ACTION"
-                  icon={<Tag color="#94a3b8" size={20} />}
-                  allowCustom={true}
-                />
 
                 <Text style={styles.label}>Capacidad / Tipo de Envase</Text>
                 <View style={styles.chipRow}>
@@ -675,10 +689,20 @@ export default function PackagingOrderScreen({ route, navigation }) {
                 </View>
               )}
               
-              <TouchableOpacity onPress={() => selectedOrder && printOrder(selectedOrder)} style={[styles.mainButton, { backgroundColor: '#3b82f6', marginTop: 15 }]}>
-                <Printer color="#fff" size={20} />
-                <Text style={[styles.submitText, { color: '#fff' }]}>Imprimir / Exportar PDF</Text>
-              </TouchableOpacity>
+              {(() => {
+                const productName = selectedOrder?.data?.productName || selectedOrder?.data?.formulaName || '';
+                const eigDoc = eigDocs.find(e => e.linkedName?.toUpperCase() === productName.toUpperCase());
+                if (!eigDoc) return null;
+                return (
+                  <TouchableOpacity
+                    onPress={() => setEigModalDoc(eigDoc)}
+                    style={[styles.mainButton, { backgroundColor: '#0f766e', marginTop: 15 }]}
+                  >
+                    <ShieldAlert color="#fff" size={20} />
+                    <Text style={[styles.submitText, { color: '#fff' }]}>⚠️ Info EIG — {eigDoc.title}</Text>
+                  </TouchableOpacity>
+                );
+              })()}
             </View>
 
             {selectedOrder?.status === 'ENVIADO' && (
@@ -707,6 +731,45 @@ export default function PackagingOrderScreen({ route, navigation }) {
           </ScrollView>
         </SafeAreaView>
       </Modal>
+
+      {/* MODAL EIG INFO */}
+      <Modal visible={!!eigModalDoc} transparent animationType="fade" onRequestClose={() => setEigModalDoc(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.6)', justifyContent: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 22, elevation: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16, gap: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                <ShieldAlert size={22} color="#0f766e" />
+                <View>
+                  <Text style={{ fontSize: 16, fontWeight: '900', color: '#0f172a' }}>{eigModalDoc?.title}</Text>
+                  <Text style={{ fontSize: 11, color: '#64748b', fontWeight: '700', marginTop: 2 }}>{eigModalDoc?.linkedName}</Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => setEigModalDoc(null)}>
+                <X size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+            {eigModalDoc?.notes ? (
+              <View style={{ backgroundColor: '#f0fdfa', borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                <Text style={{ fontSize: 10, fontWeight: '900', color: '#0f766e', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Observaciones de Seguridad</Text>
+                <Text style={{ fontSize: 14, color: '#134e4a', lineHeight: 22 }}>{eigModalDoc.notes}</Text>
+              </View>
+            ) : null}
+            {eigModalDoc?.pdfUrl && (
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#0369a1', padding: 14, borderRadius: 12, marginBottom: 10 }}
+                onPress={() => Linking.openURL(eigModalDoc.pdfUrl).catch(() => Alert.alert('Error', 'No se pudo abrir el PDF.'))}
+              >
+                <FileText size={16} color="#fff" />
+                <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>Abrir Hoja Técnica (PDF)</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={() => setEigModalDoc(null)} style={{ alignItems: 'center', padding: 12 }}>
+              <Text style={{ color: '#94a3b8', fontWeight: '800', fontSize: 14 }}>Cerrar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }

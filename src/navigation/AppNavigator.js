@@ -41,6 +41,9 @@ import ExecutiveReportsScreen from '../screens/ExecutiveReportsScreen';
 // 8. Solicitudes de Compras
 import PurchaseRequestsScreen from '../screens/PurchaseRequestsScreen';
 
+// 9. Módulo EIG (Seguridad e Higiene)
+import EIGPanelScreen from '../screens/EIGPanelScreen';
+
 // NOTA: Se eliminaron QRGeneratorScreen y TraceabilityScannerScreen de las importaciones.
 
 const Stack = createStackNavigator();
@@ -96,6 +99,9 @@ export default function AppNavigator({ user }) {
       {/* SECCIÓN: PERSONAL Y ASISTENCIA */}
       <Stack.Screen name="StaffAttendance" component={StaffAttendanceScreen} />
       <Stack.Screen name="AttendanceReports" component={AttendanceReportsScreen} />
+
+      {/* SECCIÓN: SEGURIDAD E HIGIENE (EIG) */}
+      <Stack.Screen name="EIGPanel" component={EIGPanelScreen} />
       
     </Stack.Navigator>
   );

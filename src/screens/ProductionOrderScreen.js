@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, TextInput, 
-  TouchableOpacity, Alert, StatusBar, ActivityIndicator, FlatList, Modal
+  TouchableOpacity, Alert, StatusBar, ActivityIndicator, FlatList, Modal, Linking
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase'; 
 import { collection, query, where, getDocs, onSnapshot, serverTimestamp, addDoc, Timestamp, updateDoc, doc } from 'firebase/firestore';
 import { registerMovement, createOrder, updateOrderStatus } from '../services/logisticsService';
 import { 
-  ChevronLeft, Play, Beaker, FileText, Factory, AlertCircle, Calculator, CheckCircle2, XCircle, Plus, ClipboardList, CheckSquare, Calendar as CalendarIcon, X, Pencil, RotateCcw, Printer 
+  ChevronLeft, Play, Beaker, FileText, Factory, AlertCircle, Calculator, CheckCircle2, XCircle, Plus, ClipboardList, CheckSquare, Calendar as CalendarIcon, X, Pencil, RotateCcw, Printer, ShieldAlert 
 } from 'lucide-react-native';
 import { Calendar as CalendarPicker } from 'react-native-calendars';
 import { ChevronRight } from 'lucide-react-native';
@@ -37,6 +37,8 @@ export default function ProductionOrderScreen({ route, navigation }) {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [orderModalVisible, setOrderModalVisible] = useState(false);
   const [processingOrder, setProcessingOrder] = useState(false);
+  const [eigDocs, setEigDocs] = useState([]);
+  const [eigModalDoc, setEigModalDoc] = useState(null);
 
   useEffect(() => {
     // Escuchar órdenes de tipo OP en tiempo real
@@ -65,6 +67,14 @@ export default function ProductionOrderScreen({ route, navigation }) {
     });
     return () => unsubscribe();
   }, [companyName]);
+
+  useEffect(() => {
+    const unsub = onSnapshot(
+      query(collection(db, 'EIG_Documents')),
+      (snap) => setEigDocs(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    );
+    return () => unsub();
+  }, []);
 
   // Cerrar el modal automáticamente si la orden seleccionada desaparece (fue eliminada, etc.)
   useEffect(() => {
@@ -853,10 +863,20 @@ export default function ProductionOrderScreen({ route, navigation }) {
                 );
               })}
               
-              <TouchableOpacity onPress={() => selectedOrder && printOrder(selectedOrder)} style={[styles.mainButton, { backgroundColor: '#3b82f6', marginTop: 25 }]}>
-                <Printer color="#fff" size={20} />
-                <Text style={styles.mainButtonText}>Imprimir / Exportar PDF</Text>
-              </TouchableOpacity>
+              {(() => {
+                const productName = selectedOrder?.data?.formulaName || selectedOrder?.data?.itemName || '';
+                const eigDoc = eigDocs.find(e => e.linkedName?.toUpperCase() === productName.toUpperCase());
+                if (!eigDoc) return null;
+                return (
+                  <TouchableOpacity
+                    onPress={() => setEigModalDoc(eigDoc)}
+                    style={[styles.mainButton, { backgroundColor: '#0f766e', marginTop: 25 }]}
+                  >
+                    <ShieldAlert color="#fff" size={20} />
+                    <Text style={styles.mainButtonText}>⚠️ Info EIG — {eigDoc.title}</Text>
+                  </TouchableOpacity>
+                );
+              })()}
             </View>
 
             {selectedOrder?.status === 'ENVIADO' && (
@@ -884,6 +904,44 @@ export default function ProductionOrderScreen({ route, navigation }) {
             <View style={{height: 40}}/>
           </ScrollView>
         </SafeAreaView>
+      </Modal>
+
+      {/* MODAL EIG INFO */}
+      <Modal visible={!!eigModalDoc} transparent animationType="fade" onRequestClose={() => setEigModalDoc(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.6)', justifyContent: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 22, elevation: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16, gap: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                <ShieldAlert size={22} color="#0f766e" />
+                <View>
+                  <Text style={{ fontSize: 16, fontWeight: '900', color: '#0f172a' }}>{eigModalDoc?.title}</Text>
+                  <Text style={{ fontSize: 11, color: '#64748b', fontWeight: '700', marginTop: 2 }}>{eigModalDoc?.linkedName}</Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => setEigModalDoc(null)}>
+                <X size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+            {eigModalDoc?.notes ? (
+              <View style={{ backgroundColor: '#f0fdfa', borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                <Text style={{ fontSize: 10, fontWeight: '900', color: '#0f766e', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Observaciones de Seguridad</Text>
+                <Text style={{ fontSize: 14, color: '#134e4a', lineHeight: 22 }}>{eigModalDoc.notes}</Text>
+              </View>
+            ) : null}
+            {eigModalDoc?.pdfUrl && (
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#0369a1', padding: 14, borderRadius: 12, marginBottom: 10 }}
+                onPress={() => Linking.openURL(eigModalDoc.pdfUrl).catch(() => Alert.alert('Error', 'No se pudo abrir el PDF.'))}
+              >
+                <FileText size={16} color="#fff" />
+                <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>Abrir Hoja Técnica (PDF)</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={() => setEigModalDoc(null)} style={{ alignItems: 'center', padding: 12 }}>
+              <Text style={{ color: '#94a3b8', fontWeight: '800', fontSize: 14 }}>Cerrar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
 
       {/* MODAL AJUSTE DE CANTIDAD REAL DE MP */}

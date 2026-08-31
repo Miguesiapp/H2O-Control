@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, FlatList, TouchableOpacity, 
-  TextInput, ActivityIndicator, StatusBar, Alert
+  TextInput, ActivityIndicator, StatusBar, Alert, Modal, Linking
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
 import { collection, onSnapshot, query, orderBy, where, doc, deleteDoc } from 'firebase/firestore';
-import { ChevronLeft, Plus, Search, Beaker, CheckCircle2, FlaskConical, AlertCircle, AlertTriangle, Edit3, Trash2 } from 'lucide-react-native';
+import { ChevronLeft, Plus, Search, Beaker, CheckCircle2, FlaskConical, AlertCircle, AlertTriangle, Edit3, Trash2, ShieldAlert, ExternalLink, X, FileText } from 'lucide-react-native';
 import Toast from 'react-native-toast-message';
 
 const normalizeString = (str) => {
@@ -19,6 +19,8 @@ export default function FormulationScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
   const [expandedFormulas, setExpandedFormulas] = useState([]);
+  const [eigDocs, setEigDocs] = useState([]);
+  const [eigModalDoc, setEigModalDoc] = useState(null);
 
   const toggleExpand = (id) => {
     setExpandedFormulas(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
@@ -64,6 +66,19 @@ export default function FormulationScreen({ navigation }) {
     });
     
     return () => unsubscribe();
+  }, []);
+
+  // Cargar documentos EIG de fórmulas
+  useEffect(() => {
+    const qEig = query(
+      collection(db, 'EIG_Documents'),
+      where('linkedType', '>=', 'FORMULA'),
+      where('linkedType', '<=', 'FORMULA\uf8ff')
+    );
+    const unsubEig = onSnapshot(qEig, (snap) => {
+      setEigDocs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsubEig();
   }, []);
 
   // Filtrado de búsqueda
@@ -149,12 +164,23 @@ export default function FormulationScreen({ navigation }) {
               </View>
             </View>
 
-            <View style={[styles.warningBox, { backgroundColor: bgTheme, borderColor: borderTheme }]}>
-              <AlertTriangle size={14} color={themeColor} />
-              <Text style={[styles.warningText, { color: themeColor }]}>
-                Precaución: {isAcid ? 'Reacciona violentamente con bases fuertes.' : 'Reacciona violentamente con ácidos fuertes.'}
-              </Text>
-            </View>
+
+            {/* BOTÓN INFO EIG */}
+            {(() => {
+              const eigDoc = eigDocs.find(e =>
+                e.linkedName?.toUpperCase() === item.productName?.toUpperCase()
+              );
+              if (!eigDoc) return null;
+              return (
+                <TouchableOpacity
+                  style={styles.eigBtn}
+                  onPress={() => setEigModalDoc(eigDoc)}
+                >
+                  <ShieldAlert size={16} color="#0f766e" />
+                  <Text style={styles.eigBtnText}>⚠️ INFO EIG — {eigDoc.title}</Text>
+                </TouchableOpacity>
+              );
+            })()}
           </View>
         )}
       </View>
@@ -223,6 +249,44 @@ export default function FormulationScreen({ navigation }) {
         />
       )}
 
+      {/* MODAL EIG INFO */}
+      <Modal visible={!!eigModalDoc} transparent animationType="fade" onRequestClose={() => setEigModalDoc(null)}>
+        <View style={styles.eigModalOverlay}>
+          <View style={styles.eigModalBox}>
+            <View style={styles.eigModalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                <ShieldAlert size={22} color="#0f766e" />
+                <View>
+                  <Text style={styles.eigModalTitle}>{eigModalDoc?.title}</Text>
+                  <Text style={styles.eigModalSub}>{eigModalDoc?.linkedName}</Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => setEigModalDoc(null)}>
+                <X size={24} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+            {eigModalDoc?.notes ? (
+              <View style={styles.eigNotesBox}>
+                <Text style={styles.eigNotesLabel}>Observaciones de Seguridad</Text>
+                <Text style={styles.eigNotesText}>{eigModalDoc.notes}</Text>
+              </View>
+            ) : null}
+            {eigModalDoc?.pdfUrl && (
+              <TouchableOpacity
+                style={styles.eigOpenPdfBtn}
+                onPress={() => Linking.openURL(eigModalDoc.pdfUrl).catch(() => Alert.alert('Error', 'No se pudo abrir el PDF.'))}
+              >
+                <FileText size={16} color="#fff" />
+                <Text style={styles.eigOpenPdfBtnText}>Abrir Hoja Técnica (PDF)</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={styles.eigCloseBtn} onPress={() => setEigModalDoc(null)}>
+              <Text style={styles.eigCloseBtnText}>Cerrar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -273,9 +337,25 @@ const styles = StyleSheet.create({
   warningBox: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 10, borderWidth: 1, marginTop: 10 },
   warningText: { fontSize: 11, fontWeight: '700', flex: 1, lineHeight: 16 },
   
-  
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 50 },
-  loadingText: { marginTop: 15, color: '#64748b', fontWeight: '700', fontSize: 14 },
-  emptyContainer: { alignItems: 'center', marginTop: 60, paddingHorizontal: 40 },
-  emptyText: { textAlign: 'center', marginTop: 15, color: '#94a3b8', fontWeight: '600', fontSize: 14, lineHeight: 22 }
+  emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingTop: 80 },
+  emptyText: { color: '#94a3b8', fontWeight: '600', fontSize: 14, marginTop: 15, textAlign: 'center' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  loadingText: { color: '#94a3b8', fontWeight: '700', marginTop: 10 },
+
+  eigBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f0fdfa', borderWidth: 1.5, borderColor: '#2a7d7b', borderRadius: 10, padding: 10, marginTop: 10 },
+  eigBtnText: { flex: 1, fontSize: 13, color: '#0f766e', fontWeight: '800' },
+
+  // EIG MODAL
+  eigModalOverlay: { flex: 1, backgroundColor: 'rgba(15,23,42,0.6)', justifyContent: 'center', padding: 24 },
+  eigModalBox: { backgroundColor: '#fff', borderRadius: 20, padding: 22, elevation: 20 },
+  eigModalHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16, gap: 10 },
+  eigModalTitle: { fontSize: 16, fontWeight: '900', color: '#0f172a' },
+  eigModalSub: { fontSize: 11, color: '#64748b', fontWeight: '700', marginTop: 2 },
+  eigNotesBox: { backgroundColor: '#f0fdfa', borderRadius: 12, padding: 14, marginBottom: 14 },
+  eigNotesLabel: { fontSize: 10, fontWeight: '900', color: '#0f766e', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 },
+  eigNotesText: { fontSize: 14, color: '#134e4a', lineHeight: 22 },
+  eigOpenPdfBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#0369a1', padding: 14, borderRadius: 12, marginBottom: 10 },
+  eigOpenPdfBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  eigCloseBtn: { alignItems: 'center', padding: 12 },
+  eigCloseBtnText: { color: '#94a3b8', fontWeight: '800', fontSize: 14 }
 });

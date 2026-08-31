@@ -152,15 +152,18 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
       setIsSubmitting(true);
       
       // 0. VERIFICACIÓN Y CÁLCULO DE ÓRDENES PARCIALES
-      const bidonName = ["BIDON", `${presentation}L`];
-      const bidonStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', bidonName);
+      const capacityKeywords = [`${presentation}L`, `${presentation} L`, `${presentation} LTS`, `${presentation}LTS`];
+      const fuzzyBidon = ['BIDON', capacityKeywords, formData.brandBidon];
+      const bidonStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyBidon);
       
-      const cajaName = ["CAJA", [boxFormat, `${presentation}L`]];
-      const cajaStock = appliesBox ? await checkTotalStock('STOCK_CENTRAL_INSUMOS', cajaName) : Infinity;
+      const boxKeywords = [boxFormat, `${presentation}L`, `${presentation} L`, `X ${presentation}L`, `X${presentation}L`];
+      const fuzzyCaja = appliesBox ? ['CAJA', boxKeywords, formData.brandCaja] : null;
+      const cajaStock = appliesBox ? await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyCaja) : Infinity;
 
       const baseLabelName = getBaseLabelName(commercialName);
-      const etiquetaName = `ETIQUETA ${presentation}L ${baseLabelName}`;
-      const etiquetaStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', etiquetaName);
+      const labelKeywords = [baseLabelName, commercialName];
+      const fuzzyEtiqueta = ['ETIQUETA', capacityKeywords, labelKeywords];
+      const etiquetaStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyEtiqueta);
 
       const maxUnitsGranel = Math.floor(selectedLot.quantity / presentation);
       
@@ -218,7 +221,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
 
       // 2. DEDUCCIÓN DE INSUMOS CENTRALES (BIDONES)
       await registerMovement(currentUser, 'CONSUMO_INSUMO', 'STOCK_CENTRAL_INSUMOS', {
-          itemName: bidonName,
+          itemName: fuzzyBidon,
           quantity: -Math.abs(units),
           stockType: 'INSUMOS',
           batchInternal: batchId,
@@ -228,7 +231,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
       // 3. DEDUCCIÓN DE INSUMOS CENTRALES (CAJAS) SI APLICA
       if (appliesBox && requiredBoxes > 0) {
         await registerMovement(currentUser, 'CONSUMO_INSUMO', 'STOCK_CENTRAL_INSUMOS', {
-            itemName: cajaName,
+            itemName: fuzzyCaja,
             quantity: -Math.abs(requiredBoxes),
             stockType: 'INSUMOS',
             batchInternal: batchId,
@@ -237,10 +240,8 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
       }
 
       // 4. DEDUCCIÓN DE INSUMOS CENTRALES (ETIQUETAS)
-      const baseLabelNameForDeduction = getBaseLabelName(commercialName);
-      const finalEtiquetaName = `ETIQUETA ${presentation}L ${baseLabelNameForDeduction}`;
       await registerMovement(currentUser, 'CONSUMO_INSUMO', 'STOCK_CENTRAL_INSUMOS', {
-          itemName: finalEtiquetaName,
+          itemName: fuzzyEtiqueta,
           quantity: -Math.abs(units),
           stockType: 'INSUMOS',
           batchInternal: batchId,

@@ -86,13 +86,14 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
       const absQty = Number(Math.abs(numericQty).toFixed(2));
 
       // ENRUTADOR INTELIGENTE: ¿Descuento Exacto o FIFO?
+      // NOTA: Insumos (Bidones, Cajas, Etiquetas) siempre usan FIFO porque no comparten el lote del granel.
       const isExactDeduction = 
-        actionType === 'EGRESO_DESPACHO_CLIENTE' || 
-        actionType === 'CONSUMO_ENVASADO' ||
-        actionType === 'CONSUMO_ENVASADO_BIDON' ||
-        actionType === 'CONSUMO_ENVASADO_CAJA' ||
-        actionType === 'RETIRO_PRODUCCION' ||
-        ((actionType === 'EGRESO_CLEARING' || actionType === 'BAJA_POR_AJUSTE') && data.batchInternal && data.batchInternal !== 'S/D');
+        !isFuzzyItem && (
+          actionType === 'EGRESO_DESPACHO_CLIENTE' || 
+          actionType === 'CONSUMO_ENVASADO' ||
+          actionType === 'RETIRO_PRODUCCION' ||
+          ((actionType === 'EGRESO_CLEARING' || actionType === 'BAJA_POR_AJUSTE') && data.batchInternal && data.batchInternal !== 'S/D')
+        );
 
       if (isExactDeduction) {
         // DESCUENTO EXACTO: Va directo al Lote que el usuario eligió en pantalla

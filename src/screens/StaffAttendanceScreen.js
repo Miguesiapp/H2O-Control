@@ -8,11 +8,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { db, storage, auth } from '../config/firebase';
 import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot } from 'firebase/firestore';
-import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { 
   UserCheck, UserX, Camera, ShieldCheck, UserPlus, 
   RotateCcw, Save, Lock, Monitor, ChevronLeft, UserCircle 
 } from 'lucide-react-native';
+import { ALLOWED_ATTENDANCE_EMAILS } from '../config/constants';
 
 export default function StaffAttendanceScreen({ navigation }) {
   const { width, height } = useWindowDimensions();
@@ -30,14 +31,8 @@ export default function StaffAttendanceScreen({ navigation }) {
   const [showSelectModal, setShowSelectModal] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
 
-  const ALLOWED_EMAILS = [
-    'produccion@h2ocontrol.com.ar', 
-    'bduville@h2ocontrol.com.ar', 
-    'miguesilva.1985@outlook.es'
-  ];
-  
   const userEmail = auth.currentUser?.email?.toLowerCase();
-  const hasAccess = ALLOWED_EMAILS.includes(userEmail);
+  const hasAccess = ALLOWED_ATTENDANCE_EMAILS.includes(userEmail);
 
   useEffect(() => {
     if (hasAccess) {
@@ -111,26 +106,40 @@ export default function StaffAttendanceScreen({ navigation }) {
       if (type === 'REGISTRO') {
         setTempPhoto(photo);
       } else {
-        await finalizeRegistration(photo.base64);
+        await finalizeRegistration(photo.uri);
       }
     } catch (error) {
-      Alert.alert("Error de Sensor", "No se pudo capturar la biometría. Reintente.");
+      console.error("Camera Error:", error);
+      Alert.alert("Error de Sensor", `No se pudo capturar la biometría: ${error.message || error}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const finalizeRegistration = async (base64Data) => {
+  const finalizeRegistration = async (photoUri) => {
     setLoading(true);
     try {
       let photoUrl = null;
 
       if (type === 'REGISTRO') {
-        const path = 'staff_profiles';
+        const existingProfile = staffProfiles.find(p => p.name.toLowerCase() === selectedOperario.toLowerCase());
+        if (existingProfile) {
+          Alert.alert("Perfil Existente", `El operario ${selectedOperario} ya cuenta con un perfil registrado.`);
+          setTempPhoto(null);
+          setLoading(false);
+          setType(null);
+          setSelectedOperario(null);
+          return;
+        }
+
+        const path = 'attendance';
         const fileName = `${path}/${type}_${auth.currentUser?.uid}_${Date.now()}.jpg`;
         const storageRef = ref(storage, fileName);
         
-        await uploadString(storageRef, base64Data, 'base64');
+        const response = await fetch(photoUri);
+        const blob = await response.blob();
+        
+        await uploadBytes(storageRef, blob);
         photoUrl = await getDownloadURL(storageRef);
 
         await addDoc(collection(db, "StaffProfiles"), {
@@ -154,7 +163,8 @@ export default function StaffAttendanceScreen({ navigation }) {
       ]);
       setTempPhoto(null);
     } catch (error) {
-      Alert.alert("Error de Sincronización", "Fallo al subir registro a la nube.");
+      console.error("Upload Error:", error);
+      Alert.alert("Error de Sincronización", `Fallo al subir registro a la nube: ${error.message || error}`);
     } finally {
       setLoading(false);
     }
@@ -290,9 +300,13 @@ export default function StaffAttendanceScreen({ navigation }) {
                 <RotateCcw color="#fff" size={20} />
                 <Text style={styles.whiteText}>REPETIR</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.confirmSaveBtn} onPress={() => finalizeRegistration(tempPhoto.base64)}>
+              <TouchableOpacity 
+                style={[styles.confirmSaveBtn, loading && { opacity: 0.5 }]} 
+                onPress={() => finalizeRegistration(tempPhoto.uri)}
+                disabled={loading}
+              >
                 <Save color="#fff" size={20} />
-                <Text style={styles.whiteText}>CONFIRMAR</Text>
+                <Text style={styles.whiteText}>{loading ? "GUARDANDO..." : "CONFIRMAR"}</Text>
               </TouchableOpacity>
             </View>
           </View>
