@@ -66,18 +66,11 @@ export default function StaffAttendanceScreen({ navigation }) {
     );
   }
 
-  const openSelection = (actionType) => {
+  const openSelection = async (actionType) => {
     if (staffProfiles.length === 0) {
       Alert.alert("Sin Perfiles", "No hay operarios registrados. Primero deben registrar su perfil.");
       return;
     }
-    setType(actionType);
-    setShowSelectModal(true);
-  };
-
-  const handleAction = async (actionType, operarioName) => {
-    setShowSelectModal(false);
-    setShowRegisterModal(false);
     if (!permission?.granted) {
       const res = await requestPermission();
       if (!res.granted) {
@@ -85,11 +78,25 @@ export default function StaffAttendanceScreen({ navigation }) {
         return;
       }
     }
+    setType(actionType);
+    setShowSelectModal(true);
+  };
+
+  const handleAction = (actionType, operarioName) => {
+    setShowSelectModal(false);
+    setShowRegisterModal(false);
     setSelectedOperario(operarioName);
     setType(actionType);
   };
 
-  const startRegistration = () => {
+  const startRegistration = async () => {
+    if (!permission?.granted) {
+      const res = await requestPermission();
+      if (!res.granted) {
+        Alert.alert("Hardware Bloqueado", "El sistema requiere acceso a la cámara para la biometría visual.");
+        return;
+      }
+    }
     setNewOperarioName('');
     setShowRegisterModal(true);
   };
