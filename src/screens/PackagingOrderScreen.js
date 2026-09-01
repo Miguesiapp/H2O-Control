@@ -159,6 +159,17 @@ export default function PackagingOrderScreen({ route, navigation }) {
       const batchId = selectedLot.batchInternal; 
       const itemName = selectedLot.itemName?.toUpperCase();
 
+      // Variables de Búsqueda Generalizada (Fuzzy) para usarse después en la deducción
+      const capacityKeywords = [`${presentation}L`, `${presentation} L`, `${presentation} LTS`, `${presentation}LTS`];
+      const fuzzyBidon = ['BIDON', capacityKeywords, formData.brandBidon];
+      
+      const boxKeywords = [boxFormat, `${presentation}L`, `${presentation} L`, `X ${presentation}L`, `X${presentation}L`];
+      const fuzzyCaja = appliesBox ? ['CAJA', boxKeywords, formData.brandCaja] : null;
+
+      const baseLabelName = getBaseLabelName(commercialName);
+      const labelKeywords = [baseLabelName, commercialName];
+      const fuzzyEtiqueta = ['ETIQUETA', capacityKeywords, labelKeywords];
+
       if (isContainer) {
         // === MODO CONTENEDOR: sin bidones, cajas ni etiquetas ===
         // Solo se verifica el granel disponible
@@ -171,17 +182,8 @@ export default function PackagingOrderScreen({ route, navigation }) {
         // === MODO BIDÓN: verificar insumos (Búsqueda Generalizada / Fuzzy) ===
         // 0. VERIFICACIÓN Y CÁLCULO DE ÓRDENES PARCIALES
         
-        const capacityKeywords = [`${presentation}L`, `${presentation} L`, `${presentation} LTS`, `${presentation}LTS`];
-        const fuzzyBidon = ['BIDON', capacityKeywords, formData.brandBidon];
         const bidonStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyBidon);
-        
-        const boxKeywords = [boxFormat, `${presentation}L`, `${presentation} L`, `X ${presentation}L`, `X${presentation}L`];
-        const fuzzyCaja = appliesBox ? ['CAJA', boxKeywords, formData.brandCaja] : null;
         const cajaStock = appliesBox ? await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyCaja) : Infinity;
-
-        const baseLabelName = getBaseLabelName(commercialName);
-        const labelKeywords = [baseLabelName, commercialName];
-        const fuzzyEtiqueta = ['ETIQUETA', capacityKeywords, labelKeywords];
         const etiquetaStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyEtiqueta);
 
         const maxUnitsGranel = Math.floor(selectedLot.quantity / presentation);
