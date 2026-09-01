@@ -129,8 +129,9 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
   const litersToConsume = units * presentation;
   const remainingLiters = selectedLot ? (selectedLot.quantity - litersToConsume) : 0;
   const isOverdraft = selectedLot && remainingLiters < 0;
-
-  const appliesBox = presentation === 5 || presentation === 1;
+  
+  const isContainer = presentation === 1000;
+  const appliesBox = !isContainer && (presentation === 5 || presentation === 1);
   let requiredBoxes = 0;
   let boxFormat = '';
   
@@ -151,60 +152,69 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
     try {
       setIsSubmitting(true);
       
-      // 0. VERIFICACIÓN Y CÁLCULO DE ÓRDENES PARCIALES
+      // Variables de Búsqueda Generalizada (Fuzzy)
       const capacityKeywords = [`${presentation}L`, `${presentation} L`, `${presentation} LTS`, `${presentation}LTS`];
       const fuzzyBidon = ['BIDON', capacityKeywords, formData.brandBidon];
-      const bidonStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyBidon);
       
       const boxKeywords = [boxFormat, `${presentation}L`, `${presentation} L`, `X ${presentation}L`, `X${presentation}L`];
       const fuzzyCaja = appliesBox ? ['CAJA', boxKeywords, formData.brandCaja] : null;
-      const cajaStock = appliesBox ? await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyCaja) : Infinity;
 
       const baseLabelName = getBaseLabelName(commercialName);
       const labelKeywords = [baseLabelName, commercialName];
       const fuzzyEtiqueta = ['ETIQUETA', capacityKeywords, labelKeywords];
-      const etiquetaStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyEtiqueta);
 
-      const maxUnitsGranel = Math.floor(selectedLot.quantity / presentation);
-      
-      let maxUnitsCaja = Infinity;
-      if (presentation === 5) maxUnitsCaja = cajaStock * 4;
-      else if (presentation === 1) maxUnitsCaja = cajaStock * 12;
-
-      const maxPossibleUnits = Math.floor(Math.min(maxUnitsGranel, bidonStock, maxUnitsCaja, etiquetaStock));
-
-      if (units > maxPossibleUnits) {
-        setIsSubmitting(false);
-        
-        let limitReason = 'el Granel disponible';
-        if (maxPossibleUnits === bidonStock) limitReason = `los Bidones disponibles (${bidonStock})`;
-        else if (maxPossibleUnits === maxUnitsCaja) limitReason = `las Cajas disponibles (${cajaStock})`;
-        else if (maxPossibleUnits === etiquetaStock) limitReason = `las Etiquetas disponibles (${etiquetaStock})`;
-        
-        if (maxPossibleUnits > 0) {
-          if (Platform.OS === 'web') {
-            const confirm = window.confirm(`Stock Insuficiente (limitado por ${limitReason}). Puedes envasar máximo ${maxPossibleUnits} unidades.\n\n¿Deseas ajustar la orden a esta cantidad?`);
-            if (confirm) setFormData({...formData, unitsProduced: String(maxPossibleUnits)});
-          } else {
-            Alert.alert(
-              'Stock Insuficiente',
-              `Limitado por ${limitReason}.\nPuedes envasar como máximo ${maxPossibleUnits} unidades.\n\n¿Deseas ajustar la orden?`,
-              [
-                { text: 'Cancelar', style: 'cancel' },
-                { text: `Ajustar a ${maxPossibleUnits}`, onPress: () => setFormData({...formData, unitsProduced: String(maxPossibleUnits)}) }
-              ]
-            );
-          }
-        } else {
-          let missing = [];
-          if (maxUnitsGranel <= 0) missing.push('Granel');
-          if (bidonStock <= 0) missing.push(`Bidones`);
-          if (appliesBox && cajaStock <= 0) missing.push(`Cajas`);
-          if (etiquetaStock <= 0) missing.push(`Etiquetas (${etiquetaName})`);
-          
-          Toast.show({ type: 'error', text1: 'Stock Insuficiente (0 Unidades)', text2: `Falta stock de: ${missing.join(', ')}` });
+      if (isContainer) {
+        if (units > selectedLot.quantity) {
+          setIsSubmitting(false);
+          Toast.show({ type: 'error', text1: 'MP Insuficiente', text2: `Disponible: ${selectedLot.quantity.toFixed(2)} Kg/Lts. Solicitado: ${units} Lts.` });
+          return;
         }
-        return;
+      } else {
+        const bidonStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyBidon);
+        const cajaStock = appliesBox ? await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyCaja) : Infinity;
+        const etiquetaStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyEtiqueta);
+
+        const maxUnitsGranel = Math.floor(selectedLot.quantity / presentation);
+        
+        let maxUnitsCaja = Infinity;
+        if (presentation === 5) maxUnitsCaja = cajaStock * 4;
+        else if (presentation === 1) maxUnitsCaja = cajaStock * 12;
+
+        const maxPossibleUnits = Math.floor(Math.min(maxUnitsGranel, bidonStock, maxUnitsCaja, etiquetaStock));
+
+        if (units > maxPossibleUnits) {
+          setIsSubmitting(false);
+          
+          let limitReason = 'la Materia Prima disponible';
+          if (maxPossibleUnits === bidonStock) limitReason = `los Bidones disponibles (${bidonStock})`;
+          else if (maxPossibleUnits === maxUnitsCaja) limitReason = `las Cajas disponibles (${cajaStock})`;
+          else if (maxPossibleUnits === etiquetaStock) limitReason = `las Etiquetas disponibles (${etiquetaStock})`;
+          
+          if (maxPossibleUnits > 0) {
+            if (Platform.OS === 'web') {
+              const confirm = window.confirm(`Stock Insuficiente (limitado por ${limitReason}). Puedes envasar máximo ${maxPossibleUnits} unidades.\n\n¿Deseas ajustar la orden a esta cantidad?`);
+              if (confirm) setFormData({...formData, unitsProduced: String(maxPossibleUnits)});
+            } else {
+              Alert.alert(
+                'Stock Insuficiente',
+                `Limitado por ${limitReason}.\nPuedes envasar como máximo ${maxPossibleUnits} unidades.\n\n¿Deseas ajustar la orden?`,
+                [
+                  { text: 'Cancelar', style: 'cancel' },
+                  { text: `Ajustar a ${maxPossibleUnits}`, onPress: () => setFormData({...formData, unitsProduced: String(maxPossibleUnits)}) }
+                ]
+              );
+            }
+          } else {
+            let missing = [];
+            if (maxUnitsGranel <= 0) missing.push('Materia Prima');
+            if (bidonStock <= 0) missing.push(`Bidones`);
+            if (appliesBox && cajaStock <= 0) missing.push(`Cajas`);
+            if (etiquetaStock <= 0) missing.push(`Etiquetas (${baseLabelName})`);
+            
+            Toast.show({ type: 'error', text1: 'Stock Insuficiente (0 Unidades)', text2: `Falta stock de: ${missing.join(', ')}` });
+          }
+          return;
+        }
       }
       const batchId = selectedLot.batchInternal; 
       const itemName = selectedLot.itemName?.toUpperCase();
@@ -219,50 +229,54 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
           unit: 'Kg'
       });
 
-      // 2. DEDUCCIÓN DE INSUMOS CENTRALES (BIDONES)
-      await registerMovement(currentUser, 'CONSUMO_INSUMO', 'STOCK_CENTRAL_INSUMOS', {
-          itemName: fuzzyBidon,
-          quantity: -Math.abs(units),
-          stockType: 'INSUMOS',
-          batchInternal: batchId,
-          unit: 'Uds'
-      });
-
-      // 3. DEDUCCIÓN DE INSUMOS CENTRALES (CAJAS) SI APLICA
-      if (appliesBox && requiredBoxes > 0) {
+      if (!isContainer) {
+        // 2. DEDUCCIÓN DE INSUMOS CENTRALES (BIDONES)
         await registerMovement(currentUser, 'CONSUMO_INSUMO', 'STOCK_CENTRAL_INSUMOS', {
-            itemName: fuzzyCaja,
-            quantity: -Math.abs(requiredBoxes),
+            itemName: fuzzyBidon,
+            quantity: -Math.abs(units),
             stockType: 'INSUMOS',
             batchInternal: batchId,
             unit: 'Uds'
         });
-      }
 
-      // 4. DEDUCCIÓN DE INSUMOS CENTRALES (ETIQUETAS)
-      await registerMovement(currentUser, 'CONSUMO_INSUMO', 'STOCK_CENTRAL_INSUMOS', {
-          itemName: fuzzyEtiqueta,
-          quantity: -Math.abs(units),
-          stockType: 'INSUMOS',
-          batchInternal: batchId,
-          unit: 'Uds'
-      });
+        // 3. DEDUCCIÓN DE INSUMOS CENTRALES (CAJAS) SI APLICA
+        if (appliesBox && requiredBoxes > 0) {
+          await registerMovement(currentUser, 'CONSUMO_INSUMO', 'STOCK_CENTRAL_INSUMOS', {
+              itemName: fuzzyCaja,
+              quantity: -Math.abs(requiredBoxes),
+              stockType: 'INSUMOS',
+              batchInternal: batchId,
+              unit: 'Uds'
+          });
+        }
 
-      const packagedItemName = `${commercialName.trim().toUpperCase()} - ${presentation}L`;
+        // 4. DEDUCCIÓN DE INSUMOS CENTRALES (ETIQUETAS)
+        await registerMovement(currentUser, 'CONSUMO_INSUMO', 'STOCK_CENTRAL_INSUMOS', {
+            itemName: fuzzyEtiqueta,
+            quantity: -Math.abs(units),
+            stockType: 'INSUMOS',
+            batchInternal: batchId,
+            unit: 'Uds'
+        });
+      } // fin isContainer
+
+      const packagedItemName = isContainer
+        ? `${commercialName.trim().toUpperCase()} - CONTENEDOR 1000L`
+        : `${commercialName.trim().toUpperCase()} - ${presentation}L`;
 
       // 4. CREA LA ORDEN EN MÁQUINA DE ESTADOS (Ticket ENVIADO)
       const orderData = {
         itemName: packagedItemName,
         quantity: units,
         litersConsumed: litersToConsume,
-        presentation: presentation,
-        brandBidon: formData.brandBidon,
+        presentation: isContainer ? 1000 : presentation,
+        brandBidon: isContainer ? 'CONTENEDOR' : formData.brandBidon,
         brandCaja: appliesBox ? formData.brandCaja : null,
         requiredBoxes: appliesBox ? requiredBoxes : 0,
         batchInternal: batchId,
-        batchProvider: selectedLot.batchProvider || 'S/D',
+        batchProvider: selectedLot.loteProveedor || selectedLot.batchProvider || 'S/D',
         expiryDate: selectedLot.expiryDate || 'S/V',
-        unit: 'Uds',
+        unit: isContainer ? 'Lts' : 'Uds',
         company: companyName,
       };
 

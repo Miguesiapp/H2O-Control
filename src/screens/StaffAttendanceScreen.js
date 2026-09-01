@@ -119,8 +119,6 @@ export default function StaffAttendanceScreen({ navigation }) {
   const finalizeRegistration = async (photoUri) => {
     setLoading(true);
     try {
-      let photoUrl = null;
-
       if (type === 'REGISTRO') {
         const existingProfile = staffProfiles.find(p => p.name.toLowerCase() === selectedOperario.toLowerCase());
         if (existingProfile) {
@@ -131,17 +129,19 @@ export default function StaffAttendanceScreen({ navigation }) {
           setSelectedOperario(null);
           return;
         }
+      }
 
-        const path = 'attendance';
-        const fileName = `${path}/${type}_${auth.currentUser?.uid}_${Date.now()}.jpg`;
-        const storageRef = ref(storage, fileName);
-        
-        const response = await fetch(photoUri);
-        const blob = await response.blob();
-        
-        await uploadBytes(storageRef, blob);
-        photoUrl = await getDownloadURL(storageRef);
+      const path = 'attendance';
+      const fileName = `${path}/${type}_${auth.currentUser?.uid}_${Date.now()}.jpg`;
+      const storageRef = ref(storage, fileName);
+      
+      const response = await fetch(photoUri);
+      const blob = await response.blob();
+      
+      await uploadBytes(storageRef, blob);
+      const photoUrl = await getDownloadURL(storageRef);
 
+      if (type === 'REGISTRO') {
         await addDoc(collection(db, "StaffProfiles"), {
           name: selectedOperario,
           photoUrl: photoUrl,
