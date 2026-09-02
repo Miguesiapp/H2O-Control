@@ -84,10 +84,17 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
     try {
       const inventoryRef = collection(db, "Inventory");
       
-      // CARGAMOS TODO EL STOCK MP
-      const qAllMP = query(inventoryRef, where("stockType", "==", "MP"));
+      // CARGAMOS TODO EL STOCK MP Y GRANEL
+      const qAllMP = query(inventoryRef, where("stockType", "in", ["MP", "GRANEL"]));
       const snapAllMP = await getDocs(qAllMP);
       const allMPStock = snapAllMP.docs.map(doc => doc.data());
+
+      // MAPA DE DENSIDADES PARA CONVERSIÓN DE GRANELES (Kg a Lts)
+      const densityMap = {};
+      formulas.forEach(f => {
+        const d = f.densidadObjetivo || f.densidad || 1;
+        densityMap[normalizeString(f.productName)] = Number(d);
+      });
 
       // Usaremos un mapa para acumular requerimientos por MP (agrupados por nombre normalizado base)
       const mpRequirements = {};
@@ -101,7 +108,15 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
           if (ing.type === 'NOTE') return;
           
           const ingNameUpper = ing.name.trim().toUpperCase();
-          const amountNeeded = (targetKilos * Number(ing.percentage)) / 100;
+          let amountNeeded = (targetKilos * Number(ing.percentage)) / 100;
+          
+          // CONVERSIÓN A LITROS SI ES UN GRANEL
+          const isGranel = PRODUCTS_MADRE_LIST.some(pm => pm.split('/')[0].trim() === ingNameUpper);
+          if (isGranel) {
+             const baseName = ingNameUpper.split('/')[0].trim();
+             const ingDensity = densityMap[normalizeString(baseName)] || 1;
+             amountNeeded = amountNeeded / ingDensity;
+          }
           
           // BÚSQUEDA INTELIGENTE
           let searchNamesUpper = [ingNameUpper];
@@ -157,7 +172,9 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
         const mp = mpRequirements[key];
         
         let totalInStock = 0;
+        const BLOCKED_STATUSES = ['PENDIENTE', 'PENDIENTE_LABORATORIO'];
         allMPStock.forEach(item => {
+           if (BLOCKED_STATUSES.includes(item.status)) return; // Respetar cuarentena de BBS Calidad
            const itemNameNorm = normalizeString(item.itemName);
            if (mp.searchNamesNorm.includes(itemNameNorm) && Number(item.quantity) > 0) {
              totalInStock += Number(item.quantity);

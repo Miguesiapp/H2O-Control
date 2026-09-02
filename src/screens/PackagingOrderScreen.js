@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, TextInput, 
-  TouchableOpacity, Alert, StatusBar, ActivityIndicator, FlatList, Modal, Linking
+  TouchableOpacity, Alert, StatusBar, ActivityIndicator, FlatList, Modal, Linking, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';

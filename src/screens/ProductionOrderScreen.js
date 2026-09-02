@@ -167,6 +167,14 @@ export default function ProductionOrderScreen({ route, navigation }) {
          };
       });
 
+      // MAPA DE DENSIDADES PARA CONVERSIÓN DE GRANELES (Kg a Lts)
+      const allFormulasSnap = await getDocs(collection(db, 'Formulas_Maestras'));
+      const densityMap = {};
+      allFormulasSnap.forEach(doc => {
+        const d = doc.data();
+        densityMap[normalizeString(d.productName)] = Number(d.densidadObjetivo || d.densidad || 1);
+      });
+
       for (const ingredient of formulaData.ingredients) {
         const percentageValue = ingredient.percentage !== undefined ? ingredient.percentage / 100 : 0;
         const requiredQty = Number((targetKilos * percentageValue).toFixed(2));
@@ -192,13 +200,23 @@ export default function ProductionOrderScreen({ route, navigation }) {
         const possibleNorm = possibleIngredients.map(n => normalizeString(n));
 
         const isGranel = PRODUCTS_MADRE_LIST.some(pm => pm.split('/')[0].trim() === ingUpper);
+        
+        // CONVERSIÓN A LITROS SI ES UN GRANEL
+        if (isGranel) {
+           const baseName = ingUpper.split('/')[0].trim();
+           const ingDensity = densityMap[normalizeString(baseName)] || 1;
+           requiredQty = Number((requiredQty / ingDensity).toFixed(2));
+        }
+
         const searchCompany = isGranel ? 'H2O' : 'STOCK_CENTRAL_MP';
         const searchStockType = isGranel ? 'GRANEL' : 'MP';
         
         let currentStock = 0;
         const availableBatches = [];
         
+        const BLOCKED_STATUSES = ['PENDIENTE', 'PENDIENTE_LABORATORIO'];
         allActiveStock.forEach(item => {
+           if (BLOCKED_STATUSES.includes(item.status)) return; // Respetar cuarentena de BBS Calidad
            if (item.company === searchCompany && item.stockType === searchStockType) {
               const itemNorm = normalizeString(item.itemName);
               if (possibleNorm.includes(itemNorm)) {
@@ -258,11 +276,39 @@ export default function ProductionOrderScreen({ route, navigation }) {
   const executeProductionOrder = async () => {
     try {
       setIsSubmitting(true);
-      const batchId = generateBatchId();
+      const baseBatchId = generateBatchId();
+      let batchId = baseBatchId;
       const currentUser = auth.currentUser?.email || 'Sistema';
+
+      // --- GENERACIÓN DE LOTE INCREMENTAL AUTOMÁTICA ---
+      // Buscar si ya existe este lote para ESTE granel hoy
+      const ordersRef = collection(db, 'Orders');
+      const qOrders = query(ordersRef, where('type', '==', 'OP'), where('data.itemName', '==', productName.trim().toUpperCase()));
+      const snapOrders = await getDocs(qOrders);
+      
+      let count = 0;
+      snapOrders.forEach(doc => {
+         const existingBatch = doc.data().data?.batchInternal || '';
+         if (existingBatch.startsWith(baseBatchId)) {
+            count++;
+         }
+      });
+      
+      if (count > 0) {
+         batchId = `${baseBatchId}/${count}`;
+      }
+      // ---------------------------------------------------
 
       if (!expiryDate.trim()) {
         Alert.alert("Error", "Debes especificar la fecha de vencimiento del lote a granel.");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // === REGLA ESTRICTA DE INVENTARIO ===
+      const hasMissingStock = requirements.needs.some(req => !req.isSufficient);
+      if (hasMissingStock) {
+        Alert.alert("Stock Insuficiente", "No hay suficiente materia prima para emitir esta orden. Verifica los requerimientos calculados.");
         setIsSubmitting(false);
         return;
       }
@@ -281,17 +327,6 @@ export default function ProductionOrderScreen({ route, navigation }) {
               details: `OP ${batchId} - Reserva Fórmula`
             });
           }
-        } else {
-          // Fallback para faltantes forzados
-          await registerMovement(currentUser, 'RETIRO_PRODUCCION', req.isGranel ? 'H2O' : companyName, {
-            itemName: req.name,
-            quantity: -Math.abs(req.required), 
-            stockType: req.isGranel ? 'GRANEL' : 'MP',
-            batchInternal: batchId,
-            loteProveedor: 'S/D', 
-            unit: 'Kg/Lts',
-            details: `OP ${batchId} (Forzado)`
-          });
         }
       }
 

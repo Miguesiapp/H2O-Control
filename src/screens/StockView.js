@@ -5,8 +5,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
-import { collection, query, where, onSnapshot, writeBatch, doc } from 'firebase/firestore';
-import { ChevronLeft, Search, PackageOpen, AlertTriangle, ShieldCheck, X, FlaskConical, Droplet, Box, Tag, Printer, ChevronDown, ChevronUp, Edit2 } from 'lucide-react-native';
+import { collection, query, where, onSnapshot, writeBatch, doc, deleteDoc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
+import { ChevronLeft, Search, PackageOpen, AlertTriangle, ShieldCheck, X, FlaskConical, Droplet, Box, Tag, Printer, ChevronDown, ChevronUp, Edit2, Trash2 } from 'lucide-react-native';
 import { printMultipleLabels } from '../services/labelService';
 import { RAW_MATERIALS_LIST, PRODUCTS_MADRE_LIST } from '../config/constants';
 
@@ -42,6 +42,56 @@ export default function StockView({ route, navigation }) {
   const [selectedMinStockItem, setSelectedMinStockItem] = useState(null);
   const [newMinStock, setNewMinStock] = useState('');
   const [isUpdatingMin, setIsUpdatingMin] = useState(false);
+
+  // ESTADOS PARA AJUSTE Y ELIMINACIÓN DE LOTE
+  const [editLotModalVisible, setEditLotModalVisible] = useState(false);
+  const [selectedEditLot, setSelectedEditLot] = useState(null);
+  const [editLotQuantity, setEditLotQuantity] = useState('');
+  
+  const handleEditQuantity = async () => {
+    try {
+      if (!selectedEditLot) return;
+      const newQtyNum = Number(editLotQuantity);
+      if (isNaN(newQtyNum) || newQtyNum < 0) {
+        Alert.alert("Error", "Cantidad inválida.");
+        return;
+      }
+      const oldQty = selectedEditLot.quantity;
+      const difference = newQtyNum - oldQty;
+      if (difference === 0) {
+        setEditLotModalVisible(false);
+        return;
+      }
+      if (selectedEditLot.rawDocs && selectedEditLot.rawDocs.length > 0) {
+        const firstDocId = selectedEditLot.rawDocs[0];
+        const docRef = doc(db, "Inventory", firstDocId);
+        await updateDoc(docRef, { quantity: increment(difference), lastUpdated: serverTimestamp() });
+      }
+      setEditLotModalVisible(false);
+    } catch (error) {
+      Alert.alert("Error", "No se pudo actualizar.");
+    }
+  };
+
+  const [deleteLotModalVisible, setDeleteLotModalVisible] = useState(false);
+  const [selectedDeleteLot, setSelectedDeleteLot] = useState(null);
+
+  const handleDeleteLot = (lote) => {
+    setSelectedDeleteLot(lote);
+    setDeleteLotModalVisible(true);
+  };
+
+  const confirmDeleteLot = async () => {
+    if (!selectedDeleteLot) return;
+    try {
+      for (const docId of selectedDeleteLot.rawDocs) {
+        await deleteDoc(doc(db, "Inventory", docId));
+      }
+      setDeleteLotModalVisible(false);
+    } catch (error) {
+      Alert.alert("Error", "No se pudo eliminar.");
+    }
+  };
 
   const handleSaveMinStock = async () => {
     if (!selectedMinStockItem) return;
@@ -253,6 +303,26 @@ export default function StockView({ route, navigation }) {
                     <Printer color="#3b82f6" size={14} style={{marginRight: 4}} />
                     <Text style={{color: '#3b82f6', fontSize: 11, fontWeight: '700'}}>Imprimir</Text>
                   </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={[styles.printMiniBtn, { backgroundColor: '#fef3c7', borderColor: '#fcd34d' }]}
+                    onPress={() => {
+                      setSelectedEditLot(lote);
+                      setEditLotQuantity(String(lote.quantity));
+                      setEditLotModalVisible(true);
+                    }}
+                  >
+                    <Edit2 color="#d97706" size={14} style={{marginRight: 4}} />
+                    <Text style={{color: '#d97706', fontSize: 11, fontWeight: '700'}}>Editar</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={[styles.printMiniBtn, { backgroundColor: '#fef2f2', borderColor: '#fca5a5' }]}
+                    onPress={() => handleDeleteLot(lote)}
+                  >
+                    <Trash2 color="#ef4444" size={14} style={{marginRight: 4}} />
+                    <Text style={{color: '#ef4444', fontSize: 11, fontWeight: '700'}}>Eliminar</Text>
+                  </TouchableOpacity>
                   
                   {lote.status && (
                     <View style={styles.labStatusRow}>
@@ -454,6 +524,77 @@ export default function StockView({ route, navigation }) {
               >
                 <Text style={{color: '#fff', fontWeight: 'bold', textAlign: 'center'}}>{isUpdatingMin ? 'Guardando...' : 'GUARDAR'}</Text>
               </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={editLotModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Ajustar Cantidad</Text>
+              <TouchableOpacity onPress={() => setEditLotModalVisible(false)}>
+                <X color="#64748b" size={24} />
+              </TouchableOpacity>
+            </View>
+            
+            <View>
+              <Text style={{fontSize: 14, color: '#475569', marginBottom: 15}}>
+                Lote: <Text style={{fontWeight: '700'}}>{selectedEditLot?.batchInternal || 'S/D'}</Text>
+              </Text>
+              
+              <Text style={{fontWeight: '600', marginBottom: 5}}>Cantidad Real ({selectedEditLot?.unit}):</Text>
+              <TextInput 
+                style={styles.modalInput}
+                keyboardType="decimal-pad"
+                value={editLotQuantity}
+                onChangeText={setEditLotQuantity}
+                autoFocus
+              />
+
+              <TouchableOpacity style={styles.printConfirmBtn} onPress={handleEditQuantity}>
+                <Text style={{color: '#fff', fontWeight: 'bold', textAlign: 'center'}}>GUARDAR AJUSTE</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL DE ELIMINACIÓN */}
+      <Modal visible={deleteLotModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Eliminar Lote</Text>
+              <TouchableOpacity onPress={() => setDeleteLotModalVisible(false)}>
+                <X color="#64748b" size={24} />
+              </TouchableOpacity>
+            </View>
+            
+            <View>
+              <Text style={{fontSize: 14, color: '#475569', marginBottom: 15}}>
+                ¿Estás seguro de que deseas eliminar permanentemente este registro?
+              </Text>
+              <Text style={{fontSize: 14, fontWeight: '700', marginBottom: 25}}>
+                Lote: {selectedDeleteLot?.batchInternal || 'S/D'} ({selectedDeleteLot?.quantity} {selectedDeleteLot?.unit})
+              </Text>
+              
+              <View style={{flexDirection: 'row', justifyContent: 'space-between'}}>
+                <TouchableOpacity 
+                  style={[styles.printConfirmBtn, { flex: 1, marginRight: 10, backgroundColor: '#f1f5f9' }]} 
+                  onPress={() => setDeleteLotModalVisible(false)}
+                >
+                  <Text style={{color: '#64748b', fontWeight: 'bold', textAlign: 'center'}}>CANCELAR</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.printConfirmBtn, { flex: 1, backgroundColor: '#ef4444' }]} 
+                  onPress={confirmDeleteLot}
+                >
+                  <Text style={{color: '#fff', fontWeight: 'bold', textAlign: 'center'}}>ELIMINAR</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </View>

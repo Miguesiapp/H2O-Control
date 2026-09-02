@@ -383,18 +383,9 @@ export default function IncomingInventoryScreen({ navigation }) {
 
             {inventoryType === 'MP' && (
               <View style={{ flexDirection: 'row', marginLeft: 10, backgroundColor: '#f1f5f9', borderRadius: 12, padding: 4 }}>
-                <TouchableOpacity 
-                  style={[{ paddingVertical: 10, paddingHorizontal: 15, borderRadius: 8 }, unitType === 'Kilos' && { backgroundColor: '#0f172a' }]} 
-                  onPress={() => setUnitType('Kilos')}
-                >
-                  <Text style={[{ fontSize: 13, fontWeight: '700', color: '#64748b' }, unitType === 'Kilos' && { color: '#fff' }]}>Kilos</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[{ paddingVertical: 10, paddingHorizontal: 15, borderRadius: 8 }, unitType === 'Litros' && { backgroundColor: '#0f172a' }]} 
-                  onPress={() => setUnitType('Litros')}
-                >
-                  <Text style={[{ fontSize: 13, fontWeight: '700', color: '#64748b' }, unitType === 'Litros' && { color: '#fff' }]}>Litros</Text>
-                </TouchableOpacity>
+                <View style={{ paddingVertical: 10, paddingHorizontal: 15, borderRadius: 8, backgroundColor: '#0f172a' }}>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>Kilos</Text>
+                </View>
               </View>
             )}
           </View>
