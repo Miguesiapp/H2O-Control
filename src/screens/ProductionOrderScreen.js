@@ -177,7 +177,8 @@ export default function ProductionOrderScreen({ route, navigation }) {
 
       for (const ingredient of formulaData.ingredients) {
         const percentageValue = ingredient.percentage !== undefined ? ingredient.percentage / 100 : 0;
-        const requiredQty = Number((targetKilos * percentageValue).toFixed(2));
+        const requiredKg = Number((targetKilos * percentageValue).toFixed(2)); // Siempre en Kg (para mostrar al operario)
+        let requiredQty = requiredKg; // En Lts si es Granel (para comparar/descontar stock)
         
         const ingUpper = (ingredient.name || '').trim().toUpperCase();
         if (!ingUpper) continue;
@@ -201,11 +202,11 @@ export default function ProductionOrderScreen({ route, navigation }) {
 
         const isGranel = PRODUCTS_MADRE_LIST.some(pm => pm.split('/')[0].trim() === ingUpper);
         
-        // CONVERSIÓN A LITROS SI ES UN GRANEL
+        // CONVERSIÓN A LITROS SI ES UN GRANEL (solo para comparar/descontar stock)
         if (isGranel) {
            const baseName = ingUpper.split('/')[0].trim();
            const ingDensity = densityMap[normalizeString(baseName)] || 1;
-           requiredQty = Number((requiredQty / ingDensity).toFixed(2));
+           requiredQty = Number((requiredKg / ingDensity).toFixed(2));
         }
 
         const searchCompany = isGranel ? 'H2O' : 'STOCK_CENTRAL_MP';
@@ -250,7 +251,8 @@ export default function ProductionOrderScreen({ route, navigation }) {
 
         calculatedNeeds.push({
           name: ingredient.name,
-          required: requiredQty,
+          required: requiredQty,       // En Lts si Granel (para stock/deducción)
+          requiredKg: requiredKg,       // Siempre en Kg (para mostrar al operario)
           stock: currentStock,
           isSufficient: currentStock >= requiredQty,
           missing: currentStock >= requiredQty ? 0 : Number((requiredQty - currentStock).toFixed(2)),
@@ -718,13 +720,16 @@ export default function ProductionOrderScreen({ route, navigation }) {
                   <View style={{flex: 1}}>
                     <Text style={styles.reqName}>{req.name}</Text>
                     <Text style={styles.reqDetail}>
-                      Req: {req.required.toFixed(2)} Kg/Lts | Stock: {req.stock.toFixed(2)}
+                      Req: {req.isGranel 
+                        ? `${(req.requiredKg || req.required).toFixed(2)} Kg (≈ ${req.required.toFixed(2)} Lts)` 
+                        : `${req.required.toFixed(2)} Kg`
+                      } | Stock: {req.stock.toFixed(2)} {req.isGranel ? 'Lts' : 'Kg'}
                     </Text>
                     {req.batchesToConsume && req.batchesToConsume.length > 0 && (
                       <View style={styles.batchesPreview}>
                          {req.batchesToConsume.map((b, bIdx) => (
                            <Text key={bIdx} style={styles.batchLine}>
-                             • Lote Int: {b.batchInternal} | Prov: {b.batchProvider} | Consumido: {b.consumed.toFixed(2)}
+                             • Lote Int: {b.batchInternal} | Prov: {b.batchProvider} | Consumido: {b.consumed.toFixed(2)} {req.isGranel ? 'Lts' : 'Kg'}
                            </Text>
                          ))}
                       </View>
@@ -871,7 +876,10 @@ export default function ProductionOrderScreen({ route, navigation }) {
                     <View style={{flex: 1}}>
                       <Text style={{fontSize: 13, fontWeight: '800', color: '#1e293b'}}>{ing.name}</Text>
                       <Text style={{fontSize: 12, color: '#64748b'}}>
-                        Fórmula: {(ing.required || 0).toFixed(2)} Kg/Lts
+                        Fórmula: {ing.isGranel
+                          ? `${((ing.requiredKg || ing.required) || 0).toFixed(2)} Kg (≈ ${(ing.required || 0).toFixed(2)} Lts)`
+                          : `${(ing.required || 0).toFixed(2)} Kg`
+                        }
                       </Text>
                       <Text style={{fontSize: 11, color: '#94a3b8', marginTop: 2, marginBottom: hasAdjustment ? 4 : 0}}>
                         Lote(s): {usedBatches}
@@ -879,7 +887,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
                       {hasAdjustment && (
                         <>
                           <Text style={{fontSize: 12, color: '#10b981', fontWeight: '800'}}>
-                            Real: {actual.actualQty.toFixed(2)} Kg/Lts
+                             Real: {actual.actualQty.toFixed(2)} {ing.isGranel ? 'Lts' : 'Kg'}
                             {actual.actualQty < ing.required ? ` (sobrante: ${(ing.required - actual.actualQty).toFixed(2)})` : actual.actualQty > ing.required ? ` (extra: ${(actual.actualQty - ing.required).toFixed(2)})` : ' (sin diferencia)'}
                           </Text>
                           {actual.note ? <Text style={{fontSize: 11, color: '#64748b', fontStyle: 'italic'}}>📝 {actual.note}</Text> : null}

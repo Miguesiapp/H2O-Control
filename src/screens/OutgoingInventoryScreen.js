@@ -66,9 +66,7 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
     productName: '',
     presentation: '20',
     quantity: '',
-    batchInternal: '', 
-    destination: '', 
-    transportName: '' 
+    batchInternal: ''
   });
 
   useEffect(() => {
@@ -117,10 +115,6 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
 
     if (!formData.productName.trim() || isNaN(qtyNormalized) || qtyNormalized <= 0 || !formData.batchInternal.trim()) {
       Alert.alert("Atención", "Verifica que el Producto, el Lote y una cantidad válida mayor a 0 estén ingresados.");
-      return;
-    }
-    if (!formData.destination.trim() || !formData.transportName.trim()) {
-      Alert.alert("Faltan Datos", "Por normativas de trazabilidad, debes ingresar el destino y el transporte.");
       return;
     }
 
@@ -173,7 +167,6 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
           quantity: -Math.abs(qtyNormalized), 
           batchInternal: batchId,
           loteProveedor: batchProvider,
-          details: `Destino: ${formData.destination.trim()} | Transporte: ${formData.transportName.trim()}`,
           stockType: 'FINAL', 
           unit: dispatchUnit
         }
@@ -184,8 +177,6 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
         itemName: itemName,
         quantity: qtyNormalized,
         batchInternal: batchId,
-        destination: formData.destination.trim(),
-        transportName: formData.transportName.trim(),
         batchProvider: batchProvider,
         company: companyName,
         unit: dispatchUnit
@@ -202,9 +193,7 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
             productName: '',
             presentation: '20',
             quantity: '',
-            batchInternal: '', 
-            destination: '', 
-            transportName: '' 
+            batchInternal: ''
           });
         }}]
       );
@@ -314,7 +303,6 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
                     </View>
                   </View>
                   <Text style={styles.orderCardSub}>Lote: {item.data.batchInternal}</Text>
-                  <Text style={styles.orderCardSub}>Destino: <Text style={{fontWeight: '700', color: '#0f172a'}}>{item.data.destination}</Text></Text>
                   <Text style={styles.orderCardSub}>Cantidad: <Text style={{fontWeight: '700', color: '#ef4444'}}>{item.data.quantity} {item.data.unit}</Text></Text>
                 </TouchableOpacity>
               )}
@@ -392,33 +380,6 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
                   <ChevronDown color="#94a3b8" size={20} />
                 </TouchableOpacity>
               </View>
-            </View>
-          </View>
-
-          <Text style={styles.sectionTitle}>Datos de Logística</Text>
-          <View style={styles.card}>
-            <Text style={styles.label}>Cliente / Punto de Entrega</Text>
-            <View style={styles.inputWrapper}>
-              <MapPin color="#94a3b8" size={18} style={styles.inputIcon} />
-              <TextInput 
-                style={styles.input} 
-                placeholder="Ej: BioAcker Córdoba" 
-                placeholderTextColor="#94a3b8"
-                value={formData.destination}
-                onChangeText={(txt) => setFormData({...formData, destination: txt})}
-              />
-            </View>
-
-            <Text style={styles.label}>Datos del Transporte / Chofer</Text>
-            <View style={styles.inputWrapper}>
-              <ClipboardType color="#94a3b8" size={18} style={styles.inputIcon} />
-              <TextInput 
-                style={styles.input} 
-                placeholder="Ej: Transporte Andreani / Patente AB123CD" 
-                placeholderTextColor="#94a3b8"
-                value={formData.transportName}
-                onChangeText={(txt) => setFormData({...formData, transportName: txt})}
-              />
             </View>
           </View>
 

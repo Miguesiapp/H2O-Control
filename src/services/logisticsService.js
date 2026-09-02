@@ -263,11 +263,16 @@ export const createOrder = async (orderType, data, userEmail) => {
       lastUpdated: serverTimestamp()
     });
 
-    // Guardar traza en auditoría
+    // Guardar traza en auditoría con datos del producto
     await addDoc(collection(db, "AuditLog"), {
       user: userEmail,
       action: `CREACION_ORDEN_${orderType}`,
       orderId: docRef.id,
+      itemName: (data.itemName || '').toUpperCase(),
+      company: data.company || '—',
+      quantity: data.quantity || 0,
+      unit: data.unit || 'Uds',
+      batchInternal: data.batchInternal || 'N/A',
       timestamp: serverTimestamp(),
     });
 
@@ -298,12 +303,30 @@ export const updateOrderStatus = async (orderId, newStatus, userEmail) => {
 
     await updateDoc(doc(db, "Orders", orderId), updateData);
 
-    // Guardar traza
+    // Guardar traza enriquecida con datos del producto
+    let itemName = '—', company = '—', quantity = 0, unit = 'Uds', batchInternal = 'N/A';
+    try {
+      const orderSnap = await getDoc(doc(db, "Orders", orderId));
+      if (orderSnap.exists()) {
+        const od = orderSnap.data().data || {};
+        itemName = (od.itemName || '—').toUpperCase();
+        company = od.company || '—';
+        quantity = od.quantity || 0;
+        unit = od.unit || 'Uds';
+        batchInternal = od.batchInternal || 'N/A';
+      }
+    } catch (_) {}
+
     await addDoc(collection(db, "AuditLog"), {
       user: userEmail,
       action: `CAMBIO_ESTADO_ORDEN`,
       orderId: orderId,
       newStatus: newStatus,
+      itemName,
+      company,
+      quantity,
+      unit,
+      batchInternal,
       timestamp: serverTimestamp(),
     });
 

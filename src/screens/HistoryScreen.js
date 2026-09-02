@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, StatusBar, ScrollView, Modal } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, StatusBar, ScrollView, Modal, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
 import { collection, onSnapshot, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
-import { ChevronLeft, Clock, ArrowDownToLine, ArrowUpFromLine, Activity, User, ArrowRightLeft, Filter, ChevronDown, ChevronUp, FileText, X } from 'lucide-react-native';
+import { ChevronLeft, Clock, ArrowDownToLine, ArrowUpFromLine, Activity, User, ArrowRightLeft, Filter, ChevronDown, ChevronUp, FileText, X, Search } from 'lucide-react-native';
 import { generateAuditSummary } from '../services/aiService';
 import { generateAndSharePDF } from '../services/reportService';
 
@@ -19,6 +19,7 @@ export default function HistoryScreen({ navigation }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
   const [expandedMonths, setExpandedMonths] = useState({});
   const [generatingPdfFor, setGeneratingPdfFor] = useState(null);
 
@@ -106,13 +107,24 @@ export default function HistoryScreen({ navigation }) {
   };
 
   const filteredHistory = history.filter(item => {
-    if (activeFilter === 'ALL') return true;
-    const act = (item.action || '').toUpperCase();
+    // FILTRO POR TAB
+    if (activeFilter !== 'ALL') {
+      const act = (item.action || '').toUpperCase();
+      if (activeFilter === 'MP' && !(act.includes('INGRESO_COMPRA') || act.includes('INGRESO_MANUAL') || act.includes('CARGA_INICIAL'))) return false;
+      if (activeFilter === 'OP' && !(act.includes('OP') || act.includes('PRODUCCION'))) return false;
+      if (activeFilter === 'OE' && !(act.includes('OE') || act.includes('ENVASADO') || act.includes('CONSUMO'))) return false;
+      if (activeFilter === 'OD' && !(act.includes('EGRESO_DESPACHO') || act.includes('RETIRO') || act.includes('OD'))) return false;
+    }
     
-    if (activeFilter === 'MP') return act.includes('INGRESO_COMPRA') || act.includes('INGRESO_MANUAL') || act.includes('CARGA_INICIAL');
-    if (activeFilter === 'OP') return act.includes('OP') || act.includes('PRODUCCION');
-    if (activeFilter === 'OE') return act.includes('OE') || act.includes('ENVASADO') || act.includes('CONSUMO');
-    if (activeFilter === 'OD') return act.includes('EGRESO_DESPACHO') || act.includes('RETIRO') || act.includes('OD');
+    // FILTRO POR BÚSQUEDA
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const name = (item.itemName || '').toLowerCase();
+      const batch = (item.batchInternal || '').toLowerCase();
+      const company = (item.company || '').toLowerCase();
+      const action = (item.action || '').toLowerCase();
+      if (!name.includes(q) && !batch.includes(q) && !company.includes(q) && !action.includes(q)) return false;
+    }
     
     return true;
   });
@@ -192,8 +204,8 @@ export default function HistoryScreen({ navigation }) {
 
           <View style={styles.logBody}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.logItemName}>{item.itemName || 'Producto no especificado'}</Text>
-              <Text style={styles.logCompany}>{item.company || 'Global'}</Text>
+              <Text style={styles.logItemName}>{item.itemName || '—'}</Text>
+              <Text style={styles.logCompany}>{item.company || '—'}</Text>
             </View>
             <View style={styles.qtyBox}>
               <Text style={[styles.logQty, { color: isNegative ? '#ef4444' : '#0f172a' }]}>
@@ -289,7 +301,7 @@ export default function HistoryScreen({ navigation }) {
               <TouchableOpacity
                 key={tab.id}
                 style={[styles.filterTab, activeFilter === tab.id && styles.filterTabActive]}
-                onPress={() => setActiveFilter(tab.id)}
+                onPress={() => { setActiveFilter(tab.id); setSearchQuery(''); }}
               >
                 <Text style={[styles.filterTabText, activeFilter === tab.id && styles.filterTabTextActive]}>
                   {tab.label}
@@ -297,6 +309,24 @@ export default function HistoryScreen({ navigation }) {
               </TouchableOpacity>
             ))}
           </ScrollView>
+        </View>
+
+        {/* BUSCADOR */}
+        <View style={styles.searchBar}>
+          <Search color="#94a3b8" size={16} style={{ marginRight: 10 }} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Buscar por producto, lote, empresa..."
+            placeholderTextColor="#94a3b8"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            clearButtonMode="while-editing"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <X color="#94a3b8" size={16} />
+            </TouchableOpacity>
+          )}
         </View>
 
         {loading ? (
@@ -377,7 +407,7 @@ export default function HistoryScreen({ navigation }) {
                      return (
                        <View key={idx} style={{backgroundColor: '#fff', padding: 12, borderRadius: 10, marginBottom: 8, borderWidth: 1, borderColor: '#e2e8f0'}}>
                          <Text style={{fontSize: 14, fontWeight: '800', color: '#0f172a'}}>{ing.name}</Text>
-                         <Text style={{fontSize: 13, color: '#10b981', fontWeight: '700', marginTop: 2}}>Uso Real: {ing.actualQty !== undefined ? ing.actualQty.toFixed(2) : (ing.required || 0).toFixed(2)} Kg/L</Text>
+                         <Text style={{fontSize: 13, color: '#10b981', fontWeight: '700', marginTop: 2}}>Uso Real: {ing.actualQty !== undefined ? ing.actualQty.toFixed(2) : (ing.required || 0).toFixed(2)} {ing.isGranel ? 'Lts' : 'Kg'}</Text>
                          <Text style={{fontSize: 11, color: '#64748b', marginTop: 4}}>Lotes: {batches}</Text>
                        </View>
                      )
@@ -475,5 +505,13 @@ const styles = StyleSheet.create({
   logBatch: { fontSize: 10, color: '#94a3b8', fontWeight: '800', backgroundColor: '#f1f5f9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, textAlign: 'right' },
 
   emptyContainer: { alignItems: 'center', marginTop: 80 },
-  emptyText: { marginTop: 15, color: '#94a3b8', fontWeight: '600', fontSize: 13 }
+  emptyText: { marginTop: 15, color: '#94a3b8', fontWeight: '600', fontSize: 13 },
+
+  searchBar: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fff', marginHorizontal: 15, marginTop: 10, marginBottom: 5,
+    borderRadius: 14, paddingHorizontal: 15, paddingVertical: 10,
+    borderWidth: 1, borderColor: '#e2e8f0', elevation: 1
+  },
+  searchInput: { flex: 1, fontSize: 14, color: '#0f172a', fontWeight: '500' }
 });
