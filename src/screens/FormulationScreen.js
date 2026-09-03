@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, FlatList, TouchableOpacity, 
-  TextInput, ActivityIndicator, StatusBar, Alert, Modal, Linking
+  TextInput, ActivityIndicator, StatusBar, Alert, Modal, ScrollView, Linking
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
@@ -21,31 +21,26 @@ export default function FormulationScreen({ navigation }) {
   const [expandedFormulas, setExpandedFormulas] = useState([]);
   const [eigDocs, setEigDocs] = useState([]);
   const [eigModalDoc, setEigModalDoc] = useState(null);
+  const [deletePending, setDeletePending] = useState(null); // { id, name }
 
   const toggleExpand = (id) => {
     setExpandedFormulas(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
   };
 
   const handleDelete = (id, name) => {
-    Alert.alert(
-      "Eliminar Fórmula",
-      `¿Estás seguro que deseas eliminar la receta de ${name}? Esta acción no se puede deshacer.`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        { 
-          text: "Eliminar", 
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deleteDoc(doc(db, "Formulas_Maestras", id));
-              Toast.show({ type: 'success', text1: 'Eliminado', text2: `La receta de ${name} fue eliminada permanentemente.` });
-            } catch (e) {
-              Alert.alert("Error", "No se pudo eliminar la fórmula.");
-            }
-          }
-        }
-      ]
-    );
+    setDeletePending({ id, name });
+  };
+
+  const confirmDelete = async () => {
+    if (!deletePending) return;
+    try {
+      await deleteDoc(doc(db, "Formulas_Maestras", deletePending.id));
+      Toast.show({ type: 'success', text1: 'Eliminado', text2: `La receta de ${deletePending.name} fue eliminada.` });
+    } catch (e) {
+      Alert.alert("Error", "No se pudo eliminar la fórmula.");
+    } finally {
+      setDeletePending(null);
+    }
   };
 
   useEffect(() => {
@@ -283,6 +278,36 @@ export default function FormulationScreen({ navigation }) {
             <TouchableOpacity style={styles.eigCloseBtn} onPress={() => setEigModalDoc(null)}>
               <Text style={styles.eigCloseBtnText}>Cerrar</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL CONFIRMAR ELIMINACIÓN */}
+      <Modal visible={!!deletePending} transparent animationType="fade">
+        <View style={styles.eigModalOverlay}>
+          <View style={styles.eigModalBox}>
+            <View style={styles.eigModalHeader}>
+              <Trash2 size={22} color="#ef4444" />
+              <Text style={[styles.eigModalTitle, { color: '#ef4444', marginLeft: 10 }]}>Eliminar Fórmula</Text>
+            </View>
+            <Text style={{ fontSize: 14, color: '#475569', marginBottom: 20 }}>
+              ¿Estás seguro que deseas eliminar la receta de{' '}
+              <Text style={{ fontWeight: '800', color: '#0f172a' }}>{deletePending?.name}</Text>?{'\n'}Esta acción no se puede deshacer.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                style={[styles.eigCloseBtn, { flex: 1, backgroundColor: '#f1f5f9', borderRadius: 12 }]}
+                onPress={() => setDeletePending(null)}
+              >
+                <Text style={[styles.eigCloseBtnText, { color: '#64748b' }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.eigCloseBtn, { flex: 1, backgroundColor: '#ef4444', borderRadius: 12 }]}
+                onPress={confirmDelete}
+              >
+                <Text style={[styles.eigCloseBtnText, { color: '#fff' }]}>ELIMINAR</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>

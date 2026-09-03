@@ -220,7 +220,13 @@ export default function ProductionOrderScreen({ route, navigation }) {
            if (BLOCKED_STATUSES.includes(item.status)) return; // Respetar cuarentena de BBS Calidad
            if (item.company === searchCompany && item.stockType === searchStockType) {
               const itemNorm = normalizeString(item.itemName);
-              if (possibleNorm.includes(itemNorm)) {
+              // Match exacto O por subcadena bidireccional (para fórmulas viejas con nombre parcial)
+              const isMatch = possibleNorm.some(pn => 
+                pn === itemNorm || 
+                itemNorm.includes(pn) || 
+                pn.includes(itemNorm)
+              );
+              if (isMatch) {
                   availableBatches.push({
                      batchInternal: item.batchInternal || 'S/D',
                      batchProvider: item.batchProvider || 'S/D',

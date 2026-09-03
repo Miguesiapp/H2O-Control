@@ -176,7 +176,10 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
         allMPStock.forEach(item => {
            if (BLOCKED_STATUSES.includes(item.status)) return; // Respetar cuarentena de BBS Calidad
            const itemNameNorm = normalizeString(item.itemName);
-           if (mp.searchNamesNorm.includes(itemNameNorm) && Number(item.quantity) > 0) {
+           const isMatch = mp.searchNamesNorm.some(pn => 
+             pn === itemNameNorm || itemNameNorm.includes(pn) || pn.includes(itemNameNorm)
+           );
+           if (isMatch && Number(item.quantity) > 0) {
              totalInStock += Number(item.quantity);
            }
         });
