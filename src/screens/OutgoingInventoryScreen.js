@@ -70,29 +70,23 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
   });
 
   useEffect(() => {
-    const fetchStock = async () => {
-      try {
-        const inventoryRef = collection(db, 'Inventory');
-        const qStock = query(
-          inventoryRef, 
-          where('company', '==', companyName),
-          where('stockType', '==', 'FINAL'),
-          where('quantity', '>', 0)
-        );
-        const snap = await getDocs(qStock);
-        const stockItems = snap.docs.map(doc => doc.data());
-        
-        setAllFinalStock(stockItems);
-        
-        const products = [...new Set(stockItems.map(item => item.itemName ? item.itemName.split(' - ')[0] : ''))].filter(name => name !== '').sort();
-        setAvailableProducts(products);
-      } catch (error) {
-        console.error("Error cargando stock", error);
-      }
-    };
-    if (viewMode === 'CREATE') {
-      fetchStock();
-    }
+    if (viewMode !== 'CREATE') return;
+    const inventoryRef = collection(db, 'Inventory');
+    const qStock = query(
+      inventoryRef,
+      where('company', '==', companyName),
+      where('stockType', '==', 'FINAL'),
+      where('quantity', '>', 0)
+    );
+    const unsubStock = onSnapshot(qStock, (snap) => {
+      const stockItems = snap.docs.map(doc => doc.data());
+      setAllFinalStock(stockItems);
+      const products = [...new Set(stockItems.map(item => item.itemName ? item.itemName.split(' - ')[0] : ''))].filter(name => name !== '').sort();
+      setAvailableProducts(products);
+    }, (error) => {
+      console.error("Error cargando stock", error);
+    });
+    return () => unsubStock();
   }, [companyName, viewMode]);
 
   useEffect(() => {
@@ -101,10 +95,17 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
       const targetItemName = isContainer
         ? `${formData.productName.toUpperCase()} - CONTENEDOR 1000L`
         : `${formData.productName.toUpperCase()} - ${formData.presentation}L`;
+      // Enriquecer con cantidad disponible para mostrar en el selector
       const batches = allFinalStock
         .filter(item => item.itemName.toUpperCase() === targetItemName)
-        .map(item => item.batchInternal);
-      setAvailableBatches([...new Set(batches)]);
+        .map(item => ({
+          batchInternal: item.batchInternal,
+          quantity: item.quantity || 0,
+          batchProvider: item.batchProvider || 'S/D'
+        }))
+        .filter((b, i, arr) => arr.findIndex(x => x.batchInternal === b.batchInternal) === i) // dedup
+        .sort((a, b) => b.quantity - a.quantity); // mayor stock primero
+      setAvailableBatches(batches);
     } else {
       setAvailableBatches([]);
     }
@@ -150,8 +151,8 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
 
       if (currentStock < qtyNormalized) {
          Alert.alert(
-           "Stock Insuficiente", 
-           `En el sistema figuran solo ${currentStock} unidades disponibles del producto ${itemName} (Lote: ${batchId}). No puedes despachar ${qtyNormalized}.`
+           "Stock Insuficiente",
+           `Solo hay ${currentStock} unidades del lote ${batchId}. No puedes despachar ${qtyNormalized}.`
          );
          setIsSubmitting(false);
          return;
@@ -373,9 +374,12 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
                 >
                   <Hash color="#94a3b8" size={18} style={styles.inputIcon} />
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 14, color: formData.batchInternal ? '#0f172a' : '#94a3b8', fontWeight: '800' }}>
-                      {formData.batchInternal || (availableBatches.length === 0 ? 'Sin lotes' : 'Seleccionar Lote')}
-                    </Text>
+                  <Text style={{ fontSize: 14, color: formData.batchInternal ? '#0f172a' : '#94a3b8', fontWeight: '800' }}>
+                    {formData.batchInternal 
+                      ? `${formData.batchInternal} (${availableBatches.find(b => b.batchInternal === formData.batchInternal)?.quantity ?? '?'} disp.)`
+                      : (availableBatches.length === 0 ? 'Sin lotes disponibles' : 'Seleccionar Lote')
+                    }
+                  </Text>
                   </View>
                   <ChevronDown color="#94a3b8" size={20} />
                 </TouchableOpacity>
@@ -451,16 +455,21 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
               contentContainerStyle={styles.modalList}
               renderItem={({ item }) => (
                 <TouchableOpacity 
-                  style={[styles.modalItem, formData.batchInternal === item && styles.modalItemActive]}
+                  style={[styles.modalItem, formData.batchInternal === item.batchInternal && styles.modalItemActive]}
                   onPress={() => {
-                    setFormData({...formData, batchInternal: item});
+                    setFormData({...formData, batchInternal: item.batchInternal});
                     setBatchModalVisible(false);
                   }}
                 >
-                  <Text style={[styles.modalItemText, formData.batchInternal === item && styles.modalItemTextActive]}>
-                    {item}
-                  </Text>
-                  {formData.batchInternal === item && <CheckCircle2 color="#1e3a8a" size={20} />}
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.modalItemText, formData.batchInternal === item.batchInternal && styles.modalItemTextActive]}>
+                      {item.batchInternal}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: formData.batchInternal === item.batchInternal ? '#93c5fd' : '#64748b', marginTop: 2 }}>
+                      Stock disponible: <Text style={{ fontWeight: '800' }}>{item.quantity} Uds</Text>{item.batchProvider && item.batchProvider !== 'S/D' ? `  •  Prov: ${item.batchProvider}` : ''}
+                    </Text>
+                  </View>
+                  {formData.batchInternal === item.batchInternal && <CheckCircle2 color="#1e3a8a" size={20} />}
                 </TouchableOpacity>
               )}
             />
