@@ -31,6 +31,8 @@ export default function PackagingOrderScreen({ route, navigation }) {
   const [processingOrder, setProcessingOrder] = useState(false);
   const [eigDocs, setEigDocs] = useState([]);
   const [eigModalDoc, setEigModalDoc] = useState(null);
+  const [partialModalVisible, setPartialModalVisible] = useState(false);
+  const [partialQtyInput, setPartialQtyInput] = useState('');
 
   useEffect(() => {
     // Escuchar órdenes de tipo OE
@@ -336,27 +338,91 @@ export default function PackagingOrderScreen({ route, navigation }) {
     try {
       setProcessingOrder(true);
       const currentUser = auth.currentUser?.email || 'Sistema';
+      const orderData = selectedOrder.data;
       
+      // Si ya hay cantidad parcialmente confirmada, solo procesar el remanente
+      const totalQty = orderData.quantity || 0;
+      const totalLts = orderData.litersConsumed || 0;
+      const alreadyConfirmedQty = orderData.confirmedQty || 0;
+      const alreadyConfirmedLts = orderData.confirmedLts || 0;
+      const remainingQty = totalQty - alreadyConfirmedQty;
+      const remainingLts = totalLts - alreadyConfirmedLts;
+
       // 1. Finalizar Ticket
       await updateOrderStatus(selectedOrder.id, 'FINALIZADO', currentUser);
 
-      // 2. Inyectar Producto Terminado (FINAL)
-      const orderData = selectedOrder.data;
-      await registerMovement(currentUser, 'INGRESO_OE', orderData.company, {
-          itemName: orderData.itemName,
-          quantity: orderData.quantity,
-          stockType: 'FINAL',
-          batchInternal: orderData.batchInternal,
-          unit: orderData.unit,
-          status: 'APTO', 
-          batchProvider: orderData.batchProvider,
-          expiryDate: orderData.expiryDate 
-      });
+      // 2. Solo inyectar el remanente (si ya se confirmó todo parcialmente, no suma de nuevo)
+      if (remainingQty > 0) {
+        await registerMovement(currentUser, 'INGRESO_OE', orderData.company, {
+            itemName: orderData.itemName,
+            quantity: remainingQty,
+            stockType: 'FINAL',
+            batchInternal: orderData.batchInternal,
+            unit: orderData.unit,
+            status: 'APTO',
+            batchProvider: orderData.batchProvider,
+            expiryDate: orderData.expiryDate
+        });
+      }
 
-      Toast.show({ type: 'success', text1: 'Orden Finalizada', text2: 'Inventario final actualizado.' });
+      Toast.show({ type: 'success', text1: 'Orden Finalizada', text2: `+${remainingQty > 0 ? remainingQty : totalQty} unidades a stock de PT.` });
       setOrderModalVisible(false);
     } catch (error) {
       Toast.show({ type: 'error', text1: 'Error', text2: 'No se pudo finalizar la orden.' });
+    } finally {
+      setProcessingOrder(false);
+    }
+  };
+
+  const handlePartialConfirm = async () => {
+    if (!selectedOrder) return;
+    const partialQty = Number(partialQtyInput.replace(',', '.'));
+    if (isNaN(partialQty) || partialQty <= 0) {
+      Toast.show({ type: 'error', text1: 'Cantidad inválida', text2: 'Ingresá un número mayor a 0.' });
+      return;
+    }
+    const orderData = selectedOrder.data;
+    const totalQty = orderData.quantity || 0;
+    const alreadyConfirmedQty = orderData.confirmedQty || 0;
+    const maxPartial = totalQty - alreadyConfirmedQty;
+    if (partialQty > maxPartial) {
+      Toast.show({ type: 'error', text1: 'Excede la cantidad pendiente', text2: `Máximo a confirmar: ${maxPartial} unidades.` });
+      return;
+    }
+    try {
+      setProcessingOrder(true);
+      const currentUser = auth.currentUser?.email || 'Sistema';
+      const totalLts = orderData.litersConsumed || 0;
+      const alreadyConfirmedLts = orderData.confirmedLts || 0;
+      // Proporción de litros que corresponde a esta confirmación parcial
+      const partialLts = totalQty > 0 ? Number(((partialQty / totalQty) * totalLts).toFixed(2)) : 0;
+
+      // 1. Inyectar Producto Terminado parcial
+      await registerMovement(currentUser, 'INGRESO_OE_PARCIAL', orderData.company, {
+          itemName: orderData.itemName,
+          quantity: partialQty,
+          stockType: 'FINAL',
+          batchInternal: orderData.batchInternal,
+          unit: orderData.unit,
+          status: 'APTO',
+          batchProvider: orderData.batchProvider,
+          expiryDate: orderData.expiryDate
+      });
+
+      // 2. Actualizar la orden con el acumulado confirmado
+      const { updateDoc, doc: firestoreDoc, increment } = await import('firebase/firestore');
+      await updateDoc(firestoreDoc(db, 'Orders', selectedOrder.id), {
+        'data.confirmedQty': (alreadyConfirmedQty + partialQty),
+        'data.confirmedLts': (alreadyConfirmedLts + partialLts),
+        lastUpdated: serverTimestamp()
+      });
+
+      setPartialModalVisible(false);
+      setPartialQtyInput('');
+      Toast.show({ type: 'success', text1: `+${partialQty} unidades confirmadas`, text2: `Quedan ${maxPartial - partialQty} unidades pendientes.` });
+    } catch (error) {
+      console.error(error);
+      Toast.show({ type: 'error', text1: 'Error', text2: 'No se pudo registrar la confirmación parcial.' });
     } finally {
       setProcessingOrder(false);
     }
@@ -428,6 +494,20 @@ export default function PackagingOrderScreen({ route, navigation }) {
                   </View>
                   <Text style={styles.orderCardSub}>Lote: {item.data.batchInternal}</Text>
                   <Text style={styles.orderCardSub}>Cantidad: <Text style={{fontWeight: '700', color: '#0f172a'}}>{item.data.quantity} {item.data.unit === 'Lts' ? 'Lts' : 'Uds'}</Text></Text>
+                  {/* BARRA DE PROGRESO PARCIAL */}
+                  {item.data.confirmedQty > 0 && item.status !== 'FINALIZADO' && (() => {
+                    const pct = Math.min(100, Math.round((item.data.confirmedQty / item.data.quantity) * 100));
+                    return (
+                      <View style={{ marginTop: 8 }}>
+                        <Text style={{ fontSize: 11, color: '#f59e0b', fontWeight: '800', marginBottom: 4 }}>
+                          ⚡ Parcial: {item.data.confirmedQty}/{item.data.quantity} Uds ({pct}%)
+                        </Text>
+                        <View style={styles.progressTrack}>
+                          <View style={[styles.progressFill, { width: `${pct}%` }]} />
+                        </View>
+                      </View>
+                    );
+                  })()}
                 </TouchableOpacity>
               )}
             />
@@ -718,20 +798,97 @@ export default function PackagingOrderScreen({ route, navigation }) {
               </TouchableOpacity>
             )}
 
-            {selectedOrder?.status === 'EN_PROCESO' && (
-              <TouchableOpacity style={[styles.mainButton, {backgroundColor: '#10b981'}]} onPress={handleFinalizeOrder} disabled={processingOrder}>
-                {processingOrder ? <ActivityIndicator color="#fff" /> : (
-                  <>
-                    <CheckCircle2 color="#fff" size={20} />
-                    <Text style={styles.submitText}>Finalizar (Terminado a Stock)</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            )}
+            {selectedOrder?.status === 'EN_PROCESO' && (() => {
+              const total = selectedOrder.data.quantity || 0;
+              const confirmed = selectedOrder.data.confirmedQty || 0;
+              const pct = total > 0 ? Math.min(100, Math.round((confirmed / total) * 100)) : 0;
+              return (
+                <View style={{ marginTop: 20 }}>
+                  {confirmed > 0 && (
+                    <View style={{ marginBottom: 16, backgroundColor: '#fffbeb', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#fde68a' }}>
+                      <Text style={{ fontSize: 13, fontWeight: '800', color: '#92400e', marginBottom: 8 }}>⚡ Progreso de Envasado</Text>
+                      <View style={styles.progressTrack}>
+                        <View style={[styles.progressFill, { width: `${pct}%` }]} />
+                      </View>
+                      <Text style={{ fontSize: 12, color: '#78350f', marginTop: 6, fontWeight: '700' }}>
+                        {confirmed} / {total} Uds confirmadas ({pct}%) — Quedan {total - confirmed} Uds
+                      </Text>
+                    </View>
+                  )}
+                  <TouchableOpacity
+                    style={[styles.mainButton, { backgroundColor: '#f59e0b' }]}
+                    onPress={() => { setPartialQtyInput(''); setPartialModalVisible(true); }}
+                    disabled={processingOrder}
+                  >
+                    {processingOrder ? <ActivityIndicator color="#fff" /> : (
+                      <>
+                        <Save color="#fff" size={20} />
+                        <Text style={styles.submitText}>Confirmar Parcial</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.mainButton, {backgroundColor: '#10b981'}]} onPress={handleFinalizeOrder} disabled={processingOrder}>
+                    {processingOrder ? <ActivityIndicator color="#fff" /> : (
+                      <>
+                        <CheckCircle2 color="#fff" size={20} />
+                        <Text style={styles.submitText}>Finalizar Orden Completa</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              );
+            })()}
 
             <View style={{height: 40}}/>
           </ScrollView>
         </SafeAreaView>
+      </Modal>
+
+      {/* MODAL CONFIRMACIÓN PARCIAL */}
+      <Modal visible={partialModalVisible} transparent animationType="fade" onRequestClose={() => setPartialModalVisible(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(15,23,42,0.6)', justifyContent: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 22, elevation: 20 }}>
+            <Text style={{ fontSize: 17, fontWeight: '900', color: '#0f172a', marginBottom: 4 }}>Confirmar Envasado Parcial</Text>
+            <Text style={{ fontSize: 13, color: '#64748b', marginBottom: 6 }}>
+              {selectedOrder?.data?.itemName}
+            </Text>
+            {(() => {
+              const total = selectedOrder?.data?.quantity || 0;
+              const confirmed = selectedOrder?.data?.confirmedQty || 0;
+              const pending = total - confirmed;
+              return (
+                <Text style={{ fontSize: 13, color: '#f59e0b', fontWeight: '800', marginBottom: 16 }}>
+                  Pendiente: {pending} Uds de {total}
+                </Text>
+              );
+            })()}
+            <Text style={{ fontSize: 11, fontWeight: '800', color: '#64748b', marginBottom: 6, textTransform: 'uppercase' }}>Unidades Envasadas Ahora</Text>
+            <TextInput
+              style={{ backgroundColor: '#f8fafc', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', padding: 14, fontSize: 18, fontWeight: '800', color: '#0f172a', marginBottom: 20 }}
+              keyboardType="numeric"
+              placeholder={`Máx: ${(selectedOrder?.data?.quantity || 0) - (selectedOrder?.data?.confirmedQty || 0)}`}
+              placeholderTextColor="#94a3b8"
+              value={partialQtyInput}
+              onChangeText={setPartialQtyInput}
+              autoFocus
+            />
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: '#f1f5f9', borderRadius: 12, padding: 14, alignItems: 'center' }}
+                onPress={() => setPartialModalVisible(false)}
+              >
+                <Text style={{ fontWeight: '800', color: '#64748b' }}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: '#f59e0b', borderRadius: 12, padding: 14, alignItems: 'center' }}
+                onPress={handlePartialConfirm}
+                disabled={processingOrder}
+              >
+                {processingOrder ? <ActivityIndicator color="#fff" size="small" /> : <Text style={{ fontWeight: '900', color: '#fff' }}>CONFIRMAR</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
 
       {/* MODAL EIG INFO */}
@@ -847,4 +1004,6 @@ const styles = StyleSheet.create({
   submitBtn: { backgroundColor: '#10b981', flexDirection: 'row', padding: 18, borderRadius: 16, justifyContent: 'center', alignItems: 'center', elevation: 4 },
   submitText: { color: '#fff', fontSize: 16, fontWeight: '900', letterSpacing: 1, marginLeft: 10 },
   mainButton: { backgroundColor: '#10b981', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 18, borderRadius: 14, marginTop: 20, gap: 10, elevation: 4 },
+  progressTrack: { height: 8, backgroundColor: '#e2e8f0', borderRadius: 10, overflow: 'hidden' },
+  progressFill: { height: 8, backgroundColor: '#f59e0b', borderRadius: 10 },
 });
