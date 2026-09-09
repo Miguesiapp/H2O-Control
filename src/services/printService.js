@@ -19,9 +19,13 @@ const generateHTML = (order) => {
     quantity = `${data?.liters || data?.targetVolume || 0} Lts (Aprox. ${Number(data?.kilos || data?.targetKilos || 0).toFixed(2)} Kg)`;
   } else if (type === 'OE') {
     title = 'ORDEN DE ENVASADO';
-    productName = data?.productName || 'Envasado';
-    batchInfo = data?.targetBatch || 'S/D';
-    quantity = `${data?.quantity || 0} x ${data?.presentation || ''}`;
+    // itemName tiene formato "PRODUCTO COMERCIAL - 20L", extraemos solo el nombre
+    const rawItemName = data?.itemName || '';
+    productName = rawItemName.includes(' - ') 
+      ? rawItemName.split(' - ').slice(0, -1).join(' - ')  // quitar solo la parte final " - XL"
+      : (data?.productName || data?.commercialName || rawItemName || 'Envasado');
+    batchInfo = data?.batchInternal || data?.targetBatch || 'S/D';
+    quantity = `${data?.quantity || 0} x ${data?.presentation || ''}L`;
   } else if (type === 'OD') {
     title = 'ORDEN DE DESPACHO';
     productName = data?.productName || 'Despacho';
@@ -135,7 +139,7 @@ const generateHTML = (order) => {
         <tbody>
           <tr class="highlight-row">
             <td>${productName} (Granel)</td>
-            <td>${data?.quantity || 0} Lts</td>
+            <td>${data?.litersConsumed || data?.quantity || 0} Lts</td>
             <td><span style="background:#e0f2fe; padding:2px 6px; border-radius:4px; font-size:10px; color:#0369a1;">${batchInfo}</span></td>
             <td></td>
             <td></td>
@@ -267,16 +271,38 @@ export const printOrder = async (order) => {
     const html = generateHTML(order);
     
     if (Platform.OS === 'web') {
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        printWindow.document.write(html);
-        printWindow.document.close();
-        printWindow.focus();
-        setTimeout(() => {
-          printWindow.print();
-        }, 250);
+      // Usamos un iframe oculto para no abrir ni dejar tabs adicionales
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = 'none';
+      document.body.appendChild(iframe);
+
+      const iframeDoc = iframe.contentWindow?.document;
+      if (iframeDoc) {
+        iframeDoc.open();
+        iframeDoc.write(html);
+        iframeDoc.close();
+        // Esperar a que cargue el contenido y luego imprimir
+        iframe.onload = () => {
+          try {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+          } catch(e) {
+            console.warn('iframe print error', e);
+          } finally {
+            // Remover el iframe después de imprimir (con un pequeño delay)
+            setTimeout(() => {
+              document.body.removeChild(iframe);
+            }, 1000);
+          }
+        };
       } else {
-        Alert.alert("Bloqueo de Pop-up", "Por favor permite las ventanas emergentes (pop-ups) para generar el PDF.");
+        document.body.removeChild(iframe);
+        Alert.alert("Error", "No se pudo generar el documento de impresión.");
       }
     } else {
       await Print.printAsync({
