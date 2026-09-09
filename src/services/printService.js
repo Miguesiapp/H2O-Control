@@ -21,7 +21,7 @@ const generateHTML = (order) => {
     title = 'ORDEN DE ENVASADO';
     // itemName tiene formato "PRODUCTO COMERCIAL - 20L", extraemos solo el nombre
     const rawItemName = data?.itemName || '';
-    productName = rawItemName.includes(' - ') 
+    productName = rawItemName.includes(' - ')
       ? rawItemName.split(' - ').slice(0, -1).join(' - ')  // quitar solo la parte final " - XL"
       : (data?.productName || data?.commercialName || rawItemName || 'Envasado');
     batchInfo = data?.batchInternal || data?.targetBatch || 'S/D';
@@ -97,19 +97,19 @@ const generateHTML = (order) => {
         </thead>
         <tbody>
           ${ingredients.map(ing => {
-            if (ing.type === 'NOTE') return `<tr class="note-row"><td colspan="6"><b>Nota Operativa:</b> ${ing.text}</td></tr>`;
-            
-            let lotesAsignados = '';
-            if (ing.batchesToConsume && ing.batchesToConsume.length > 0) {
-              lotesAsignados = ing.batchesToConsume.map(b => `${b.batchInternal || 'S/D'} (${b.consumed} ${ing.isGranel ? 'Lts' : 'Kg'})`).join('<br/>');
-            } else {
-               lotesAsignados = ing.batchInternal || 'A Definir';
-            }
+      if (ing.type === 'NOTE') return `<tr class="note-row"><td colspan="6"><b>Nota Operativa:</b> ${ing.text}</td></tr>`;
 
-            const actual = data?.actualIngredients?.find(a => a.name === ing.name);
-            const actualQtyHtml = actual ? `<b>${Number(actual.actualQty).toFixed(2)} ${ing.isGranel ? 'Lts' : 'Kg'}</b>` : '';
+      let lotesAsignados = '';
+      if (ing.batchesToConsume && ing.batchesToConsume.length > 0) {
+        lotesAsignados = ing.batchesToConsume.map(b => `${b.batchInternal || 'S/D'} (${b.consumed} ${ing.isGranel ? 'Lts' : 'Kg'})`).join('<br/>');
+      } else {
+        lotesAsignados = ing.batchInternal || 'A Definir';
+      }
 
-            return `
+      const actual = data?.actualIngredients?.find(a => a.name === ing.name);
+      const actualQtyHtml = actual ? `<b>${Number(actual.actualQty).toFixed(2)} ${ing.isGranel ? 'Lts' : 'Kg'}</b>` : '';
+
+      return `
               <tr>
                 <td style="font-weight:700">${ing.name}</td>
                 <td>${Number(ing.required || ing.amount || 0).toFixed(2)} ${ing.isGranel ? 'Lts' : 'Kg'}</td>
@@ -119,7 +119,7 @@ const generateHTML = (order) => {
                 <td></td>
               </tr>
             `;
-          }).join('')}
+    }).join('')}
         </tbody>
       </table>
     `;
@@ -259,7 +259,7 @@ const generateHTML = (order) => {
         </div>
         
         <div class="footer">
-          Documento emitido mediante H2O Neural Control · Bio Based Solutions
+          Documento emitido mediante H2O Control · HORUS APP
         </div>
       </body>
     </html>
@@ -269,7 +269,7 @@ const generateHTML = (order) => {
 export const printOrder = async (order) => {
   try {
     const html = generateHTML(order);
-    
+
     if (Platform.OS === 'web') {
       // Usamos un iframe oculto para no abrir ni dejar tabs adicionales
       const iframe = document.createElement('iframe');
@@ -291,7 +291,7 @@ export const printOrder = async (order) => {
           try {
             iframe.contentWindow.focus();
             iframe.contentWindow.print();
-          } catch(e) {
+          } catch (e) {
             console.warn('iframe print error', e);
           } finally {
             // Remover el iframe después de imprimir (con un pequeño delay)

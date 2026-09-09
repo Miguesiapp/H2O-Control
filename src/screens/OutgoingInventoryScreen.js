@@ -58,6 +58,7 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [availableProducts, setAvailableProducts] = useState([]);
   const [availableBatches, setAvailableBatches] = useState([]);
+  const [availablePresentations, setAvailablePresentations] = useState({}); // { '20': 48, '1': 26, ... }
   const [allFinalStock, setAllFinalStock] = useState([]);
   const [productModalVisible, setProductModalVisible] = useState(false);
   const [batchModalVisible, setBatchModalVisible] = useState(false);
@@ -89,27 +90,60 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
     return () => unsubStock();
   }, [companyName, viewMode]);
 
+  // Cuando cambia el producto, calcular qué presentaciones tienen stock y auto-seleccionar
+  useEffect(() => {
+    if (!formData.productName) {
+      setAvailablePresentations({});
+      return;
+    }
+    const productUpper = formData.productName.toUpperCase();
+    const presMap = {}; // { '1': totalQty, '20': totalQty, '1000': totalQty }
+    allFinalStock.forEach(item => {
+      if (!item.itemName) return;
+      const itemUpper = item.itemName.toUpperCase();
+      if (!itemUpper.startsWith(productUpper + ' - ')) return;
+      const suffix = itemUpper.slice(productUpper.length + 3); // e.g. '20L' o 'CONTENEDOR 1000L'
+      let pres = null;
+      if (suffix === 'CONTENEDOR 1000L') pres = '1000';
+      else {
+        const match = suffix.match(/^(\d+)L$/);
+        if (match) pres = match[1];
+      }
+      if (pres) presMap[pres] = (presMap[pres] || 0) + (item.quantity || 0);
+    });
+    setAvailablePresentations(presMap);
+    // Auto-seleccionar la primera presentación con stock si la actual no tiene
+    const orderedPres = ['20', '10', '5', '1', '1000'];
+    const currentHasStock = presMap[formData.presentation] > 0;
+    if (!currentHasStock) {
+      const firstWithStock = orderedPres.find(p => (presMap[p] || 0) > 0);
+      if (firstWithStock) {
+        setFormData(prev => ({ ...prev, presentation: firstWithStock, batchInternal: '' }));
+      }
+    }
+  }, [formData.productName, allFinalStock]);
+
   useEffect(() => {
     if (formData.productName && formData.presentation) {
       const isContainer = formData.presentation === '1000';
       const targetItemName = isContainer
         ? `${formData.productName.toUpperCase()} - CONTENEDOR 1000L`
         : `${formData.productName.toUpperCase()} - ${formData.presentation}L`;
-      // Enriquecer con cantidad disponible para mostrar en el selector
       const batches = allFinalStock
-        .filter(item => item.itemName.toUpperCase() === targetItemName)
+        .filter(item => item.itemName && item.itemName.toUpperCase() === targetItemName)
         .map(item => ({
           batchInternal: item.batchInternal,
           quantity: item.quantity || 0,
           batchProvider: item.batchProvider || 'S/D'
         }))
-        .filter((b, i, arr) => arr.findIndex(x => x.batchInternal === b.batchInternal) === i) // dedup
-        .sort((a, b) => b.quantity - a.quantity); // mayor stock primero
+        .filter((b, i, arr) => arr.findIndex(x => x.batchInternal === b.batchInternal) === i)
+        .sort((a, b) => b.quantity - a.quantity);
       setAvailableBatches(batches);
     } else {
       setAvailableBatches([]);
     }
   }, [formData.productName, formData.presentation, allFinalStock]);
+
 
   const handleCreateOrder = async () => {
     const qtyNormalized = Number(formData.quantity.replace(',', '.'));
@@ -341,16 +375,32 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
 
             <Text style={styles.label}>Presentación</Text>
             <View style={styles.chipRow}>
-              {BIDON_CAPACITIES.map(cap => (
-                <TouchableOpacity 
-                  key={cap} 
-                  style={[styles.chip, formData.presentation === cap && styles.chipActive, cap === '1000' && styles.chipContainer]}
-                  onPress={() => setFormData({...formData, presentation: cap, batchInternal: ''})}
-                >
-                  <Droplet color={formData.presentation === cap ? '#fff' : (cap === '1000' ? '#7c3aed' : '#64748b')} size={14} style={{marginRight: 4}}/>
-                  <Text style={[styles.chipText, formData.presentation === cap && styles.chipTextActive]}>{BIDON_LABELS[cap] || `${cap}L`}</Text>
-                </TouchableOpacity>
-              ))}
+              {BIDON_CAPACITIES.map(cap => {
+                const stockQty = availablePresentations[cap] || 0;
+                const hasStock = stockQty > 0;
+                const isActive = formData.presentation === cap;
+                const noProduct = !formData.productName;
+                return (
+                  <TouchableOpacity
+                    key={cap}
+                    style={[
+                      styles.chip,
+                      isActive && styles.chipActive,
+                      cap === '1000' && styles.chipContainer,
+                      !noProduct && !hasStock && { opacity: 0.35 }
+                    ]}
+                    onPress={() => setFormData({...formData, presentation: cap, batchInternal: ''})}
+                  >
+                    <Droplet color={isActive ? '#fff' : (cap === '1000' ? '#7c3aed' : '#64748b')} size={14} style={{marginRight: 4}}/>
+                    <View>
+                      <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{BIDON_LABELS[cap] || `${cap}L`}</Text>
+                      {!noProduct && hasStock && (
+                        <Text style={{ fontSize: 9, color: isActive ? '#bbf7d0' : '#10b981', fontWeight: '800' }}>{stockQty} uds</Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             <View style={styles.row}>
