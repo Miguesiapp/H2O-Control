@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
 import { collection, query, where, getDocs, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { registerMovement, createOrder, updateOrderStatus, checkTotalStock } from '../services/logisticsService'; 
-import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box, Droplet, Building2, Tag, Plus, ClipboardList, Play, CheckSquare, XCircle, ChevronDown, ChevronUp, Printer } from 'lucide-react-native';
+import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box, Droplet, Building2, Tag, Plus, ClipboardList, Play, CheckSquare, XCircle, ChevronDown, ChevronUp, Printer, Search } from 'lucide-react-native';
 import AutocompleteInput from '../components/AutocompleteInput';
 import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS, RAW_MATERIALS_LIST } from '../config/constants';
 import { canCreateOrders } from '../config/permissions';
