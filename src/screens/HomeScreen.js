@@ -9,7 +9,7 @@ import { collection, query, where, getDocs, onSnapshot, getDoc, doc } from 'fire
 import { updateProfile } from 'firebase/auth';
 import { canAccessQualityControl } from '../config/permissions';
 import { ALLOWED_ATTENDANCE_EMAILS } from '../config/constants';
-import { LogOut, FlaskConical, ClipboardCheck, ChevronRight, Clock, Sparkles, Calculator, UserCheck, Database, Keyboard, Package, Truck, Beaker, Container, Box, MonitorPlay, ShoppingCart, Search, ShieldAlert } from 'lucide-react-native';
+import { LogOut, FlaskConical, ClipboardCheck, ChevronRight, Clock, Sparkles, Calculator, UserCheck, Database, Keyboard, Package, Truck, Beaker, Container, Box, MonitorPlay, ShoppingCart, Search, ShieldAlert, Book } from 'lucide-react-native';
 
 export default function HomeScreen({ navigation }) {
   const { width, height } = useWindowDimensions();
@@ -335,7 +335,7 @@ export default function HomeScreen({ navigation }) {
             </View>
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={styles.labCardTitle}>Orden Envasado Directo (OEM)</Text>
+                <Text style={styles.labCardTitle}>Orden Envasado Directo (OED)</Text>
               </View>
               <Text style={styles.labCardSub}>Envasar Materia Prima en Bidones/Cajas</Text>
             </View>
@@ -396,17 +396,12 @@ export default function HomeScreen({ navigation }) {
           </View>
 
           <View style={styles.row}>
-
-            {ALLOWED_ATTENDANCE_EMAILS.includes(currentUserEmail.toLowerCase()) ? (
-              <TouchableOpacity style={styles.qualityCard} onPress={() => navigation.navigate('StaffAttendance')}>
-                <View style={[styles.qualityIconBox, { backgroundColor: '#f0f9ff' }]}>
-                  <UserCheck color="#0ea5e9" size={24} />
-                </View>
-                <Text style={styles.qualityCardText}>Tótem Asistencia</Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={[styles.qualityCard, { opacity: 0 }]} pointerEvents="none" />
-            )}
+            <TouchableOpacity style={styles.qualityCard} onPress={() => navigation.navigate('Dictionary')}>
+              <View style={[styles.qualityIconBox, { backgroundColor: '#f0f9ff' }]}>
+                <Book color="#0ea5e9" size={24} />
+              </View>
+              <Text style={styles.qualityCardText}>Diccionario de MP</Text>
+            </TouchableOpacity>
 
             <TouchableOpacity style={styles.qualityCard} onPress={() => navigation.navigate('PurchaseRequests')}>
               <View style={[styles.qualityIconBox, { backgroundColor: '#fef2f2' }]}>

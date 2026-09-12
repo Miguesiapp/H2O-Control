@@ -32,7 +32,8 @@ import TraceabilityScreen from '../screens/TraceabilityScreen';
 import SmartAICargoScreen from '../screens/SmartAICargoScreen'; 
 
 // 6. Módulo de Personal y Asistencia (TÓTEM Y REPORTES)
-import StaffAttendanceScreen from '../screens/StaffAttendanceScreen'; 
+import StaffAttendanceScreen from '../screens/StaffAttendanceScreen';
+import DictionaryScreen from '../screens/DictionaryScreen'; 
 import AttendanceReportsScreen from '../screens/AttendanceReportsScreen';
 
 // 7. Módulo de Inteligencia Ejecutiva (C-LEVEL)
@@ -98,6 +99,7 @@ export default function AppNavigator({ user }) {
 
       {/* SECCIÓN: PERSONAL Y ASISTENCIA */}
       <Stack.Screen name="StaffAttendance" component={StaffAttendanceScreen} />
+      <Stack.Screen name="Dictionary" component={DictionaryScreen} />
       <Stack.Screen name="AttendanceReports" component={AttendanceReportsScreen} />
 
       {/* SECCIÓN: SEGURIDAD E HIGIENE (EIG) */}

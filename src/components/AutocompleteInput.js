@@ -6,6 +6,11 @@ const normalizeString = (str) => {
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase();
 };
 
+const getDisplayName = (str) => {
+  if (!str) return '';
+  return str.split(' / ')[0].trim();
+};
+
 export default function AutocompleteInput({ 
   data, 
   value, 
@@ -15,13 +20,17 @@ export default function AutocompleteInput({
   containerStyle,
   allowCustom = false
 }) {
-  const [inputText, setInputText] = useState(value || '');
+  const [inputText, setInputText] = useState(getDisplayName(value || ''));
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [filteredData, setFilteredData] = useState([]);
   
   // Sincronizar el estado local si el valor externo cambia (ej: cuando se resetea el form)
+  // Nota: Si el usuario escribe manualmente (allowCustom), value puede ser lo que escribió.
   useEffect(() => {
-    setInputText(value || '');
+    // Si estamos escribiendo, no queremos que un re-render externo pise lo que tipeamos 
+    // a menos que sea un reset (value vacío) o un cambio programático real.
+    // Usar getDisplayName limpia la vista si viene con ' / '
+    setInputText(getDisplayName(value || ''));
   }, [value]);
 
   useEffect(() => {
@@ -37,9 +46,9 @@ export default function AutocompleteInput({
   }, [inputText, data, showSuggestions]);
 
   const handleSelect = (item) => {
-    const displayName = item;
+    const displayName = getDisplayName(item);
     setInputText(displayName);
-    onChangeText(displayName);
+    onChangeText(item);
     setShowSuggestions(false);
     Keyboard.dismiss();
   };
@@ -65,6 +74,8 @@ export default function AutocompleteInput({
                onChangeText(txt);
             } else {
                // Vaciamos el valor en el componente padre hasta que seleccione algo válido
+               // si no coincide exactamente con el displayName
+               // (Evitamos limpiar si solo está tipeando, pero el padre necesita la cadena completa)
                if (value !== '') onChangeText(''); 
             }
             setShowSuggestions(true);
@@ -88,7 +99,7 @@ export default function AutocompleteInput({
                onPress={() => handleSelect(item)}
                keyboardShouldPersistTaps="always"
              >
-               <Text style={styles.suggestionText}>{item}</Text>
+               <Text style={styles.suggestionText}>{getDisplayName(item)}</Text>
              </TouchableOpacity>
           )})}
         </View>
