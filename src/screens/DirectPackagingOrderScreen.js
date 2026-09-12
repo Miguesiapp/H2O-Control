@@ -463,8 +463,12 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
                 <Text style={styles.emptyText}>Selecciona una Materia Prima para ver sus lotes disponibles.</Text>
               </View>
             ) : (() => {
-                // Filtrar los lotes para la MP seleccionada
-                const filteredLots = approvedLots.filter(lot => lot.itemName === selectedRawMaterial);
+                const selectedPrimary = selectedRawMaterial.split(' / ')[0].trim().toUpperCase();
+                const filteredLots = approvedLots.filter(lot => {
+                  if (!lot.itemName) return false;
+                  const lotPrimary = lot.itemName.split(' / ')[0].trim().toUpperCase();
+                  return lotPrimary === selectedPrimary;
+                });
                 
                 if (filteredLots.length === 0) {
                   return (
