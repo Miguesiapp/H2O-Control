@@ -79,14 +79,21 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
   useEffect(() => {
     const fetchApprovedLots = async () => {
       try {
-        const q = query(
+        const qGranel = query(
           collection(db, "Inventory"),
           where("company", "==", companyName),
+          where("stockType", "==", "GRANEL"),
+          where("quantity", ">", 0)       
+        );
+        const qMP = query(
+          collection(db, "Inventory"),
+          where("company", "==", "STOCK_CENTRAL_MP"),
           where("stockType", "==", "MP"),
           where("quantity", ">", 0)       
         );
-        const querySnapshot = await getDocs(q);
-        const lots = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        const [snapGranel, snapMP] = await Promise.all([getDocs(qGranel), getDocs(qMP)]);
+        const lots = [...snapGranel.docs, ...snapMP.docs].map(doc => ({ id: doc.id, ...doc.data() }));
         setApprovedLots(lots);
       } catch (error) {
         console.error(error);
@@ -467,7 +474,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
                 const filteredLots = approvedLots.filter(lot => {
                   if (!lot.itemName) return false;
                   const lotPrimary = lot.itemName.split(' / ')[0].trim().toUpperCase();
-                  return lotPrimary === selectedPrimary;
+                  return lotPrimary.includes(selectedPrimary) || selectedPrimary.includes(lotPrimary);
                 });
                 
                 if (filteredLots.length === 0) {
