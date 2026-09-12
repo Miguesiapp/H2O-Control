@@ -10,7 +10,7 @@ import { collection, query, where, getDocs, onSnapshot, serverTimestamp } from '
 import { registerMovement, createOrder, updateOrderStatus, checkTotalStock } from '../services/logisticsService'; 
 import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box, Droplet, Building2, Tag, Plus, ClipboardList, Play, CheckSquare, XCircle, ChevronDown, ChevronUp, Printer } from 'lucide-react-native';
 import AutocompleteInput from '../components/AutocompleteInput';
-import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS } from '../config/constants';
+import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS, RAW_MATERIALS_LIST } from '../config/constants';
 import { canCreateOrders } from '../config/permissions';
 import { printOrder } from '../services/printService';
 
@@ -61,6 +61,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [approvedLots, setApprovedLots] = useState([]);
   const [selectedLot, setSelectedLot] = useState(null);
+  const [selectedRawMaterial, setSelectedRawMaterial] = useState('');
   const [commercialName, setCommercialName] = useState('');
   const [expandedGroups, setExpandedGroups] = useState([]);
   
@@ -438,75 +439,75 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
           </View>
 
           {/* 1. SELECCIÓN DE LOTE GRANEL */}
-          <Text style={styles.sectionTitle}>1. Lote de Granel Aprobado</Text>
-          <View style={styles.card}>
+          <Text style={styles.sectionTitle}>1. Selección de Materia Prima y Lote</Text>
+          <View style={[styles.card, { zIndex: 2000 }]}>
+            <Text style={styles.label}>Buscar Materia Prima</Text>
+            <AutocompleteInput 
+              data={RAW_MATERIALS_LIST}
+              value={selectedRawMaterial}
+              onChangeText={(val) => {
+                setSelectedRawMaterial(val);
+                setSelectedLot(null); 
+              }}
+              placeholder="Ej: ATMP"
+              icon={<Search color="#94a3b8" size={20} />}
+              allowCustom={false}
+              containerStyle={{ marginBottom: 20 }}
+            />
+
             {loading ? (
               <ActivityIndicator color="#3b82f6" size="large" style={{ marginVertical: 20 }} />
-            ) : approvedLots.length === 0 ? (
+            ) : !selectedRawMaterial ? (
               <View style={styles.emptyBox}>
-                <AlertCircle color="#94a3b8" size={32} style={{marginBottom: 10}}/>
-                <Text style={styles.emptyText}>No hay lotes de GRANEL aprobados disponibles en esta empresa.</Text>
+                <Search color="#94a3b8" size={32} style={{marginBottom: 10}}/>
+                <Text style={styles.emptyText}>Selecciona una Materia Prima para ver sus lotes disponibles.</Text>
               </View>
-            ) : (
-              (() => {
-                const groupedApprovedLots = approvedLots.reduce((acc, lot) => {
-                  const name = lot.itemName || 'S/N';
-                  if (!acc[name]) {
-                    acc[name] = {
-                      itemName: name,
-                      totalQuantity: 0,
-                      lots: []
-                    };
-                  }
-                  acc[name].totalQuantity += lot.quantity;
-                  acc[name].lots.push(lot);
-                  return acc;
-                }, {});
-
-                const sortedGroupedLots = Object.values(groupedApprovedLots).sort((a, b) => a.itemName.localeCompare(b.itemName));
-
-                return sortedGroupedLots.map((group) => {
-                  const isExpanded = expandedGroups.includes(group.itemName);
+            ) : (() => {
+                // Filtrar los lotes para la MP seleccionada
+                const filteredLots = approvedLots.filter(lot => lot.itemName === selectedRawMaterial);
+                
+                if (filteredLots.length === 0) {
                   return (
-                    <View key={group.itemName} style={styles.groupContainer}>
-                      <TouchableOpacity 
-                        style={styles.groupHeader}
-                        onPress={() => toggleGroup(group.itemName)}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.groupTitle}>{group.itemName}</Text>
-                          <Text style={styles.groupSub}>Disponible: {group.totalQuantity.toFixed(2)} Lts ({group.lots.length} Lote/s)</Text>
-                        </View>
-                        {isExpanded ? <ChevronUp color="#64748b" size={20} /> : <ChevronDown color="#64748b" size={20} />}
-                      </TouchableOpacity>
-                      
-                      {isExpanded && (
-                        <View style={styles.groupContent}>
-                          {group.lots.map((lot) => (
-                            <TouchableOpacity
-                              key={lot.id}
-                              style={[styles.lotCard, selectedLot?.id === lot.id && styles.lotCardSelected]}
-                              onPress={() => setSelectedLot(lot)}
-                            >
-                              <View style={styles.lotHeader}>
-                                <Text style={[styles.lotName, selectedLot?.id === lot.id && styles.lotNameSelected]}>
-                                  {lot.itemName}
-                                </Text>
-                                {selectedLot?.id === lot.id && <CheckCircle2 color="#3b82f6" size={20} />}
-                              </View>
-                              <Text style={styles.lotText}>Lote Interno: {lot.batchInternal}</Text>
-                              <Text style={styles.lotText}>Disponible: {lot.quantity.toFixed(2)} Lts</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      )}
+                    <View style={styles.emptyBox}>
+                      <AlertCircle color="#94a3b8" size={32} style={{marginBottom: 10}}/>
+                      <Text style={styles.emptyText}>No hay stock disponible para esta Materia Prima.</Text>
                     </View>
                   );
-                });
-              })()
-            )}
-          </View>
+                }
 
+                const totalQuantity = filteredLots.reduce((sum, lot) => sum + lot.quantity, 0);
+
+                return (
+                  <View style={styles.groupContainer}>
+                    <View style={styles.groupHeader}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.groupTitle}>Lotes Disponibles</Text>
+                        <Text style={styles.groupSub}>Stock Total: {totalQuantity.toFixed(2)} Kg/Lts ({filteredLots.length} Lote/s)</Text>
+                      </View>
+                    </View>
+                    
+                    <View style={styles.groupContent}>
+                      {filteredLots.map((lot) => (
+                        <TouchableOpacity
+                          key={lot.id}
+                          style={[styles.lotCard, selectedLot?.id === lot.id && styles.lotCardSelected]}
+                          onPress={() => setSelectedLot(lot)}
+                        >
+                          <View style={styles.lotHeader}>
+                            <Text style={[styles.lotName, selectedLot?.id === lot.id && styles.lotNameSelected]}>
+                              {lot.itemName.split(' / ')[0]}
+                            </Text>
+                            {selectedLot?.id === lot.id && <CheckCircle2 color="#3b82f6" size={20} />}
+                          </View>
+                          <Text style={styles.lotText}>Lote Interno: {lot.batchInternal}</Text>
+                          <Text style={styles.lotText}>Disponible: {lot.quantity.toFixed(2)} Kg/Lts</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                );
+              })()}
+          </View>
           {/* 2. PARÁMETROS DE ENVASADO E INSUMOS */}
           {selectedLot && (
             <>

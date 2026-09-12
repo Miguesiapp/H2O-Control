@@ -14,6 +14,11 @@ const normalizeString = (str) => {
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase();
 };
 
+const getDisplayName = (str) => {
+  if (!str) return '';
+  return str.split(' / ')[0].trim();
+};
+
 export default function FormulationScreen({ navigation }) {
   const [formulas, setFormulas] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -151,7 +156,7 @@ export default function FormulationScreen({ navigation }) {
                   return (
                     <View key={index} style={styles.ingRow}>
                       <View style={styles.ingDot} />
-                      <Text style={styles.ingText}>{ing.name}</Text>
+                      <Text style={styles.ingText}>{getDisplayName(ing.name)}</Text>
                       <Text style={styles.ingPercentage}>{ing.percentage}%</Text>
                     </View>
                   );
