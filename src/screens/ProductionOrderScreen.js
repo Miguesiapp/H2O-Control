@@ -645,7 +645,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
           </View>
 
           <View style={styles.card}>
-            <View style={styles.inputGroup}>
+            <View style={[styles.inputGroup, { zIndex: 3000 }]}>
               <Text style={styles.label}>Producto Madre a Fabricar</Text>
               <AutocompleteInput 
                 data={availableFormulas}
