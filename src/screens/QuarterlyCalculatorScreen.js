@@ -59,9 +59,9 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
       const updated = { ...t, [field]: value };
       
       if (field === 'productName') {
-        let found = formulas.find(f => f.productName === value);
+        let found = formulas.find(f => f.productName.replace(' / ', ' - ') === value);
         if (!found) {
-          found = formulas.find(f => value.includes(f.productName) || f.productName.includes(value));
+          found = formulas.find(f => value.includes(f.productName.replace(' / ', ' - ')) || f.productName.replace(' / ', ' - ').includes(value));
         }
         updated.selectedFormula = found || null;
       }
@@ -425,7 +425,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
             <View key={target.key} style={styles.targetCard}>
               <View style={{ zIndex: 3000 - index, position: 'relative' }}>
                 <AutocompleteInput 
-                  data={[...new Set([...formulas.map(f => f.productName), ...PRODUCTS_MADRE_LIST])].sort()}
+                  data={[...new Set([...formulas.map(f => f.productName.replace(' / ', ' - ')), ...PRODUCTS_MADRE_LIST])].sort()}
                   value={target.productName}
                   onChangeText={(text) => updateTarget(target.key, 'productName', text)}
                   placeholder="Seleccionar producto..."

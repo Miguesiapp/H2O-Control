@@ -17,7 +17,7 @@ const generateHTML = (order) => {
     productName = data?.formulaName || data?.itemName || 'General';
     batchInfo = data?.batch || data?.batchInternal || 'S/D';
     quantity = `${data?.liters || data?.targetVolume || 0} Lts (Aprox. ${Number(data?.kilos || data?.targetKilos || 0).toFixed(2)} Kg)`;
-  } else if (type === 'OE') {
+  } else if (type === 'OE' || type === 'OEM') {
     title = 'ORDEN DE ENVASADO';
     // itemName tiene formato "PRODUCTO COMERCIAL - 20L", extraemos solo el nombre
     const rawItemName = data?.itemName || '';
@@ -123,7 +123,7 @@ const generateHTML = (order) => {
         </tbody>
       </table>
     `;
-  } else if (type === 'OE') {
+  } else if (type === 'OE' || type === 'OEM') {
     itemsHtml = `
       <h3>Componentes del Envasado</h3>
       <table>
