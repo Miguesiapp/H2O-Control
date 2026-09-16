@@ -681,11 +681,6 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
                   <Text style={{fontSize: 12, color: '#64748b'}}>Consumo: {selectedOrder?.data?.requiredBoxes} Uds</Text>
                 </View>
               )}
-              
-              <TouchableOpacity onPress={() => selectedOrder && printOrder(selectedOrder)} style={[styles.mainButton, { backgroundColor: '#3b82f6', marginTop: 15 }]}>
-                <Printer color="#fff" size={20} />
-                <Text style={[styles.submitText, { color: '#fff' }]}>Imprimir / Exportar PDF</Text>
-              </TouchableOpacity>
             </View>
 
             {selectedOrder?.status === 'ENVIADO' && (
