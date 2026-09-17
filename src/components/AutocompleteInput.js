@@ -39,7 +39,18 @@ export default function AutocompleteInput({
       const filtered = data.filter(item => 
         normalizeString(item).includes(normalizedInput)
       );
-      setFilteredData(filtered);
+
+      const uniqueFiltered = [];
+      const seenNames = new Set();
+      filtered.forEach(item => {
+        const dName = getDisplayName(item);
+        if (!seenNames.has(dName)) {
+          seenNames.add(dName);
+          uniqueFiltered.push(item);
+        }
+      });
+
+      setFilteredData(uniqueFiltered);
     } else {
       setFilteredData([]);
     }
