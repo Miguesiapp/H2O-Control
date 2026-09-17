@@ -162,7 +162,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
       const itemName = selectedLot.itemName?.toUpperCase();
 
       // Variables de Búsqueda Generalizada (Fuzzy) para usarse después en la deducción
-      const capacityKeywords = [`${presentation}L`, `${presentation} L`, `${presentation} LTS`, `${presentation}LTS`];
+      const capacityKeywords = [`${presentation}L`, `${presentation} L`, `${presentation} LTS`, `${presentation}LTS`, `X${presentation}`, `X ${presentation}`, `${presentation}-L`];
       const fuzzyBidon = ['BIDON', capacityKeywords, formData.brandBidon];
       
       const boxKeywords = [boxFormat, `${presentation}L`, `${presentation} L`, `X ${presentation}L`, `X${presentation}L`];

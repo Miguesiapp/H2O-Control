@@ -344,6 +344,9 @@ export const getBaseLabelName = (commercialName) => {
   if (!commercialName) return '';
   const upperName = commercialName.trim().toUpperCase();
 
+  // SPECIAL CASE: MOMENTUM (NF e INDRASA usan las mismas etiquetas)
+  if (upperName.includes('MOMENTUM')) return 'MOMENTUM';
+
   // 1. Coincidencia exacta
   if (PRODUCTS_FINAL_LIST.includes(upperName)) return upperName;
 
