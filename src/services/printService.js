@@ -16,7 +16,10 @@ const generateHTML = (order) => {
     title = 'ORDEN DE PRODUCCIÓN';
     productName = data?.formulaName || data?.itemName || 'General';
     batchInfo = data?.batch || data?.batchInternal || 'S/D';
-    quantity = `${data?.liters || data?.targetVolume || 0} Lts (Aprox. ${Number(data?.kilos || data?.targetKilos || 0).toFixed(2)} Kg)`;
+    const lts = data?.liters || data?.targetVolume || 0;
+    const kgs = data?.kilos || data?.targetKilos || 0;
+    const dens = data?.density || 'S/D';
+    quantity = `${lts} Litros (${Number(kgs).toFixed(2)} Kg) | Densidad: ${dens}`;
   } else if (type === 'OE' || type === 'OEM') {
     title = 'ORDEN DE ENVASADO';
     // itemName tiene formato "PRODUCTO COMERCIAL - 20L", extraemos solo el nombre
@@ -286,8 +289,8 @@ export const printOrder = async (order) => {
         iframeDoc.open();
         iframeDoc.write(html);
         iframeDoc.close();
-        // Esperar a que cargue el contenido y luego imprimir
-        iframe.onload = () => {
+        // Usar setTimeout en lugar de onload porque document.write no dispara onload de manera confiable
+        setTimeout(() => {
           try {
             iframe.contentWindow.focus();
             iframe.contentWindow.print();
@@ -296,10 +299,12 @@ export const printOrder = async (order) => {
           } finally {
             // Remover el iframe después de imprimir (con un pequeño delay)
             setTimeout(() => {
-              document.body.removeChild(iframe);
+              if (document.body.contains(iframe)) {
+                document.body.removeChild(iframe);
+              }
             }, 1000);
           }
-        };
+        }, 500);
       } else {
         document.body.removeChild(iframe);
         Alert.alert("Error", "No se pudo generar el documento de impresión.");

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Keyboard, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Keyboard, Alert, ScrollView } from 'react-native';
 
 const normalizeString = (str) => {
   if (!str) return '';
@@ -101,19 +101,22 @@ export default function AutocompleteInput({
       </View>
 
       {showSuggestions && filteredData.length > 0 && (
-        <View style={styles.dropdown}>
+        <ScrollView 
+          style={styles.dropdown} 
+          keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled={true}
+        >
           {filteredData.slice(0, 5).map((item, index) => {
              return (
              <TouchableOpacity 
                key={index.toString()} 
                style={styles.suggestionItem}
                onPress={() => handleSelect(item)}
-               keyboardShouldPersistTaps="always"
              >
                <Text style={styles.suggestionText}>{getDisplayName(item)}</Text>
              </TouchableOpacity>
           )})}
-        </View>
+        </ScrollView>
       )}
     </View>
   );
