@@ -54,10 +54,33 @@ export default function HomeScreen({ navigation }) {
     const q = query(collection(db, "Inventory"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const items = snapshot.docs.map(doc => doc.data());
-      const alerts = items.filter(item => item.quantity <= (item.minStock || 100));
+      
+      const aggregated = {};
+      items.forEach(item => {
+        if (item.status === 'PENDIENTE' || item.status === 'PENDIENTE_LABORATORIO') return;
 
-      const uniqueNames = [...new Set(alerts.map(item => item.itemName))];
-      setCriticalItems(uniqueNames);
+        const name = item.itemName;
+        if (!aggregated[name]) {
+          aggregated[name] = {
+            totalQuantity: 0,
+            minStock: item.minStock !== undefined ? item.minStock : null
+          };
+        }
+        aggregated[name].totalQuantity += item.quantity || 0;
+        
+        if (aggregated[name].minStock === null && item.minStock !== undefined) {
+           aggregated[name].minStock = item.minStock;
+        }
+      });
+
+      const criticalItemsList = [];
+      for (const [name, data] of Object.entries(aggregated)) {
+        if (data.minStock !== null && data.totalQuantity <= data.minStock) {
+          criticalItemsList.push(name);
+        }
+      }
+
+      setCriticalItems(criticalItemsList);
       setLoadingAlerts(false);
     }, (error) => {
       console.error("Error en Firebase:", error);
@@ -285,6 +308,38 @@ export default function HomeScreen({ navigation }) {
             </View>
             <ChevronRight color="#10b981" size={24} />
           </TouchableOpacity>
+
+          {/* ALERTAS DE STOCK */}
+          {criticalItems.length === 0 ? (
+            <TouchableOpacity
+              style={[styles.mainCard, { borderColor: '#10b981', backgroundColor: '#ecfdf5', marginTop: 15 }]}
+              activeOpacity={1}
+            >
+              <View style={[styles.mainCardIcon, { backgroundColor: '#10b981' }]}>
+                <CheckCircle2 color="#fff" size={24} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.mainCardTitle, { color: '#064e3b' }]}>Stock Saludable</Text>
+                <Text style={styles.mainCardSub}>No hay ítems por debajo del mínimo</Text>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.mainCard, { borderColor: '#ef4444', backgroundColor: '#fef2f2', marginTop: 15 }]}
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate('LowStockAlerts', { items: criticalItems })}
+            >
+              <View style={[styles.mainCardIcon, { backgroundColor: '#ef4444' }]}>
+                <AlertTriangle color="#fff" size={24} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.mainCardTitle, { color: '#991b1b' }]}>Alertas de Stock ({criticalItems.length})</Text>
+                <Text style={[styles.mainCardSub, { color: '#b91c1c', fontWeight: 'bold' }]}>Ítems requieren reposición</Text>
+              </View>
+              <ChevronRight color="#ef4444" size={24} />
+            </TouchableOpacity>
+          )}
+
         </View>
 
         {/* FLUJO OPERATIVO */}

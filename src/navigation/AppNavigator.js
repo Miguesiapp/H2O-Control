@@ -17,9 +17,7 @@ import OutgoingInventoryScreen from '../screens/OutgoingInventoryScreen';
 import ProductionOrderScreen from '../screens/ProductionOrderScreen';
 import PackagingOrderScreen from '../screens/PackagingOrderScreen';
 import DirectPackagingOrderScreen from '../screens/DirectPackagingOrderScreen';
-import InterCompanyTransferScreen from '../screens/InterCompanyTransferScreen'; 
-
-
+import InterCompanyTransferScreen from '../screens/InterCompanyTransferScreen';
 // 4. Módulos de Laboratorio (H2O), Calidad (BBS) y Reportes
 import FormulationScreen from '../screens/FormulationScreen'; 
 import AddFormulaScreen from '../screens/AddFormulaScreen'; 
@@ -27,6 +25,7 @@ import QuarterlyCalculatorScreen from '../screens/QuarterlyCalculatorScreen';
 import QualityControlScreen from '../screens/QualityControlScreen'; 
 import HistoryScreen from '../screens/HistoryScreen';
 import TraceabilityScreen from '../screens/TraceabilityScreen';
+import LowStockAlertsScreen from '../screens/LowStockAlertsScreen';
 
 // 5. Módulos de Inteligencia IA
 import SmartAICargoScreen from '../screens/SmartAICargoScreen'; 
@@ -76,6 +75,7 @@ export default function AppNavigator({ user }) {
       {/* SECCIÓN: GESTIÓN DE UNIDADES DE NEGOCIO */}
       <Stack.Screen name="CompanyDetail" component={CompanyDetailScreen} />
       <Stack.Screen name="StockView" component={StockView} />
+      <Stack.Screen name="LowStockAlerts" component={LowStockAlertsScreen} />
       
       {/* SECCIÓN: OPERACIONES DE PLANTA (TRANSFERENCIAS) */}
       <Stack.Screen name="IncomingInventory" component={IncomingInventoryScreen} />

@@ -176,6 +176,14 @@ export default function ProductionOrderScreen({ route, navigation }) {
       });
 
       for (const ingredient of formulaData.ingredients) {
+        if (ingredient.type === 'NOTE') {
+          calculatedNeeds.push({
+            type: 'NOTE',
+            text: ingredient.text
+          });
+          continue;
+        }
+
         const percentageValue = ingredient.percentage !== undefined ? ingredient.percentage / 100 : 0;
         const requiredKg = Number((targetKilos * percentageValue).toFixed(2)); // Siempre en Kg (para mostrar al operario)
         let requiredQty = requiredKg; // En Lts si es Granel (para comparar/descontar stock)
