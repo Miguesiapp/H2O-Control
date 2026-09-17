@@ -16,7 +16,7 @@ const generateHTML = (order) => {
     title = 'ORDEN DE PRODUCCIÓN';
     productName = data?.formulaName || data?.itemName || 'General';
     batchInfo = data?.batch || data?.batchInternal || 'S/D';
-    const lts = data?.liters || data?.targetVolume || 0;
+    const lts = data?.quantity || data?.liters || data?.targetVolume || 0;
     const kgs = data?.kilos || data?.targetKilos || 0;
     const dens = data?.density || 'S/D';
     quantity = `${lts} Litros (${Number(kgs).toFixed(2)} Kg) | Densidad: ${dens}`;
