@@ -9,7 +9,7 @@ import { collection, query, where, getDocs, onSnapshot, getDoc, doc } from 'fire
 import { updateProfile } from 'firebase/auth';
 import { canAccessQualityControl } from '../config/permissions';
 import { ALLOWED_ATTENDANCE_EMAILS } from '../config/constants';
-import { LogOut, FlaskConical, ClipboardCheck, ChevronRight, Clock, Sparkles, Calculator, UserCheck, Database, Keyboard, Package, Truck, Beaker, Container, Box, MonitorPlay, ShoppingCart, Search, ShieldAlert, Book } from 'lucide-react-native';
+import { LogOut, FlaskConical, ClipboardCheck, ChevronRight, Clock, Sparkles, Calculator, UserCheck, Database, Keyboard, Package, Truck, Beaker, Container, Box, MonitorPlay, ShoppingCart, Search, ShieldAlert, Book, CheckCircle2, AlertTriangle } from 'lucide-react-native';
 
 export default function HomeScreen({ navigation }) {
   const { width, height } = useWindowDimensions();
@@ -206,10 +206,6 @@ export default function HomeScreen({ navigation }) {
               <Sparkles color="#3b82f6" size={22} />
             </TouchableOpacity>
           )}
-
-          <TouchableOpacity activeOpacity={0.7} style={styles.actionBtn} onPress={() => navigation.navigate('History')}>
-            <Clock color="#475569" size={22} />
-          </TouchableOpacity>
 
           <TouchableOpacity activeOpacity={0.7} style={styles.actionBtnLogOut} onPress={handleLogOut}>
             <LogOut color="#ef4444" size={20} />
