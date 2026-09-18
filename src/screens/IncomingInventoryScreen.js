@@ -16,7 +16,7 @@ import { Modal } from 'react-native';
 import { 
   RAW_MATERIALS_LIST, PROVIDERS_LIST, 
   ETIQUETA_CAPACITIES, BIDON_CAPACITIES, CAJA_FORMATS, PRODUCTS_FINAL_LIST, generateBatchId,
-  BIDON_BRANDS, CAJA_BRANDS
+  BIDON_BRANDS, CAJA_BRANDS, getBaseLabelName
 } from '../config/constants';
 import { printSingleLabel } from '../services/labelService';
 
@@ -206,6 +206,7 @@ export default function IncomingInventoryScreen({ navigation }) {
   };
 
   const INSUMOS_CATEGORIES = ['Bidones', 'Cajas', 'Etiquetas'];
+  const UNIQUE_LABELS_LIST = [...new Set(PRODUCTS_FINAL_LIST.map(getBaseLabelName))].sort();
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -267,7 +268,7 @@ export default function IncomingInventoryScreen({ navigation }) {
             <>
               <Text style={styles.label}>{inventoryType === 'MP' ? 'Descripción de Materia Prima' : 'Producto al que corresponde la Etiqueta'}</Text>
               <AutocompleteInput
-                data={inventoryType === 'MP' ? mergedMaterialsList : PRODUCTS_FINAL_LIST} 
+                data={inventoryType === 'MP' ? mergedMaterialsList : UNIQUE_LABELS_LIST} 
                 value={formData.itemName}
                 onChangeText={(txt) => setFormData({...formData, itemName: txt})}
                 placeholder={inventoryType === 'MP' ? "Ej: ÁCIDO SULFÚRICO" : "Ej: ACTION"}
