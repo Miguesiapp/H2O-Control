@@ -108,7 +108,7 @@ export default function HistoryScreen({ navigation }) {
   const filteredHistory = history.filter(item => {
     // FILTRO POR TAB
     const act = (item.action || '').toUpperCase();
-    if (activeFilter === 'MP' && !(act === 'INGRESO_COMPRA' || act === 'INGRESO_MANUAL' || act === 'CARGA_INICIAL')) return false;
+    if (activeFilter === 'MP' && !(act.includes('INGRESO_COMPRA') || act.includes('INGRESO_MANUAL') || act === 'CARGA_INICIAL')) return false;
     if (activeFilter === 'OP' && !(act === 'INGRESO_OP')) return false;
     if (activeFilter === 'OE' && !(act === 'INGRESO_OE' || act === 'INGRESO_OE_PARCIAL')) return false;
     if (activeFilter === 'OD' && !(act === 'EGRESO_DESPACHO')) return false;
