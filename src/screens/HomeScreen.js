@@ -207,6 +207,10 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
           )}
 
+          <TouchableOpacity activeOpacity={0.7} style={styles.actionBtn} onPress={() => navigation.navigate('History')}>
+            <Clock color="#475569" size={22} />
+          </TouchableOpacity>
+
           <TouchableOpacity activeOpacity={0.7} style={styles.actionBtnLogOut} onPress={handleLogOut}>
             <LogOut color="#ef4444" size={20} />
           </TouchableOpacity>

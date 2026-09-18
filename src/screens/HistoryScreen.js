@@ -8,7 +8,6 @@ import { generateAuditSummary } from '../services/aiService';
 import { generateAndSharePDF } from '../services/reportService';
 
 const FILTER_TABS = [
-  { id: 'ALL', label: 'Todos' },
   { id: 'MP', label: 'Ingresos MP' },
   { id: 'OP', label: 'Producción (OP)' },
   { id: 'OE', label: 'Envasado (OE)' },
@@ -18,7 +17,7 @@ const FILTER_TABS = [
 export default function HistoryScreen({ navigation }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeFilter, setActiveFilter] = useState('ALL');
+  const [activeFilter, setActiveFilter] = useState('MP');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedMonths, setExpandedMonths] = useState({});
   const [generatingPdfFor, setGeneratingPdfFor] = useState(null);
@@ -108,13 +107,11 @@ export default function HistoryScreen({ navigation }) {
 
   const filteredHistory = history.filter(item => {
     // FILTRO POR TAB
-    if (activeFilter !== 'ALL') {
-      const act = (item.action || '').toUpperCase();
-      if (activeFilter === 'MP' && !(act.includes('INGRESO_COMPRA') || act.includes('INGRESO_MANUAL') || act.includes('CARGA_INICIAL'))) return false;
-      if (activeFilter === 'OP' && !(act.includes('OP') || act.includes('PRODUCCION'))) return false;
-      if (activeFilter === 'OE' && !(act.includes('OE') || act.includes('ENVASADO') || act.includes('CONSUMO'))) return false;
-      if (activeFilter === 'OD' && !(act.includes('EGRESO_DESPACHO') || act.includes('RETIRO') || act.includes('OD'))) return false;
-    }
+    const act = (item.action || '').toUpperCase();
+    if (activeFilter === 'MP' && !(act === 'INGRESO_COMPRA' || act === 'INGRESO_MANUAL' || act === 'CARGA_INICIAL')) return false;
+    if (activeFilter === 'OP' && !(act === 'INGRESO_OP')) return false;
+    if (activeFilter === 'OE' && !(act === 'INGRESO_OE' || act === 'INGRESO_OE_PARCIAL')) return false;
+    if (activeFilter === 'OD' && !(act === 'EGRESO_DESPACHO')) return false;
     
     // FILTRO POR BÚSQUEDA
     if (searchQuery.trim()) {
