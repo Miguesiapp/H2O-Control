@@ -16,6 +16,28 @@ const checkAndCleanupEmptyStock = async (docRef) => {
     console.error("Error limpiando stock en 0:", error);
   }
 };
+
+// Helper: Barre y elimina todos los documentos con cantidad <= 0 de un ítem
+export const cleanupNegativeStock = async (company, itemName) => {
+  try {
+    const q = query(
+      collection(db, "Inventory"),
+      where("company", "==", company),
+      where("itemName", "==", itemName)
+    );
+    const snap = await getDocs(q);
+    const toDelete = snap.docs.filter(d => (d.data().quantity || 0) <= 0);
+    for (const d of toDelete) {
+      await deleteDoc(doc(db, "Inventory", d.id));
+      console.log(`Limpieza: eliminado lote negativo ${d.id} de ${itemName}`);
+    }
+    return toDelete.length;
+  } catch (error) {
+    console.error("Error en cleanupNegativeStock:", error);
+    return 0;
+  }
+};
+
 // ============================================================================
 // FUNCIÓN 1: REGISTRAR MOVIMIENTOS (El Director de Orquesta)
 // ============================================================================

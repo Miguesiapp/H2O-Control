@@ -126,14 +126,29 @@ export default function StockView({ route, navigation }) {
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const stockData = [];
+      const toCleanup = []; // docs con cantidad negativa o cero que deben eliminarse
+
       querySnapshot.forEach((doc) => {
         const data = doc.data();
         // CUARENTENA: Excluir lotes pendientes de aprobación BBS Calidad del stock disponible
         const pendingStatuses = ['PENDIENTE', 'PENDIENTE_LABORATORIO'];
         if (!pendingStatuses.includes(data.status)) {
-          stockData.push({ ...data, id: doc.id });
+          // Solo incluir documentos con cantidad positiva (evitar negativos por condiciones de carrera)
+          if ((data.quantity || 0) > 0) {
+            stockData.push({ ...data, id: doc.id });
+          } else {
+            // Marcar para limpieza silenciosa
+            toCleanup.push(doc.id);
+          }
         }
       });
+
+      // Limpieza silenciosa de documentos con cantidad ≤ 0
+      if (toCleanup.length > 0) {
+        toCleanup.forEach(docId => {
+          deleteDoc(doc(db, "Inventory", docId)).catch(() => {});
+        });
+      }
       
       // Ordenamos alfabéticamente
       stockData.sort((a, b) => (a.itemName || '').localeCompare(b.itemName || ''));
