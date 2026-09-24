@@ -222,8 +222,8 @@ export default function AddFormulaScreen({ route, navigation }) {
           
           <Text style={styles.sectionTitle}>Parámetros Generales</Text>
         <View style={styles.card}>
-          <View style={styles.row}>
-            <View style={{ flex: 1, marginRight: 10 }}>
+          <View style={[styles.row, { zIndex: 20 }]}>
+            <View style={{ flex: 1, marginRight: 10, zIndex: 20 }}>
               <Text style={styles.label}>Nombre del Producto</Text>
               <AutocompleteInput 
                 data={[...new Set([...PRODUCTS_MADRE_LIST, ...PRODUCTS_FINAL_LIST, ...dynamicProducts])].sort()}
@@ -237,7 +237,7 @@ export default function AddFormulaScreen({ route, navigation }) {
             </View>
           </View>
           
-          <View style={styles.row}>
+          <View style={[styles.row, { zIndex: 1 }]}>
             <View style={{ flex: 1, marginRight: 10 }}>
               <Text style={styles.label}>pH Teórico</Text>
               <TextInput 
