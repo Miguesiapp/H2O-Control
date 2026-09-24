@@ -42,7 +42,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
     );
     const unsubscribe = onSnapshot(q, (snap) => {
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      data.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+      data.sort((a, b) => (b.createdAt?.toMillis() || Date.now()) - (a.createdAt?.toMillis() || Date.now()));
       const companyOrders = data.filter(o => o.data?.company === companyName);
       setOrders(companyOrders);
       setLoadingOrders(false);

@@ -49,7 +49,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
     const unsubscribe = onSnapshot(q, (snap) => {
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       // Ordenar por fecha (más recientes primero)
-      data.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+      data.sort((a, b) => (b.createdAt?.toMillis() || Date.now()) - (a.createdAt?.toMillis() || Date.now()));
       // Filtramos en memoria por companyName para simplificar índices compuestos en Firebase
       const companyOrders = data.filter(o => o.data?.company === companyName);
       setOrders(companyOrders);
@@ -189,7 +189,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
          return {
            ...data,
            _id: doc.id,
-           _createdAt: data.createdAt?.toMillis() || 0
+           _createdAt: data.createdAt?.toMillis() || Date.now()
          };
       });
 

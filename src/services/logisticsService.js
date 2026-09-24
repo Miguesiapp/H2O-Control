@@ -172,7 +172,7 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
     }
 
     // Ordenamos en memoria por fecha de creación (Gastamos primero lo más viejo)
-    docs.sort((a, b) => (a.createdAt?.toMillis() || 0) - (b.createdAt?.toMillis() || 0));
+    docs.sort((a, b) => (a.createdAt?.toMillis() || Date.now()) - (b.createdAt?.toMillis() || Date.now()));
 
     let remainingToDeduct = quantityToDeduct;
 
