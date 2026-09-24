@@ -35,7 +35,7 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
     );
     const unsubscribe = onSnapshot(q, (snap) => {
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      data.sort((a, b) => (b.createdAt?.toMillis() || Date.now()) - (a.createdAt?.toMillis() || Date.now()));
+      data.sort((a, b) => (typeof b.createdAt?.toMillis === 'function' ? b.createdAt.toMillis() : Date.now()) - (typeof a.createdAt?.toMillis === 'function' ? a.createdAt.toMillis() : Date.now()));
       const companyOrders = data.filter(o => o.data?.company === companyName);
       setOrders(companyOrders);
       setLoadingOrders(false);
