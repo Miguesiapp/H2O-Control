@@ -8,7 +8,7 @@ const normalizeString = (str) => {
 
 const getDisplayName = (str) => {
   if (!str) return '';
-  return str.split(' / ')[0].trim();
+  return str.split(' / ')[0];
 };
 
 export default function AutocompleteInput({ 
