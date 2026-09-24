@@ -44,6 +44,9 @@ import PurchaseRequestsScreen from '../screens/PurchaseRequestsScreen';
 // 9. Módulo EIG (Seguridad e Higiene)
 import EIGPanelScreen from '../screens/EIGPanelScreen';
 
+// 10. Registros de Eventualidades
+import EventualitiesScreen from '../screens/EventualitiesScreen';
+
 // NOTA: Se eliminaron QRGeneratorScreen y TraceabilityScannerScreen de las importaciones.
 
 const Stack = createStackNavigator();
@@ -102,9 +105,9 @@ export default function AppNavigator({ user }) {
       <Stack.Screen name="Dictionary" component={DictionaryScreen} />
       <Stack.Screen name="AttendanceReports" component={AttendanceReportsScreen} />
 
-      {/* SECCIÓN: SEGURIDAD E HIGIENE (EIG) */}
+      {/* SECCIÓN: SEGURIDAD E HIGIENE (EIG) Y EVENTUALIDADES */}
       <Stack.Screen name="EIGPanel" component={EIGPanelScreen} />
-      
+      <Stack.Screen name="Eventualities" component={EventualitiesScreen} />
     </Stack.Navigator>
   );
 }

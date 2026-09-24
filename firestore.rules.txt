@@ -143,5 +143,9 @@ service cloud.firestore {
     match /PurchaseRequests/{request} {
       allow read, write: if isAuthorized();
     }
+
+    match /Eventualities/{eventuality} {
+      allow read, write: if isAuthorized();
+    }
   }
 }

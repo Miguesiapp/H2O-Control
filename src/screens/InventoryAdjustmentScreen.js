@@ -19,7 +19,6 @@ import {
   ETIQUETA_CAPACITIES, BIDON_CAPACITIES, CAJA_FORMATS, PROVIDERS_LIST,
   generateBatchId, BIDON_BRANDS, CAJA_BRANDS
 } from '../config/constants';
-import { printSingleLabel } from '../services/labelService';
 
 export default function InventoryAdjustmentScreen({ navigation }) {
   const [inventoryType, setInventoryType] = useState('MP'); // 'MP' | 'INSUMOS' | 'PT'
@@ -227,27 +226,8 @@ export default function InventoryAdjustmentScreen({ navigation }) {
         } else {
           Alert.alert(
             "Alta de Stock Exitosa",
-            `Lote asignado: ${batchInternal}\n¿Desea imprimir etiqueta de identificación (Zebra)?`,
-            [
-              { text: "No, gracias", style: "cancel", onPress: () => navigation.navigate('Home') },
-              { text: "Imprimir Etiqueta", onPress: async () => {
-                  try {
-                    await printSingleLabel({
-                      type: isMP ? 'MP' : 'INSUMOS',
-                      name: finalItemName,
-                      batch: isMP ? (formData.batchProvider.trim() || batchInternal) : batchInternal,
-                      expiration: formData.expiryDate.trim() || 'N/A',
-                      quantity: qtyNormalized,
-                      unit: finalUnit
-                    });
-                  } catch (e) {
-                    Alert.alert("Error de Impresión", "No se pudo generar la etiqueta.");
-                  } finally {
-                    navigation.navigate('Home');
-                  }
-                }
-              }
-            ]
+            `Lote asignado: ${batchInternal}`,
+            [{ text: "Entendido", onPress: () => navigation.navigate('Home') }]
           );
         }
       }

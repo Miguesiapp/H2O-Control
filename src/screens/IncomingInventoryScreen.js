@@ -18,7 +18,6 @@ import {
   ETIQUETA_CAPACITIES, BIDON_CAPACITIES, CAJA_FORMATS, PRODUCTS_FINAL_LIST, generateBatchId,
   BIDON_BRANDS, CAJA_BRANDS, getBaseLabelName
 } from '../config/constants';
-import { printSingleLabel } from '../services/labelService';
 
 export default function IncomingInventoryScreen({ navigation }) {
   const [inventoryType, setInventoryType] = useState('MP'); // 'MP' | 'INSUMOS'
@@ -112,8 +111,9 @@ export default function IncomingInventoryScreen({ navigation }) {
       setIsSubmitting(true);
       
       let batchInternal = '';
-      if (formData.batchProvider.trim() !== '') {
-        batchInternal = formData.batchProvider.trim().toUpperCase();
+      if (isMP) {
+        const now = new Date();
+        batchInternal = `H2O-MAN-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${Math.floor(1000 + Math.random() * 9000)}`;
       } else {
         batchInternal = generateBatchId();
       }
@@ -132,6 +132,7 @@ export default function IncomingInventoryScreen({ navigation }) {
         itemName: finalItemName,
         quantity: qtyNormalized,
         batchProvider: formData.batchProvider.trim() || 'S/D',
+        loteProveedor: formData.batchProvider.trim() || 'S/D',
         providerName: formData.providerName.trim() || 'S/D',
         expiryDate: formData.expiryDate.trim() || 'S/V',
         remitNumber: formData.remitNumber.trim() || 'S/D',
@@ -173,27 +174,8 @@ export default function IncomingInventoryScreen({ navigation }) {
       } else {
         Alert.alert(
           "Alta de Stock Exitosa",
-          `Lote asignado: ${batchInternal}\n¿Desea imprimir etiqueta de identificación (Zebra)?`,
-          [
-            { text: "No, gracias", style: "cancel", onPress: () => navigation.navigate('Home') },
-            { text: "Imprimir Etiqueta", onPress: async () => {
-                try {
-                  await printSingleLabel({
-                    type: isMP ? 'MP' : 'INSUMOS',
-                    name: finalItemName,
-                    batch: isMP ? (formData.batchProvider.trim() || batchInternal) : batchInternal,
-                    expiration: formData.expiryDate.trim() || 'N/A',
-                    quantity: qtyNormalized,
-                    unit: finalUnit
-                  });
-                } catch (e) {
-                  Alert.alert("Error de Impresión", "No se pudo generar la etiqueta.");
-                } finally {
-                  navigation.navigate('Home');
-                }
-              }
-            }
-          ]
+          `Lote asignado: ${batchInternal}`,
+          [{ text: "Entendido", onPress: () => navigation.navigate('Home') }]
         );
       }
 

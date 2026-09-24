@@ -6,7 +6,7 @@ import {
 import Toast from 'react-native-toast-message';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db, auth } from '../config/firebase';
-import { collection, query, where, onSnapshot, updateDoc, doc, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, updateDoc, doc, orderBy, limit, getDocs } from 'firebase/firestore';
 import { ChevronLeft, CheckCircle, XCircle, Beaker, ClipboardCheck, AlertCircle, FileSignature, Database, Container, History, ListTodo, ChevronDown, ChevronUp, User } from 'lucide-react-native';
 
 export default function QualityControlScreen({ navigation }) {
@@ -16,9 +16,13 @@ export default function QualityControlScreen({ navigation }) {
   const [historyLots, setHistoryLots] = useState([]);
   const [expandedItems, setExpandedItems] = useState([]);
   const [expandedMonths, setExpandedMonths] = useState({});
+  const [expandedHistoryItems, setExpandedHistoryItems] = useState([]);
+  const [historyOpsDetails, setHistoryOpsDetails] = useState({});
   const [analysis, setAnalysis] = useState({ ph: '', density: '', obs: '' });
   const [selectedLot, setSelectedLot] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [selectedOpDetails, setSelectedOpDetails] = useState(null);
+  const [loadingOpDetails, setLoadingOpDetails] = useState(false);
 
   const toggleExpand = (id) => {
     setExpandedItems(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
@@ -28,10 +32,30 @@ export default function QualityControlScreen({ navigation }) {
     setExpandedMonths(prev => ({...prev, [month]: !prev[month]}));
   };
 
+  const toggleExpandHistory = async (item) => {
+    const isExpanding = !expandedHistoryItems.includes(item.id);
+    setExpandedHistoryItems(prev => isExpanding ? [...prev, item.id] : prev.filter(i => i !== item.id));
+
+    if (isExpanding && activeTab === 'GRANEL' && (item.batchProvider === 'PROPIA' || item.batchInternal?.startsWith('OP-') || item.batchInternal?.startsWith('H2O-') || item.batchInternal?.startsWith('BBS-'))) {
+      if (!historyOpsDetails[item.batchInternal]) {
+        try {
+          const q = query(collection(db, 'Orders'), where('data.batchInternal', '==', item.batchInternal));
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            setHistoryOpsDetails(prev => ({ ...prev, [item.batchInternal]: { id: snap.docs[0].id, ...snap.docs[0].data() } }));
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+  };
+
   useEffect(() => {
     setLoading(true);
     setSelectedLot(null);
     setAnalysis({ ph: '', density: '', obs: '' });
+    setSelectedOpDetails(null);
 
     const targetStockType = activeTab === 'MP' ? 'MP' : 'GRANEL';
     let q;
@@ -91,6 +115,30 @@ export default function QualityControlScreen({ navigation }) {
     return () => unsubscribe();
   }, [activeTab, viewMode]);
 
+  useEffect(() => {
+    const fetchOpDetails = async () => {
+      if (!selectedLot || activeTab !== 'GRANEL' || !(selectedLot.batchProvider === 'PROPIA' || selectedLot.batchInternal?.startsWith('OP-') || selectedLot.batchInternal?.startsWith('H2O-') || selectedLot.batchInternal?.startsWith('BBS-'))) {
+        setSelectedOpDetails(null);
+        return;
+      }
+      setLoadingOpDetails(true);
+      try {
+        const q = query(collection(db, 'Orders'), where('data.batchInternal', '==', selectedLot.batchInternal));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          setSelectedOpDetails({ id: snap.docs[0].id, ...snap.docs[0].data() });
+        } else {
+          setSelectedOpDetails(null);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoadingOpDetails(false);
+      }
+    };
+    fetchOpDetails();
+  }, [selectedLot]);
+
   const handleAuthorize = async (lot, status) => {
     const userEmail = auth.currentUser?.email || 'Usuario Desconocido';
 
@@ -148,6 +196,7 @@ export default function QualityControlScreen({ navigation }) {
       
       setSelectedLot(null);
       setAnalysis({ ph: '', density: '', obs: '' });
+      setSelectedOpDetails(null);
     } catch (error) {
       Alert.alert("Error de Sistema", "No se pudo firmar el documento en la base de datos.");
     }
@@ -217,17 +266,26 @@ export default function QualityControlScreen({ navigation }) {
 
   const renderHistoryLog = (item, isLast) => {
     const isApto = item.status === 'APTO';
-    return (
-      <View key={item.id} style={{ flexDirection: 'row', marginBottom: 15 }}>
-        <View style={{ width: 30, alignItems: 'center', marginRight: 10 }}>
-          {!isLast && <View style={styles.timelineLine} />}
-          <View style={[styles.iconBoxHistory, { borderColor: isApto ? '#10b981' : '#ef4444', backgroundColor: isApto ? '#ecfdf5' : '#fef2f2' }]}>
-            {isApto ? <CheckCircle color="#10b981" size={16} /> : <XCircle color="#ef4444" size={16} />}
-          </View>
-        </View>
+    const isExpanded = expandedHistoryItems.includes(item.id);
+    const isOP = activeTab === 'GRANEL' && (item.batchProvider === 'PROPIA' || item.batchInternal?.startsWith('OP-') || item.batchInternal?.startsWith('H2O-') || item.batchInternal?.startsWith('BBS-'));
 
-        <View style={styles.logRight}>
-          <View style={styles.logHeader}>
+    return (
+      <TouchableOpacity 
+        key={item.id} 
+        style={{ flexDirection: 'column', marginBottom: 15 }} 
+        activeOpacity={0.7}
+        onPress={() => toggleExpandHistory(item)}
+      >
+        <View style={{ flexDirection: 'row' }}>
+          <View style={{ width: 30, alignItems: 'center', marginRight: 10 }}>
+            {!isLast && <View style={styles.timelineLine} />}
+            <View style={[styles.iconBoxHistory, { borderColor: isApto ? '#10b981' : '#ef4444', backgroundColor: isApto ? '#ecfdf5' : '#fef2f2' }]}>
+              {isApto ? <CheckCircle color="#10b981" size={16} /> : <XCircle color="#ef4444" size={16} />}
+            </View>
+          </View>
+
+          <View style={styles.logRight}>
+            <View style={styles.logHeader}>
             <Text style={[styles.logAction, { color: isApto ? '#10b981' : '#ef4444', flexShrink: 1, marginRight: 8 }]} numberOfLines={2}>
               {item.status}
             </Text>
@@ -243,7 +301,7 @@ export default function QualityControlScreen({ navigation }) {
             </View>
             <View style={styles.qtyBox}>
               <Text style={styles.logQty}>
-                {item.quantity} <Text style={styles.logUnit}>{item.unit || 'Uds'}</Text>
+                {item.originalQuantity || item.quantity} <Text style={styles.logUnit}>{item.unit || 'Uds'}</Text>
               </Text>
             </View>
           </View>
@@ -259,8 +317,76 @@ export default function QualityControlScreen({ navigation }) {
                {item.batchProvider && item.batchProvider !== 'S/D' && <Text style={[styles.logBatch, {marginTop: 4, backgroundColor: '#fef3c7', color: '#b45309'}]} numberOfLines={2}>Lote Prov: {item.batchProvider}</Text>}
             </View>
           </View>
+          
+          {isExpanded && (
+            <View style={{ marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#f1f5f9' }}>
+              {activeTab === 'MP' ? (
+                <View>
+                  <Text style={styles.opDetailsTitle}>📄 Detalles de Ingreso (MP)</Text>
+                  <Text style={{ fontSize: 12, color: '#475569', marginBottom: 4 }}>Proveedor: <Text style={{ fontWeight: '700', color: '#0f172a' }}>{item.providerName || 'S/D'}</Text></Text>
+                  <Text style={{ fontSize: 12, color: '#475569', marginBottom: 4 }}>Remito / Factura: <Text style={{ fontWeight: '700', color: '#0f172a' }}>{item.invoice || 'S/D'}</Text></Text>
+                  <Text style={{ fontSize: 12, color: '#475569', marginBottom: 4 }}>Orden Compra: <Text style={{ fontWeight: '700', color: '#0f172a' }}>{item.purchaseOrder || 'S/D'}</Text></Text>
+                  <Text style={{ fontSize: 12, color: '#475569', marginBottom: 4 }}>Vencimiento: <Text style={{ fontWeight: '700', color: '#0f172a' }}>{item.expiryDate || 'S/F'}</Text></Text>
+                  {item.qualityObs && item.qualityObs !== 'Sin observaciones.' && (
+                    <Text style={{ fontSize: 12, color: '#475569', marginTop: 8, fontStyle: 'italic' }}>Obs: {item.qualityObs}</Text>
+                  )}
+                </View>
+              ) : (
+                <View>
+                  {isOP ? (
+                    <View>
+                      <Text style={styles.opDetailsTitle}>📝 MP Comprometida (Fórmula)</Text>
+                      {historyOpsDetails[item.batchInternal] ? (
+                        <View style={{ marginTop: 5 }}>
+                          {historyOpsDetails[item.batchInternal].data?.ingredients?.map((ing, idx) => {
+                            if (ing.type === 'NOTE') return null;
+                            const actual = historyOpsDetails[item.batchInternal].data?.actualIngredients?.find(a => a.name === ing.name);
+                            const hasAdjustment = !!actual;
+                            return (
+                              <View key={idx} style={{ marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}>
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: '#1e293b' }}>{ing.name || ing.ingredientName}</Text>
+                                <Text style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>Fórmula: {ing.isGranel ? `${((ing.requiredKg || ing.required) || 0).toFixed(2)} Kg` : `${(ing.required || 0).toFixed(2)} Kg`}</Text>
+                                {ing.batchesToConsume && ing.batchesToConsume.length > 0 ? (
+                                  <Text style={{ fontSize: 11, color: '#475569', marginTop: 2 }}>
+                                    Lote(s): {ing.batchesToConsume.map(b => `Prov: ${b.batchProvider || 'S/D'} (Int: ${b.batchInternal || 'S/D'})`).join(' | ')}
+                                  </Text>
+                                ) : (
+                                  <Text style={{ fontSize: 11, color: '#475569', marginTop: 2 }}>Lote(s): S/L</Text>
+                                )}
+                                {hasAdjustment && (
+                                  <Text style={{ fontSize: 11, color: '#10b981', fontWeight: '800', marginTop: 2 }}>
+                                    Real: {actual.actualQty.toFixed(2)} {ing.isGranel ? 'Lts' : 'Kg'}
+                                    {actual.actualQty < ing.required ? ` (sobra: ${(ing.required - actual.actualQty).toFixed(2)})` : actual.actualQty > ing.required ? ` (extra: ${(actual.actualQty - ing.required).toFixed(2)})` : ''}
+                                  </Text>
+                                )}
+                              </View>
+                            );
+                          })}
+                        </View>
+                      ) : (
+                        <ActivityIndicator size="small" color="#3b82f6" style={{ marginVertical: 10 }} />
+                      )}
+                      {item.qualityObs && item.qualityObs !== 'Sin observaciones.' && (
+                        <Text style={{ fontSize: 12, color: '#475569', marginTop: 8, fontStyle: 'italic', borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 8 }}>Obs: {item.qualityObs}</Text>
+                      )}
+                    </View>
+                  ) : (
+                    <View>
+                      <Text style={styles.opDetailsTitle}>📄 Detalles de Granel</Text>
+                      <Text style={{ fontSize: 12, color: '#475569', marginBottom: 4 }}>Origen: <Text style={{ fontWeight: '700', color: '#0f172a' }}>{item.batchProvider || 'PROPIA'}</Text></Text>
+                      <Text style={{ fontSize: 12, color: '#475569', marginBottom: 4 }}>Vencimiento: <Text style={{ fontWeight: '700', color: '#0f172a' }}>{item.expiryDate || 'S/F'}</Text></Text>
+                      {item.qualityObs && item.qualityObs !== 'Sin observaciones.' && (
+                        <Text style={{ fontSize: 12, color: '#475569', marginTop: 8, fontStyle: 'italic' }}>Obs: {item.qualityObs}</Text>
+                      )}
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+          )}
         </View>
-      </View>
+        </View>
+      </TouchableOpacity>
     );
   };
 
@@ -422,6 +548,46 @@ export default function QualityControlScreen({ navigation }) {
                 <Text style={styles.formSub}>{selectedLot.batchInternal}</Text>
               </View>
             </View>
+
+            {(activeTab === 'GRANEL' && (selectedLot.batchProvider === 'PROPIA' || selectedLot.batchInternal?.startsWith('OP-') || selectedLot.batchInternal?.startsWith('H2O-') || selectedLot.batchInternal?.startsWith('BBS-'))) && (
+              <View style={styles.opDetailsContainer}>
+                <Text style={styles.opDetailsTitle}>📝 MP Comprometida (Fórmula)</Text>
+                {loadingOpDetails ? (
+                  <ActivityIndicator size="small" color="#3b82f6" style={{ marginVertical: 10 }} />
+                ) : selectedOpDetails ? (
+                  <View style={{ marginTop: 5 }}>
+                    {selectedOpDetails.data?.ingredients?.map((ing, idx) => {
+                      if (ing.type === 'NOTE') return null;
+                      const actual = selectedOpDetails.data?.actualIngredients?.find(a => a.name === ing.name);
+                      const hasAdjustment = !!actual;
+                      return (
+                        <View key={idx} style={{ marginBottom: 10, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
+                          <Text style={{ fontSize: 13, fontWeight: '800', color: '#1e293b' }}>{ing.name || ing.ingredientName}</Text>
+                          <Text style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                            Fórmula: {ing.isGranel ? `${((ing.requiredKg || ing.required) || 0).toFixed(2)} Kg (≈ ${(ing.required || 0).toFixed(2)} Lts)` : `${(ing.required || 0).toFixed(2)} Kg`}
+                          </Text>
+                          {ing.batchesToConsume && ing.batchesToConsume.length > 0 ? (
+                            <Text style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>
+                              Lote(s): {ing.batchesToConsume.map(b => `Prov: ${b.batchProvider || 'S/D'} (Int: ${b.batchInternal || 'S/D'})`).join(' | ')}
+                            </Text>
+                          ) : (
+                            <Text style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>Lote(s): S/L</Text>
+                          )}
+                          {hasAdjustment && (
+                            <Text style={{ fontSize: 12, color: '#10b981', fontWeight: '800', marginTop: 2 }}>
+                              Real: {actual.actualQty.toFixed(2)} {ing.isGranel ? 'Lts' : 'Kg'}
+                              {actual.actualQty < ing.required ? ` (sobrante: ${(ing.required - actual.actualQty).toFixed(2)})` : actual.actualQty > ing.required ? ` (extra: ${(actual.actualQty - ing.required).toFixed(2)})` : ' (sin diferencia)'}
+                            </Text>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <Text style={{ fontSize: 12, color: '#ef4444', marginVertical: 10 }}>No se encontraron los detalles de la OP.</Text>
+                )}
+              </View>
+            )}
             
             <View style={styles.inputRow}>
               <View style={{ flex: 1, marginRight: 15 }}>
@@ -535,6 +701,9 @@ const styles = StyleSheet.create({
   formTitle: { fontSize: 16, fontWeight: '900', color: '#0f172a' },
   formSub: { fontSize: 13, color: '#3b82f6', fontWeight: '800' },
   
+  opDetailsContainer: { backgroundColor: '#f8fafc', padding: 15, borderRadius: 12, marginBottom: 20, borderWidth: 1, borderColor: '#e2e8f0' },
+  opDetailsTitle: { fontSize: 12, fontWeight: '900', color: '#334155', textTransform: 'uppercase', marginBottom: 10, letterSpacing: 0.5 },
+
   label: { fontSize: 11, fontWeight: '800', color: '#475569', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
   input: { backgroundColor: '#f8fafc', padding: 15, borderRadius: 14, borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 20, color: '#0f172a', fontSize: 18, fontWeight: '700' },
   inputRow: { flexDirection: 'row' },

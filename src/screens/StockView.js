@@ -7,7 +7,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
 import { collection, query, where, onSnapshot, writeBatch, doc, deleteDoc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
 import { ChevronLeft, Search, PackageOpen, AlertTriangle, ShieldCheck, X, FlaskConical, Droplet, Box, Tag, Printer, ChevronDown, ChevronUp, Edit2, Trash2 } from 'lucide-react-native';
-import { printMultipleLabels } from '../services/labelService';
 import { RAW_MATERIALS_LIST, PRODUCTS_MADRE_LIST } from '../config/constants';
 
 const normalizeString = (str) => {
@@ -292,19 +291,6 @@ export default function StockView({ route, navigation }) {
                 
                 <View style={styles.loteActions}>
                   <TouchableOpacity 
-                    style={styles.printMiniBtn}
-                    onPress={() => {
-                      setSelectedPrintItem(lote);
-                      setLabelsCount('1');
-                      setQtyPerLabel(String(lote.quantity));
-                      setPrintModalVisible(true);
-                    }}
-                  >
-                    <Printer color="#3b82f6" size={14} style={{marginRight: 4}} />
-                    <Text style={{color: '#3b82f6', fontSize: 11, fontWeight: '700'}}>Imprimir</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity 
                     style={[styles.printMiniBtn, { backgroundColor: '#fef3c7', borderColor: '#fcd34d' }]}
                     onPress={() => {
                       setSelectedEditLot(lote);
@@ -428,69 +414,6 @@ export default function StockView({ route, navigation }) {
         />
       )}
 
-      {/* MODAL DE IMPRESION */}
-      <Modal visible={printModalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Imprimir Etiquetas</Text>
-              <TouchableOpacity onPress={() => setPrintModalVisible(false)}>
-                <X color="#64748b" size={24} />
-              </TouchableOpacity>
-            </View>
-            
-            {selectedPrintItem && (
-              <>
-                <Text style={{fontSize: 16, fontWeight: 'bold', marginBottom: 5}}>{selectedPrintItem.itemName}</Text>
-                <Text style={{color: '#64748b', marginBottom: 20}}>Stock total registrado: {selectedPrintItem.quantity} {selectedPrintItem.unit || 'Uds'}</Text>
-                
-                <Text style={{fontWeight: '600', marginBottom: 5}}>Cantidad por envase (Se mostrará en la etiqueta)</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  keyboardType="numeric"
-                  value={qtyPerLabel}
-                  onChangeText={setQtyPerLabel}
-                />
-                
-                <Text style={{fontWeight: '600', marginBottom: 5, marginTop: 15}}>¿Cuántas etiquetas idénticas imprimir?</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  keyboardType="numeric"
-                  value={labelsCount}
-                  onChangeText={setLabelsCount}
-                  maxLength={2}
-                />
-                
-                <TouchableOpacity 
-                  style={styles.printConfirmBtn}
-                  onPress={async () => {
-                    const count = parseInt(labelsCount) || 1;
-                    if(count > 20) {
-                      Alert.alert("Límite", "Máximo 20 etiquetas por lote.");
-                      return;
-                    }
-                    try {
-                      await printMultipleLabels({
-                        type: stockType,
-                        name: selectedPrintItem.itemName,
-                        batch: selectedPrintItem.batchInternal || selectedPrintItem.loteProveedor || 'S/D',
-                        expiration: selectedPrintItem.vencimiento || 'N/A',
-                        quantity: qtyPerLabel,
-                        unit: selectedPrintItem.unit || 'Uds'
-                      }, count);
-                      setPrintModalVisible(false);
-                    } catch (e) {
-                      Alert.alert("Error", "No se pudo generar el documento.");
-                    }
-                  }}
-                >
-                  <Text style={{color: '#fff', fontWeight: 'bold', textAlign: 'center'}}>Generar PDF de Etiquetas</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
 
       {/* MODAL EDITAR MINIMO */}
       <Modal visible={minStockModalVisible} transparent={true} animationType="fade">

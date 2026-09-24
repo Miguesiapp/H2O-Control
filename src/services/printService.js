@@ -104,7 +104,11 @@ const generateHTML = (order) => {
 
       let lotesAsignados = '';
       if (ing.batchesToConsume && ing.batchesToConsume.length > 0) {
-        lotesAsignados = ing.batchesToConsume.map(b => `${b.batchInternal || 'S/D'} (${b.consumed} ${ing.isGranel ? 'Lts' : 'Kg'})`).join('<br/>');
+        lotesAsignados = ing.batchesToConsume.map(b => {
+          const hasProv = b.batchProvider && b.batchProvider !== 'S/D' && b.batchProvider !== 'S/L';
+          const displayBatch = hasProv ? `Prov: ${b.batchProvider}` : `Int: ${b.batchInternal || 'S/D'}`;
+          return `${displayBatch} (${b.consumed} ${ing.isGranel ? 'Lts' : 'Kg'})`;
+        }).join('<br/>');
       } else {
         lotesAsignados = ing.batchInternal || 'A Definir';
       }
@@ -234,10 +238,16 @@ const generateHTML = (order) => {
             <div class="meta-label">Cliente / Prov / Sector</div>
             <div class="meta-value">${data?.clientName || data?.company || 'General / Interno'}</div>
           </div>
+          ${data?.clientLot ? `
+          <div class="meta-item">
+            <div class="meta-label" style="color: #0f766e;">Lote Personalizado Cliente</div>
+            <div class="meta-value" style="color: #0f766e;">${data.clientLot}</div>
+          </div>` : `
           <div class="meta-item">
             <div class="meta-label">Destino / Tanque</div>
             <div class="meta-value">${data?.tank || 'No aplica'}</div>
           </div>
+          `}
         </div>
 
         ${itemsHtml}
@@ -262,7 +272,7 @@ const generateHTML = (order) => {
         </div>
         
         <div class="footer">
-          Documento emitido mediante H2O Control · HORUS APP
+          Documento emitido mediante H2O Control · Powered by VAMO'apps
         </div>
       </body>
     </html>
@@ -320,6 +330,209 @@ export const printOrder = async (order) => {
       console.warn('Error: No se pudo generar la impresión en Web.');
     } else {
       Alert.alert('Error', 'No se pudo generar la impresión.');
+    }
+  }
+};
+
+export const generateTraceabilityHTML = (logs, query) => {
+  const currentDate = new Date().toLocaleDateString('es-ES', { 
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
+
+  const tableRows = logs.map(log => {
+    const isNegative = Number(log.quantity) < 0;
+    const qtyText = `${isNegative ? '' : '+'}${log.quantity} ${log.unit || 'Uds'}`;
+    const dateText = log.formattedDate || log.dateObj?.toLocaleString() || '';
+    const lot = log.batchInternal || '-';
+    const client = log.clientName || log.company || '-';
+    const actionName = (log.action || '').replace(/_/g, ' ');
+    
+    return `
+      <tr>
+        <td>${dateText}</td>
+        <td>${actionName}</td>
+        <td><strong>${log.itemName || '-'}</strong></td>
+        <td>${lot}</td>
+        <td>${client}</td>
+        <td style="text-align: right; font-weight: bold; color: ${isNegative ? '#dc2626' : '#16a34a'}">${qtyText}</td>
+      </tr>
+    `;
+  }).join('');
+
+  return `
+    <!DOCTYPE html>
+    <html lang="es">
+      <head>
+        <meta charset="UTF-8">
+        <title>Reporte de Trazabilidad</title>
+        <style>
+          body {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            color: #333;
+            margin: 0;
+            padding: 40px;
+            background-color: #fff;
+          }
+          .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #2563eb;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+          }
+          .h2o-logo-box { display: inline-block; width: 60px; height: 60px; border: 3px solid #2563eb; border-radius: 12px; text-align: center; vertical-align: middle; padding-top: 8px; box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .h2o-logo-big { display: block; font-size: 16px; font-weight: 900; color: #2563eb; line-height: 1.2; }
+          .h2o-logo-small { display: block; font-size: 7px; font-weight: 700; color: #2563eb; letter-spacing: 2px; }
+          .doc-info {
+            text-align: right;
+          }
+          .doc-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #0f172a;
+            margin: 0 0 5px 0;
+            text-transform: uppercase;
+          }
+          .doc-meta {
+            font-size: 12px;
+            color: #64748b;
+            margin: 2px 0;
+          }
+          .report-summary {
+            background-color: #f8fafc;
+            border-left: 4px solid #2563eb;
+            padding: 15px 20px;
+            margin-bottom: 30px;
+            border-radius: 0 8px 8px 0;
+          }
+          .report-summary p {
+            margin: 5px 0;
+            font-size: 14px;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 40px;
+            font-size: 12px;
+          }
+          th {
+            background-color: #f1f5f9;
+            color: #334155;
+            text-transform: uppercase;
+            font-size: 11px;
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 2px solid #cbd5e1;
+          }
+          td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #e2e8f0;
+            color: #1e293b;
+          }
+          tr:nth-child(even) {
+            background-color: #f8fafc;
+          }
+          .footer {
+            margin-top: 50px;
+            text-align: center;
+            font-size: 10px;
+            color: #94a3b8;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 20px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="h2o-logo-box">
+            <span class="h2o-logo-big">H2O</span>
+            <span class="h2o-logo-small">CONTROL</span>
+          </div>
+          <div class="doc-info">
+            <h2 class="doc-title">HOJA TÉCNICA DE TRAZABILIDAD</h2>
+            <p class="doc-meta">Emisión: <strong>${currentDate}</strong></p>
+            <p class="doc-meta">Registros: <strong>${logs.length}</strong></p>
+          </div>
+        </div>
+
+        <div class="report-summary">
+          <p><strong>Criterio de Búsqueda / Filtro:</strong> ${query || 'Todos los registros'}</p>
+          <p>Este documento es un reporte consolidado e inalterable generado a partir del registro de movimientos de la bóveda criptográfica del sistema.</p>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Movimiento</th>
+              <th>Producto</th>
+              <th>Lote</th>
+              <th>Cliente / Origen</th>
+              <th style="text-align: right;">Cantidad</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRows.length > 0 ? tableRows : '<tr><td colspan="6" style="text-align: center; padding: 30px;">No hay registros para mostrar.</td></tr>'}
+          </tbody>
+        </table>
+
+        <div class="footer">
+          Documento emitido mediante H2O Control · Powered by VAMO'apps<br>
+          <span style="font-size: 8px;">Las firmas de autorización se encuentran alojadas digitalmente en la base de datos segura.</span>
+        </div>
+      </body>
+    </html>
+  `;
+};
+
+export const printTraceabilityReport = async (logs, query) => {
+  try {
+    const html = generateTraceabilityHTML(logs, query);
+
+    if (Platform.OS === 'web') {
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = 'none';
+      document.body.appendChild(iframe);
+
+      const iframeDoc = iframe.contentWindow?.document;
+      if (iframeDoc) {
+        iframeDoc.open();
+        iframeDoc.write(html);
+        iframeDoc.close();
+        setTimeout(() => {
+          try {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+          } catch (e) {
+            console.warn('iframe print error', e);
+          } finally {
+            setTimeout(() => {
+              if (document.body.contains(iframe)) {
+                document.body.removeChild(iframe);
+              }
+            }, 1000);
+          }
+        }, 500);
+      } else {
+        document.body.removeChild(iframe);
+        Alert.alert("Error", "No se pudo generar el documento de impresión.");
+      }
+    } else {
+      await Print.printAsync({ html });
+    }
+  } catch (error) {
+    console.error('Error printing report:', error);
+    if (Platform.OS === 'web') {
+      console.warn('Error: No se pudo generar la impresión en Web.');
+    } else {
+      Alert.alert('Error', 'No se pudo generar el reporte.');
     }
   }
 };

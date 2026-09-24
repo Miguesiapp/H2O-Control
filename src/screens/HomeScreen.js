@@ -499,7 +499,13 @@ export default function HomeScreen({ navigation }) {
             >
               <Text style={[styles.adminSmallCardText, { color: '#fff', fontSize: 14, textAlign: 'center' }]}>Panel EIG</Text>
             </TouchableOpacity>
-            <View style={{ flex: 1 }} />
+            
+            <TouchableOpacity
+              style={[styles.adminSmallCard, { borderColor: '#3b82f6', backgroundColor: '#3b82f6', justifyContent: 'center' }]}
+              onPress={() => navigation.navigate('Eventualities')}
+            >
+              <Text style={[styles.adminSmallCardText, { color: '#fff', fontSize: 14, textAlign: 'center' }]}>Eventualidades</Text>
+            </TouchableOpacity>
           </View>
         </View>
 

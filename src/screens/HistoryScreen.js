@@ -3,9 +3,10 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
 import { collection, onSnapshot, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
-import { ChevronLeft, Clock, ArrowDownToLine, ArrowUpFromLine, Activity, User, ArrowRightLeft, Filter, ChevronDown, ChevronUp, FileText, X, Search } from 'lucide-react-native';
+import { ChevronLeft, Clock, ArrowDownToLine, ArrowUpFromLine, Activity, User, ArrowRightLeft, Filter, ChevronDown, ChevronUp, FileText, X, Search, Printer } from 'lucide-react-native';
 import { generateAuditSummary } from '../services/aiService';
 import { generateAndSharePDF } from '../services/reportService';
+import { printOrder, printTraceabilityReport } from '../services/printService';
 
 const FILTER_TABS = [
   { id: 'MP', label: 'Ingresos MP' },
@@ -26,6 +27,10 @@ export default function HistoryScreen({ navigation }) {
   const [opDetails, setOpDetails] = useState(null);
   const [loadingOpDetails, setLoadingOpDetails] = useState(false);
 
+  const [selectedODLog, setSelectedODLog] = useState(null);
+  const [odDetails, setOdDetails] = useState(null);
+  const [loadingOdDetails, setLoadingOdDetails] = useState(false);
+
   const handleOpenOPDetails = async (log) => {
     if (!log.action?.includes('INGRESO_OP')) return;
     setSelectedOPLog(log);
@@ -44,6 +49,7 @@ export default function HistoryScreen({ navigation }) {
       let invData = snapInv.empty ? null : snapInv.docs[0].data();
       
       setOpDetails({
+        ...orderData,
         ingredients: orderData?.data?.actualIngredients || orderData?.data?.ingredients || [],
         ph: invData?.measuredPh || orderData?.data?.ph || 'Pendiente BBS',
         density: invData?.measuredDensity || orderData?.data?.density || 'Pendiente BBS'
@@ -53,6 +59,50 @@ export default function HistoryScreen({ navigation }) {
       alert("Error cargando detalles");
     } finally {
       setLoadingOpDetails(false);
+    }
+  };
+
+  const handleOpenODDetails = async (log) => {
+    if (!log.action?.includes('EGRESO_DESPACHO')) return;
+    setSelectedODLog(log);
+    setLoadingOdDetails(true);
+    setOdDetails(null);
+    try {
+      // OD orders have dispatchId matching the batchInternal from the log (or we can just query by log details)
+      // Usually, when generating an OD, batchInternal is the OD ID, or maybe it's saved differently. Let's find it.
+      // Wait, in OD creation: we save `dispatchId` as `OD-{timestamp}`. 
+      // The log might not have dispatchId, it might just have `batchInternal` of the dispatched item!
+      // Let's query by the log's ID if possible, but actually we can just pass the log directly to printOrder as mock data!
+      // But a real order has more data. Let's fetch the actual OD order that caused this egreso.
+      // The `AuditLog` of `EGRESO_DESPACHO` is created during OD. It might share a timestamp or `dispatchId`.
+      // The `batchInternal` in the log is the Lote of the product dispatched.
+      // Let's query `Orders` where type == 'OD' and `data.batchInternal` == log.batchInternal, and maybe near the timestamp.
+      // Actually, we can just query all ODs and find the one that matches this dispatch.
+      // Or we can just use the log data itself to print if we can't find it!
+      const qOrder = query(collection(db, 'Orders'), where('type', '==', 'OD'), where('data.batchInternal', '==', log.batchInternal));
+      const snapOrder = await getDocs(qOrder);
+      
+      let orderData = null;
+      if (!snapOrder.empty) {
+         // Sort by proximity to log timestamp if multiple
+         const sortedDocs = snapOrder.docs.map(d => ({id: d.id, ...d.data()})).sort((a, b) => {
+            const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+            const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+            const timeLog = log.timestamp?.toMillis ? log.timestamp.toMillis() : Date.now();
+            return Math.abs(timeA - timeLog) - Math.abs(timeB - timeLog);
+         });
+         orderData = sortedDocs[0];
+      }
+
+      setOdDetails({
+         logData: log,
+         orderData: orderData
+      });
+    } catch (e) {
+      console.error(e);
+      alert("Error cargando detalles");
+    } finally {
+      setLoadingOdDetails(false);
     }
   };
 
@@ -111,7 +161,7 @@ export default function HistoryScreen({ navigation }) {
     if (activeFilter === 'MP' && !(act.includes('INGRESO_COMPRA') || act.includes('INGRESO_MANUAL') || act === 'CARGA_INICIAL')) return false;
     if (activeFilter === 'OP' && !(act === 'INGRESO_OP')) return false;
     if (activeFilter === 'OE' && !(act === 'INGRESO_OE' || act === 'INGRESO_OE_PARCIAL')) return false;
-    if (activeFilter === 'OD' && !(act === 'EGRESO_DESPACHO')) return false;
+    if (activeFilter === 'OD' && !act.includes('EGRESO_DESPACHO')) return false;
     
     // FILTRO POR BÚSQUEDA
     if (searchQuery.trim()) {
@@ -119,8 +169,9 @@ export default function HistoryScreen({ navigation }) {
       const name = (item.itemName || '').toLowerCase();
       const batch = (item.batchInternal || '').toLowerCase();
       const company = (item.company || '').toLowerCase();
+      const client = (item.clientName || '').toLowerCase();
       const action = (item.action || '').toLowerCase();
-      if (!name.includes(q) && !batch.includes(q) && !company.includes(q) && !action.includes(q)) return false;
+      if (!name.includes(q) && !batch.includes(q) && !company.includes(q) && !client.includes(q) && !action.includes(q)) return false;
     }
     
     return true;
@@ -183,8 +234,11 @@ export default function HistoryScreen({ navigation }) {
       <TouchableOpacity 
         style={styles.logCard} 
         key={item.id}
-        activeOpacity={item.action?.includes('INGRESO_OP') ? 0.7 : 1}
-        onPress={() => item.action?.includes('INGRESO_OP') && handleOpenOPDetails(item)}
+        activeOpacity={(item.action?.includes('INGRESO_OP') || item.action?.includes('EGRESO_DESPACHO')) ? 0.7 : 1}
+        onPress={() => {
+          if (item.action?.includes('INGRESO_OP')) handleOpenOPDetails(item);
+          if (item.action?.includes('EGRESO_DESPACHO')) handleOpenODDetails(item);
+        }}
       >
         <View style={styles.logLeft}>
           {!isLast && <View style={styles.timelineLine} />}
@@ -202,7 +256,7 @@ export default function HistoryScreen({ navigation }) {
           <View style={styles.logBody}>
             <View style={{ flex: 1 }}>
               <Text style={styles.logItemName}>{item.itemName || '—'}</Text>
-              <Text style={styles.logCompany}>{item.company || '—'}</Text>
+              <Text style={styles.logCompany}>{item.clientName || item.company || '—'}</Text>
             </View>
             <View style={styles.qtyBox}>
               <Text style={[styles.logQty, { color: isNegative ? '#ef4444' : '#0f172a' }]}>
@@ -246,26 +300,6 @@ export default function HistoryScreen({ navigation }) {
 
         {isExpanded && (
           <View style={styles.monthContent}>
-            
-            {/* Botón de Exportar a PDF */}
-            <TouchableOpacity 
-              style={styles.pdfButton}
-              onPress={() => handleExportPDF(section.title, section.data)}
-              disabled={generatingPdfFor === section.title}
-            >
-              {generatingPdfFor === section.title ? (
-                <>
-                  <ActivityIndicator size="small" color="#fff" style={{marginRight: 8}} />
-                  <Text style={styles.pdfButtonText}>Auditando con IA y Generando PDF...</Text>
-                </>
-              ) : (
-                <>
-                  <FileText color="#fff" size={16} style={{marginRight: 8}} />
-                  <Text style={styles.pdfButtonText}>Exportar Reporte PDF</Text>
-                </>
-              )}
-            </TouchableOpacity>
-
             {section.data.map((log, index) => renderLog(log, index === section.data.length - 1))}
           </View>
         )}
@@ -338,6 +372,17 @@ export default function HistoryScreen({ navigation }) {
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}
             renderItem={renderSection}
+            ListHeaderComponent={
+              filteredHistory.length > 0 ? (
+                <TouchableOpacity 
+                  style={[styles.pdfButton, { marginBottom: 20, backgroundColor: '#2563eb' }]}
+                  onPress={() => printTraceabilityReport(filteredHistory, searchQuery)}
+                >
+                  <FileText color="#fff" size={18} style={{marginRight: 8}} />
+                  <Text style={styles.pdfButtonText}>Imprimir Trazabilidad Consolidada</Text>
+                </TouchableOpacity>
+              ) : null
+            }
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
                 <Clock color="#cbd5e1" size={48} />
@@ -400,7 +445,10 @@ export default function HistoryScreen({ navigation }) {
 
                    <Text style={{fontSize: 14, fontWeight: '800', color: '#334155', marginBottom: 10, textTransform: 'uppercase'}}>Materias Primas Consumidas</Text>
                    {opDetails?.ingredients?.length > 0 ? opDetails.ingredients.map((ing, idx) => {
-                     const batches = ing.batchesToConsume?.map(b => b.batchProvider && b.batchProvider !== 'S/D' && b.batchProvider !== 'S/L' ? `${b.batchInternal} (${b.batchProvider})` : b.batchInternal).join(' | ') || 'S/L';
+                     const batches = ing.batchesToConsume?.map(b => {
+                       const hasProv = b.batchProvider && b.batchProvider !== 'S/D' && b.batchProvider !== 'S/L';
+                       return hasProv ? `Prov: ${b.batchProvider} (Int: ${b.batchInternal})` : `Int: ${b.batchInternal || 'S/D'}`;
+                     }).join(' | ') || 'S/L';
                      return (
                        <View key={idx} style={{backgroundColor: '#fff', padding: 12, borderRadius: 10, marginBottom: 8, borderWidth: 1, borderColor: '#e2e8f0'}}>
                          <Text style={{fontSize: 14, fontWeight: '800', color: '#0f172a'}}>{ing.name}</Text>
@@ -418,6 +466,106 @@ export default function HistoryScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+
+      {/* MODAL DETALLES DE OD (DESPACHO) */}
+      <Modal visible={!!selectedODLog} transparent animationType="slide" onRequestClose={() => setSelectedODLog(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Detalle del Despacho</Text>
+                <Text style={styles.modalSub}>{selectedODLog?.itemName}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
+                {odDetails?.orderData && (
+                  <TouchableOpacity 
+                    onPress={async () => {
+                       const mockOrder = {
+                          type: 'OD',
+                          id: odDetails?.orderData?.id || selectedODLog?.id || 'OD-MOCK',
+                          data: {
+                             fechaCreacion: odDetails?.orderData?.createdAt || selectedODLog?.timestamp,
+                             productName: selectedODLog?.itemName,
+                             dispatchId: selectedODLog?.batchInternal,
+                             quantity: Math.abs(selectedODLog?.quantity || 0),
+                             presentation: odDetails?.orderData?.data?.presentation || (selectedODLog?.unit === 'Lts' ? 'Granel' : 'S/D'),
+                             clientName: selectedODLog?.clientName || selectedODLog?.company,
+                             tank: 'No aplica'
+                          }
+                       };
+                       await printOrder(mockOrder);
+                    }}
+                  >
+                    <Printer color="#2563eb" size={24} />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={() => setSelectedODLog(null)}>
+                  <X color="#64748b" size={24} />
+                </TouchableOpacity>
+              </View>
+            </View>
+            
+            <ScrollView style={{padding: 20}} showsVerticalScrollIndicator={false}>
+              {loadingOdDetails ? (
+                <View style={{padding: 30, alignItems: 'center'}}>
+                  <ActivityIndicator size="large" color="#3b82f6" />
+                  <Text style={{marginTop: 10, color: '#64748b'}}>Cargando orden original...</Text>
+                </View>
+              ) : (
+                <View>
+                  <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15}}>
+                    <View>
+                      <Text style={{fontSize: 12, color: '#64748b'}}>Fecha Despacho</Text>
+                      <Text style={{fontSize: 16, fontWeight: '900', color: '#0f172a'}}>{selectedODLog?.formattedDate}</Text>
+                    </View>
+                    <View style={{alignItems: 'flex-end'}}>
+                      <Text style={{fontSize: 12, color: '#64748b'}}>Usuario</Text>
+                      <Text style={{fontSize: 14, fontWeight: '700', color: '#334155'}}>{selectedODLog?.user || 'Sistema'}</Text>
+                    </View>
+                  </View>
+
+                  <View style={{backgroundColor: '#f1f5f9', padding: 15, borderRadius: 12, marginBottom: 20}}>
+                    <Text style={{fontSize: 12, color: '#64748b', textTransform: 'uppercase', fontWeight: '800'}}>Datos de Trazabilidad</Text>
+                    <View style={{flexDirection: 'row', justifyContent: 'space-between', marginTop: 10}}>
+                      <View>
+                        <Text style={{fontSize: 12, color: '#64748b'}}>Destino / Cliente</Text>
+                        <Text style={{fontSize: 16, fontWeight: '900', color: '#3b82f6'}}>{selectedODLog?.clientName || selectedODLog?.company || 'S/D'}</Text>
+                      </View>
+                      <View style={{alignItems: 'flex-end'}}>
+                        <Text style={{fontSize: 12, color: '#64748b'}}>Cantidad</Text>
+                        <Text style={{fontSize: 16, fontWeight: '900', color: '#ef4444'}}>{Math.abs(selectedODLog?.quantity || 0)} {selectedODLog?.unit || 'Uds'}</Text>
+                      </View>
+                    </View>
+                    <View style={{marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderColor: '#e2e8f0'}}>
+                      <Text style={{fontSize: 12, color: '#64748b'}}>Lote Despachado</Text>
+                      <Text style={{fontSize: 14, fontWeight: '800', color: '#0f172a'}}>{selectedODLog?.batchInternal || 'S/D'}</Text>
+                    </View>
+                    {odDetails?.orderData && (
+                      <View style={{marginTop: 10}}>
+                        <Text style={{fontSize: 12, color: '#64748b'}}>ID de Despacho (Sistema)</Text>
+                        <Text style={{fontSize: 14, fontWeight: '800', color: '#0f172a'}}>{odDetails.orderData.data?.dispatchId || 'S/D'}</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {odDetails?.orderData && (
+                    <View style={{backgroundColor: '#fff', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 20}}>
+                      <Text style={{fontSize: 12, color: '#64748b', textTransform: 'uppercase', fontWeight: '800', marginBottom: 10}}>Detalles Adicionales</Text>
+                      <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
+                        <Text style={{fontSize: 14, fontWeight: '700', color: '#0f172a'}}>Presentación del Envase</Text>
+                        <Text style={{fontSize: 14, color: '#3b82f6', fontWeight: '900'}}>{odDetails.orderData.data?.presentation || '-'} Litros</Text>
+                      </View>
+                    </View>
+                  )}
+                  
+                  <View style={{height: 40}} />
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }

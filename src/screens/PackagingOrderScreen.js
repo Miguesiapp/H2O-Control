@@ -91,6 +91,8 @@ export default function PackagingOrderScreen({ route, navigation }) {
     unitsProduced: '',  
     brandBidon: 'H2O',
     brandCaja: 'H2O CON LOGO', 
+    clientName: '',
+    clientLot: '',
   });
 
   useEffect(() => {
@@ -166,7 +168,8 @@ export default function PackagingOrderScreen({ route, navigation }) {
       const fuzzyBidon = ['BIDON', capacityKeywords, formData.brandBidon];
       
       const boxKeywords = [boxFormat, `${presentation}L`, `${presentation} L`, `X ${presentation}L`, `X${presentation}L`];
-      const fuzzyCaja = appliesBox ? ['CAJA', boxKeywords, formData.brandCaja] : null;
+      const actuallyUsesBox = appliesBox && formData.brandCaja !== 'SIN CAJAS';
+      const fuzzyCaja = actuallyUsesBox ? ['CAJA', boxKeywords, formData.brandCaja] : null;
 
       const baseLabelName = getBaseLabelName(commercialName);
       const labelKeywords = [baseLabelName, commercialName];
@@ -185,7 +188,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
         // 0. VERIFICACIÓN Y CÁLCULO DE ÓRDENES PARCIALES
         
         const bidonStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyBidon);
-        const cajaStock = appliesBox ? await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyCaja) : Infinity;
+        const cajaStock = actuallyUsesBox ? await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyCaja) : Infinity;
         const etiquetaStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyEtiqueta);
 
         const maxUnitsGranel = Math.floor(selectedLot.quantity / presentation);
@@ -219,7 +222,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
             let missing = [];
             if (maxUnitsGranel <= 0) missing.push('Granel');
             if (bidonStock <= 0) missing.push('Bidones');
-            if (appliesBox && cajaStock <= 0) missing.push('Cajas');
+            if (actuallyUsesBox && cajaStock <= 0) missing.push('Cajas');
             if (etiquetaStock <= 0) missing.push(`Etiquetas (${baseLabelName})`);
             Toast.show({ type: 'error', text1: 'Stock Insuficiente (0 Unidades)', text2: `Falta stock de: ${missing.join(', ')}` });
           }
@@ -235,7 +238,9 @@ export default function PackagingOrderScreen({ route, navigation }) {
           quantity: -Math.abs(litersToConsume), 
           stockType: 'GRANEL',
           batchInternal: batchId,
-          unit: 'Lts'
+          unit: 'Lts',
+          clientName: formData.clientName.trim(),
+          clientLot: formData.clientLot.trim()
       });
 
       if (!isContainer) {
@@ -250,7 +255,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
         });
 
         // 3. DEDUCCIÓN DE INSUMOS CENTRALES (CAJAS) - Búsqueda Generalizada FIFO si aplica
-        if (appliesBox && requiredBoxes > 0) {
+        if (actuallyUsesBox && requiredBoxes > 0) {
           await registerMovement(currentUser, 'CONSUMO_ENVASADO_CAJA', 'STOCK_CENTRAL_INSUMOS', {
               itemName: fuzzyCaja,
               quantity: -Math.abs(requiredBoxes),
@@ -282,13 +287,15 @@ export default function PackagingOrderScreen({ route, navigation }) {
         litersConsumed: litersToConsume,
         presentation: isContainer ? 1000 : presentation,
         brandBidon: isContainer ? 'CONTENEDOR' : formData.brandBidon,
-        brandCaja: appliesBox ? formData.brandCaja : null,
-        requiredBoxes: appliesBox ? requiredBoxes : 0,
+        brandCaja: appliesBox && actuallyUsesBox ? formData.brandCaja : 'SIN CAJAS',
+        requiredBoxes: actuallyUsesBox ? requiredBoxes : 0,
         batchInternal: batchId,
         batchProvider: selectedLot.batchProvider || 'S/D',
         expiryDate: selectedLot.expiryDate || 'S/V',
         company: companyName,
-        unit: isContainer ? 'Lts' : 'Uds'
+        unit: isContainer ? 'Lts' : 'Uds',
+        clientName: formData.clientName.trim(),
+        clientLot: formData.clientLot.trim()
       };
 
       await createOrder('OE', orderData, currentUser);
@@ -307,6 +314,8 @@ export default function PackagingOrderScreen({ route, navigation }) {
         unitsProduced: '',  
         brandBidon: 'H2O',
         brandCaja: 'H2O CON LOGO', 
+        clientName: '',
+        clientLot: '',
       });
     } catch (error) {
       console.error(error);
@@ -528,7 +537,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
 
           {/* 1. SELECCIÓN DE PRODUCTO TERMINADO */}
           <Text style={styles.sectionTitle}>1. Producto a Envasar (PT)</Text>
-          <View style={styles.card}>
+          <View style={[styles.card, { zIndex: 9999, elevation: 9999 }]}>
             <Text style={styles.label}>Nombre Comercial del Producto Final</Text>
             <AutocompleteInput 
               data={PRODUCTS_FINAL_LIST}
@@ -665,6 +674,32 @@ export default function PackagingOrderScreen({ route, navigation }) {
                     />
                   </View>
                 </View>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Nombre Cliente (Opcional - Para etiqueta personalizada)</Text>
+                  <View style={styles.inputWrapper}>
+                    <Building2 color="#94a3b8" size={20} style={styles.inputIcon} />
+                    <TextInput 
+                      style={styles.input} 
+                      placeholder="Ej: Agropecuaria Don Juan" 
+                      value={formData.clientName}
+                      onChangeText={(txt) => setFormData({...formData, clientName: txt})}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Lote Cliente (Opcional - Para etiqueta personalizada)</Text>
+                  <View style={styles.inputWrapper}>
+                    <Tag color="#94a3b8" size={20} style={styles.inputIcon} />
+                    <TextInput 
+                      style={styles.input} 
+                      placeholder="Ej: LOTE-EXT-2026" 
+                      value={formData.clientLot}
+                      onChangeText={(txt) => setFormData({...formData, clientLot: txt})}
+                    />
+                  </View>
+                </View>
 
                 {appliesBox && (
                   <>
@@ -682,9 +717,15 @@ export default function PackagingOrderScreen({ route, navigation }) {
                         </TouchableOpacity>
                       ))}
                     </View>
-                    <Text style={styles.calcHelper}>
-                      Se descontarán {requiredBoxes} cajas automáticamente.
-                    </Text>
+                    {formData.brandCaja !== 'SIN CAJAS' ? (
+                      <Text style={styles.calcHelper}>
+                        Se descontarán {requiredBoxes} cajas automáticamente.
+                      </Text>
+                    ) : (
+                      <Text style={styles.calcHelper}>
+                        Esta orden no utilizará cajas ni descontará stock de cajas.
+                      </Text>
+                    )}
                   </>
                 )}
 
@@ -757,7 +798,9 @@ export default function PackagingOrderScreen({ route, navigation }) {
               </View>
               <Text style={{fontSize: 14, color: '#475569', marginBottom: 5}}>Cantidad: <Text style={{fontWeight: '800', color: '#0f172a'}}>{selectedOrder?.data?.quantity} Bidones ({selectedOrder?.data?.presentation}L)</Text></Text>
               <Text style={{fontSize: 14, color: '#475569', marginBottom: 5}}>Granel Consumido: <Text style={{fontWeight: '800', color: '#0f172a'}}>{selectedOrder?.data?.litersConsumed} Lts</Text></Text>
-              <Text style={{fontSize: 14, color: '#475569', marginBottom: 15}}>Lote de Origen: <Text style={{fontWeight: '800', color: '#0f172a'}}>{selectedOrder?.data?.batchInternal}</Text></Text>
+              <Text style={{fontSize: 14, color: '#475569', marginBottom: selectedOrder?.data?.clientName ? 5 : 15}}>Lote de Origen: <Text style={{fontWeight: '800', color: '#0f172a'}}>{selectedOrder?.data?.batchInternal}</Text></Text>
+              {selectedOrder?.data?.clientName ? <Text style={{fontSize: 14, color: '#475569', marginBottom: 5}}>Cliente: <Text style={{fontWeight: '800', color: '#0f766e'}}>{selectedOrder.data.clientName}</Text></Text> : null}
+              {selectedOrder?.data?.clientLot ? <Text style={{fontSize: 14, color: '#475569', marginBottom: 15}}>Lote Cliente: <Text style={{fontWeight: '800', color: '#0f766e'}}>{selectedOrder.data.clientLot}</Text></Text> : null}
               
               <Text style={{fontSize: 14, fontWeight: '800', color: '#334155', marginBottom: 10, textTransform: 'uppercase'}}>Insumos Reservados</Text>
               <View style={{backgroundColor: '#f1f5f9', padding: 10, borderRadius: 8, marginBottom: 8}}>

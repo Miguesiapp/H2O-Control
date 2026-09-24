@@ -43,7 +43,9 @@
           "cameraPermission": "Permitir que H2O Control Neural use la cámara para el presentismo biométrico.",
           "recordAudioPermission": false
         }
-      ]
+      ],
+      "expo-sharing",
+      "expo-status-bar"
     ],
     "extra": {
       "eas": {

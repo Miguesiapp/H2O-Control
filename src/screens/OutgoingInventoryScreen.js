@@ -67,7 +67,8 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
     productName: '',
     presentation: '20',
     quantity: '',
-    batchInternal: ''
+    batchInternal: '',
+    clientName: ''
   });
 
   useEffect(() => {
@@ -203,7 +204,8 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
           batchInternal: batchId,
           loteProveedor: batchProvider,
           stockType: 'FINAL', 
-          unit: dispatchUnit
+          unit: dispatchUnit,
+          clientName: formData.clientName.trim()
         }
       );
 
@@ -214,6 +216,7 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
         batchInternal: batchId,
         batchProvider: batchProvider,
         company: companyName,
+        clientName: formData.clientName.trim(),
         unit: dispatchUnit
       };
 
@@ -228,7 +231,8 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
             productName: '',
             presentation: '20',
             quantity: '',
-            batchInternal: ''
+            batchInternal: '',
+            clientName: ''
           });
         }}]
       );
@@ -433,6 +437,19 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
                   </View>
                   <ChevronDown color="#94a3b8" size={20} />
                 </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={[styles.row, { marginTop: 15 }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.label}>Cliente Destino (Opcional)</Text>
+                <TextInput 
+                  style={[styles.inputPlain, { paddingVertical: 12 }]} 
+                  placeholder="Ej: Agropecuaria Del Sur S.A." 
+                  placeholderTextColor="#94a3b8"
+                  value={formData.clientName}
+                  onChangeText={(txt) => setFormData({...formData, clientName: txt})}
+                />
               </View>
             </View>
           </View>
