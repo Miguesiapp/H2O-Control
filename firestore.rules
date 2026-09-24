@@ -4,7 +4,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
     
     // ========================================================================
-    // --- 1. FUNCIONES DE SEGURIDAD Y ROLES ---
+    // --- FUNCIONES DE SEGURIDAD Y ROLES ---
     // ========================================================================
 
     // Lista Blanca Global: Verifica si el usuario está logueado y es empleado oficial
@@ -23,107 +23,55 @@ service cloud.firestore {
         request.auth.token.email == 'nachoracing.02@gmail.com' ||
         request.auth.token.email == 'acostaeduardoa@outlook.com' ||
         request.auth.token.email == 'juanpae.mdp@gmail.com' ||
+        request.auth.token.email == 'eig.seguridadysalud@gmail.com' ||
         request.auth.token.email == 'tester@h2ocontrol.com'
       );
     }
-
-    // RRHH y Reportes
-    function isHRManager() {
-      return request.auth != null && (
-        request.auth.token.email == 'bduville@h2ocontrol.com.ar' || 
-        request.auth.token.email == 'jmalvasio@h2ocontrol.com.ar' || 
-        request.auth.token.email == 'produccion@h2ocontrol.com.ar' ||
-        request.auth.token.email == 'miguesilva.1985@gmail.com' ||
-        request.auth.token.email == 'miguesilva.1985@outlook.es' ||
-        request.auth.token.email == 'tester@h2ocontrol.com'
-      );
-    }
-
-    // Nivel Root (Administrador Maestro)
-    function isAdmin() {
-      return request.auth != null && (
-        request.auth.token.email == 'miguesilva.1985@outlook.es' ||
-        request.auth.token.email == 'miguesilva.1985@gmail.com' ||
-        request.auth.token.email == 'tester@h2ocontrol.com'
-      );
-    }
-
-    // Nivel Calidad BBS
-    function isQualityControl() {
-      return request.auth != null && (
-        request.auth.token.email == 'juanpae.mdp@gmail.com' || 
-        request.auth.token.email == 'francovanuccilemmi@gmail.com' || 
-        request.auth.token.email == 'g.haritchet@gmail.com' ||
-        request.auth.token.email == 'miguesilva.1985@gmail.com' ||
-        request.auth.token.email == 'miguesilva.1985@outlook.es' ||
-        request.auth.token.email == 'bduville@h2ocontrol.com.ar' ||
-        request.auth.token.email == 'tester@h2ocontrol.com'
-      );
-    }
-
 
     // ========================================================================
-    // --- 2. REGLAS POR COLECCIÓN DE DATOS ---
+    // --- REGLAS POR COLECCIÓN — Todos los autorizados pueden hacer todo ---
     // ========================================================================
 
-    // ------------------------------------------------------------------------
-    // MÓDULO DE RECURSOS HUMANOS 
-    // ------------------------------------------------------------------------
     match /StaffLogs/{log} {
-      allow read, create, update, delete: if isHRManager() || isAdmin(); 
+      allow read, create, update, delete: if isAuthorized();
     }
 
     match /StaffProfiles/{profile} {
-      allow read, create, update, delete: if isHRManager() || isAdmin();
+      allow read, create, update, delete: if isAuthorized();
     }
 
-    // ------------------------------------------------------------------------
-    // MÓDULO DE ÓRDENES (OP, OE, OD) 
-    // ------------------------------------------------------------------------
     match /Orders/{order} {
-      // Todos pueden leer las órdenes
-      allow read: if isAuthorized();
-      // Solo Gerencia/Producción puede CREAR nuevas órdenes (OP, OE, OD)
-      allow create: if isHRManager();
-      // Cualquier usuario autorizado puede actualizar (pasar a EN_PROCESO o FINALIZADO)
-      allow update: if isAuthorized();
-      allow delete: if isAdmin();
+      allow read, create, update, delete: if isAuthorized();
     }
 
-    // ------------------------------------------------------------------------
-    // MÓDULO GENERAL (Habilitado para toda la lista blanca isAuthorized)
-    // ------------------------------------------------------------------------
+    match /EIG_Documents/{docId} {
+      allow read, create, update, delete: if isAuthorized();
+    }
+
     match /Users/{userId} {
-      allow read: if isAuthorized();
-      allow create: if isAuthorized() && request.auth.uid == userId;
-      allow update: if isAuthorized() && (request.auth.uid == userId || isAdmin());
-      allow delete: if false; 
+      allow read, create, update: if isAuthorized();
+      allow delete: if false;
     }
 
-    // Inventario General (Materias Primas, Insumos, Producto Final)
     match /Inventory/{item} {
-      allow read: if isAuthorized();
-      allow create, update: if isAuthorized();
-      allow delete: if isAdmin();
+      allow read, create, update, delete: if isAuthorized();
     }
 
     match /Formulas_Maestras/{formula} {
-      allow read, write: if isAuthorized(); 
+      allow read, write: if isAuthorized();
     }
 
     match /Produccion_Lotes/{lote} {
-      allow read, create, update: if isAuthorized();
-      allow delete: if isAdmin();
+      allow read, create, update, delete: if isAuthorized();
     }
 
     match /AuditLog/{log} {
       allow read, create: if isAuthorized();
-      allow update, delete: if false; 
+      allow update, delete: if false;
     }
 
     match /cola_impresion/{ticket} {
-      allow read, create, update: if isAuthorized();
-      allow delete: if isAdmin();
+      allow read, create, update, delete: if isAuthorized();
     }
 
     match /Formulas/{formula} {
@@ -136,18 +84,14 @@ service cloud.firestore {
 
     match /logs/{log} {
       allow read, create: if isAuthorized();
-      allow update, delete: if false; 
+      allow update, delete: if false;
     }
 
-    match /PurchaseRequests/{purchaseRequest} {
+    match /PurchaseRequests/{docId} {
       allow read, write: if isAuthorized();
     }
 
     match /Eventualities/{eventuality} {
-      allow read, write: if isAuthorized();
-    }
-
-    match /EIG_Documents/{doc} {
       allow read, write: if isAuthorized();
     }
   }
