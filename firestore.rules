@@ -83,9 +83,9 @@ service cloud.firestore {
     match /Orders/{order} {
       // Todos pueden leer las órdenes
       allow read: if isAuthorized();
-      // Todos los usuarios autorizados pueden CREAR órdenes (OP, OE, OD)
-      allow create: if isAuthorized();
-      // Operarios y Gerencia pueden actualizar las órdenes (cambiar a EN_PROCESO o FINALIZADO)
+      // Solo Gerencia/Producción puede CREAR nuevas órdenes (OP, OE, OD)
+      allow create: if isHRManager();
+      // Cualquier usuario autorizado puede actualizar (pasar a EN_PROCESO o FINALIZADO)
       allow update: if isAuthorized();
       allow delete: if isAdmin();
     }
@@ -139,7 +139,7 @@ service cloud.firestore {
       allow update, delete: if false; 
     }
 
-    match /PurchaseRequests/{request} {
+    match /PurchaseRequests/{purchaseRequest} {
       allow read, write: if isAuthorized();
     }
 

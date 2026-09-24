@@ -14,10 +14,8 @@ export const ROLES = {
     'tester@h2ocontrol.com',
   ],
   
-  // Creadores de Órdenes (Producción/Gerencia): Pueden crear OP, OE, OD
+  // Creadores de Órdenes (OP, OE, OD) — Gerencia únicamente
   ORDER_CREATORS: [
-    'produccion@h2ocontrol.com.ar',
-    'bduville@h2ocontrol.com.ar',
     'miguesilva.1985@gmail.com',
     'miguesilva.1985@outlook.es',
     'jmalvasio@h2ocontrol.com.ar',
