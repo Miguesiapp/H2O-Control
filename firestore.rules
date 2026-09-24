@@ -27,7 +27,7 @@ service cloud.firestore {
       );
     }
 
-    // RRHH y Reportes (Tótem / Check-in / Autorización)
+    // RRHH y Reportes
     function isHRManager() {
       return request.auth != null && (
         request.auth.token.email == 'bduville@h2ocontrol.com.ar' || 
@@ -83,7 +83,7 @@ service cloud.firestore {
     match /Orders/{order} {
       // Todos pueden leer las órdenes
       allow read: if isAuthorized();
-      // Todos los usuarios autorizados pueden CREAR órdenes
+      // Todos los usuarios autorizados pueden CREAR órdenes (OP, OE, OD)
       allow create: if isAuthorized();
       // Operarios y Gerencia pueden actualizar las órdenes (cambiar a EN_PROCESO o FINALIZADO)
       allow update: if isAuthorized();
@@ -103,7 +103,6 @@ service cloud.firestore {
     // Inventario General (Materias Primas, Insumos, Producto Final)
     match /Inventory/{item} {
       allow read: if isAuthorized();
-      // Permite a calidad aprobar (update), y a RRHH generar salidas o entradas (create/update)
       allow create, update: if isAuthorized();
       allow delete: if isAdmin();
     }
@@ -145,6 +144,10 @@ service cloud.firestore {
     }
 
     match /Eventualities/{eventuality} {
+      allow read, write: if isAuthorized();
+    }
+
+    match /EIG_Documents/{doc} {
       allow read, write: if isAuthorized();
     }
   }

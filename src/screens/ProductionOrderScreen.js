@@ -355,24 +355,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
         return;
       }
 
-      // 1. DESCONTAR INMEDIATAMENTE LAS MP (Stock comprometido = ya no aparece en inventario)
-      for (const req of requirements.needs) {
-        if (req.batchesToConsume && req.batchesToConsume.length > 0) {
-          for (const b of req.batchesToConsume) {
-            await registerMovement(currentUser, 'RETIRO_PRODUCCION', req.isGranel ? 'H2O' : companyName, {
-              itemName: b.realItemName || req.name,
-              quantity: -Math.abs(b.consumed), 
-              stockType: req.isGranel ? 'GRANEL' : 'MP',
-              batchInternal: b.batchInternal,
-              loteProveedor: b.batchProvider, 
-              unit: 'Kg/Lts',
-              details: `OP ${batchId} - Reserva Fórmula`
-            });
-          }
-        }
-      }
-
-      // 2. CREA LA ORDEN EN MÁQUINA DE ESTADOS (Ticket ENVIADO)
+      // 1. PRIMERO: CREAR LA ORDEN (si esto falla, el stock NO se toca)
       const orderData = {
         itemName: productName.trim().toUpperCase(),
         quantity: requirements.targetVolume, 
@@ -384,18 +367,33 @@ export default function ProductionOrderScreen({ route, navigation }) {
         unit: 'Lts',
         company: companyName,
         ingredients: requirements.needs,
-        // mpDeducted: true porque el descuento se hace al emitir.
-        // actualIngredients se llenará si el operario ajusta cantidades reales.
         mpDeducted: true,
         actualIngredients: null
       };
 
       await createOrder('OP', orderData, currentUser);
 
+      // 2. DESPUÉS: DESCONTAR LAS MP (solo si la orden se creó exitosamente)
+      for (const req of requirements.needs) {
+        if (req.batchesToConsume && req.batchesToConsume.length > 0) {
+          for (const b of req.batchesToConsume) {
+            await registerMovement(currentUser, 'RETIRO_PRODUCCION', req.isGranel ? 'H2O' : companyName, {
+              itemName: b.realItemName || req.name,
+              quantity: -Math.abs(b.consumed), 
+              stockType: req.isGranel ? 'GRANEL' : 'MP',
+              batchInternal: b.batchInternal,
+              loteProveedor: b.batchProvider, 
+              unit: 'Kg/Lts',
+              details: `OP ${batchId} - Reserva Formula`
+            });
+          }
+        }
+      }
+
       Toast.show({
         type: 'success',
-        text1: 'OP Emitida con Éxito',
-        text2: `Lote: ${batchId} | ${requirements.targetVolume} L enviados a Producción.`
+        text1: 'OP Emitida con Exito',
+        text2: `Lote: ${batchId} | ${requirements.targetVolume} L enviados a Produccion.`
       });
 
       setViewMode('LIST');
@@ -404,8 +402,11 @@ export default function ProductionOrderScreen({ route, navigation }) {
       setTargetQuantity('');
       setExpiryDate('');
     } catch (error) {
-      console.error(error);
-      Alert.alert("Error del Sistema", "No se pudo emitir la orden de producción.");
+      console.error('Error al emitir OP:', error);
+      const msg = error?.code === 'permission-denied'
+        ? 'Tu usuario no tiene permiso para crear ordenes. Contacta al administrador del sistema.'
+        : `No se pudo emitir la orden: ${error?.message || 'Error desconocido'}`;
+      Alert.alert('Error del Sistema', msg);
     } finally {
       setIsSubmitting(false);
     }
