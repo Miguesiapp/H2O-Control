@@ -366,8 +366,8 @@ export const getBaseLabelName = (commercialName) => {
   // SPECIAL CASE: MOMENTUM (NF e INDRASA usan las mismas etiquetas)
   if (upperName.includes('MOMENTUM')) return 'MOMENTUM';
 
-  // SPECIAL CASE: PH CONTROL usa las etiquetas de ACIDO CLORHIDRICO
-  if (upperName === 'PH CONTROL') return 'ACIDO CLORHIDRICO';
+  // El usuario pidió que PH CONTROL aparezca en las etiquetas, así que no lo forzamos a ACIDO CLORHIDRICO
+  // if (upperName === 'PH CONTROL') return 'ACIDO CLORHIDRICO';
 
   // 1. Coincidencia exacta
   if (PRODUCTS_FINAL_LIST.includes(upperName)) return upperName;

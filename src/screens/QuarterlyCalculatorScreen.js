@@ -30,7 +30,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
         const q = query(collection(db, "Formulas_Maestras"), where("status", "==", "ACTIVA"));
         const snap = await getDocs(q);
         const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        data.sort((a, b) => a.productName.localeCompare(b.productName));
+        data.sort((a, b) => (a.productName || '').localeCompare(b.productName || ''));
         setFormulas(data);
         if (data.length > 0) {
           setTargets([{ key: Date.now().toString(), selectedFormula: data[0], productName: data[0].productName, goal: '' }]);
@@ -59,9 +59,10 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
       const updated = { ...t, [field]: value };
       
       if (field === 'productName') {
-        let found = formulas.find(f => f.productName.replace(' / ', ' - ') === value);
+        const valUpper = value.toUpperCase();
+        let found = formulas.find(f => (f.productName || '').replace(' / ', ' - ').toUpperCase() === valUpper);
         if (!found) {
-          found = formulas.find(f => value.includes(f.productName.replace(' / ', ' - ')) || f.productName.replace(' / ', ' - ').includes(value));
+          found = formulas.find(f => valUpper.includes((f.productName || '').replace(' / ', ' - ').toUpperCase()) || (f.productName || '').replace(' / ', ' - ').toUpperCase().includes(valUpper));
         }
         updated.selectedFormula = found || null;
       }
@@ -71,12 +72,21 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
 
   const runCalculation = async () => {
     const validTargets = targets.filter(t => {
-      const vol = Number(t.goal.replace(',', '.'));
+      const vol = Number(String(t.goal || '').replace(',', '.'));
       return t.selectedFormula && !isNaN(vol) && vol > 0;
     });
 
+    const invalidFormulaTargets = targets.filter(t => t.productName && !t.selectedFormula);
+    if (invalidFormulaTargets.length > 0) {
+      Alert.alert(
+        "Fórmula no encontrada", 
+        `No se encontró una fórmula activa para el producto: ${invalidFormulaTargets[0].productName}. Verifica en la sección Formulación que exista y esté activa.`
+      );
+      return;
+    }
+
     if (validTargets.length === 0) {
-      Alert.alert("Datos Incompletos", "Por favor completa correctamente al menos un granel con un volumen mayor a cero.");
+      Alert.alert("Datos Incompletos", "Por favor completa correctamente al menos un producto y su volumen (mayor a cero).");
       return;
     }
 
@@ -100,14 +110,14 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
       const mpRequirements = {};
 
       validTargets.forEach(target => {
-        const targetVolume = Number(target.goal.replace(',', '.'));
+        const targetVolume = Number(String(target.goal || '').replace(',', '.'));
         const density = target.selectedFormula.densidadObjetivo || target.selectedFormula.densidad || 1;
         const targetKilos = targetVolume * density;
 
-        target.selectedFormula.ingredients.forEach(ing => {
-          if (ing.type === 'NOTE') return;
+        (target.selectedFormula.ingredients || []).forEach(ing => {
+          if (ing.type === 'NOTE' || !ing.name) return;
           
-          const ingNameUpper = ing.name.trim().toUpperCase();
+          const ingNameUpper = String(ing.name).trim().toUpperCase();
           let amountNeeded = (targetKilos * Number(ing.percentage)) / 100;
           
           // CONVERSIÓN A LITROS SI ES UN GRANEL
@@ -175,7 +185,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
         const BLOCKED_STATUSES = ['PENDIENTE', 'PENDIENTE_LABORATORIO'];
         allMPStock.forEach(item => {
            if (BLOCKED_STATUSES.includes(item.status)) return; // Respetar cuarentena de BBS Calidad
-           const itemNameNorm = normalizeString(item.itemName);
+           const itemNameNorm = normalizeString(item.itemName || '');
            const isMatch = mp.searchNamesNorm.some(pn => 
              pn === itemNameNorm || itemNameNorm.includes(pn) || pn.includes(itemNameNorm)
            );
@@ -191,8 +201,8 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
         formulas.forEach(otherF => {
           if (!formulaNamesInCalc.includes(otherF.productName) && otherF.ingredients) {
             const usesIng = otherF.ingredients.some(oi => {
-              if (oi.type === 'NOTE') return false;
-              let oiUpper = oi.name.trim().toUpperCase();
+              if (oi.type === 'NOTE' || !oi.name) return false;
+              let oiUpper = String(oi.name).trim().toUpperCase();
               let oiParts = [oiUpper];
               if (oiUpper.includes('/')) oiParts.push(...oiUpper.split('/').map(p => p.trim()));
               
@@ -425,7 +435,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
             <View key={target.key} style={styles.targetCard}>
               <View style={{ zIndex: 3000 - index, position: 'relative' }}>
                 <AutocompleteInput 
-                  data={[...new Set([...formulas.map(f => f.productName.replace(' / ', ' - ')), ...PRODUCTS_MADRE_LIST])].sort()}
+                  data={[...new Set([...formulas.map(f => (f.productName || '').replace(' / ', ' - ')), ...PRODUCTS_MADRE_LIST])].sort()}
                   value={target.productName}
                   onChangeText={(text) => updateTarget(target.key, 'productName', text)}
                   placeholder="Seleccionar producto..."
@@ -439,7 +449,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
                   <TextInput 
                     style={styles.input} 
                     placeholder="Volumen (Lts)" 
-                    keyboardType="numeric"
+                    keyboardType="decimal-pad"
                     placeholderTextColor="#94a3b8"
                     value={target.goal}
                     onChangeText={(text) => updateTarget(target.key, 'goal', text)}
@@ -457,8 +467,17 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
 
         <TouchableOpacity 
           style={[styles.calcBtn, (loading || formulas.length === 0) && { opacity: 0.7 }]} 
-          onPress={runCalculation} 
-          disabled={loading || formulas.length === 0}
+          onPress={() => {
+            if (loading) {
+              Alert.alert("Calculando", "Por favor espera...");
+              return;
+            }
+            if (formulas.length === 0) {
+              Alert.alert("Sin fórmulas", "No hay fórmulas maestras cargadas o activas.");
+              return;
+            }
+            runCalculation();
+          }} 
         >
           {loading ? (
             <ActivityIndicator color="#fff" size="small" />

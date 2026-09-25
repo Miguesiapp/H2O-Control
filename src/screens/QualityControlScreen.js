@@ -594,7 +594,7 @@ export default function QualityControlScreen({ navigation }) {
                 <Text style={styles.label}>pH Medido</Text>
                 <TextInput 
                   style={styles.input} 
-                  keyboardType="numeric" 
+                  keyboardType="decimal-pad" 
                   placeholder="0.00" 
                   placeholderTextColor="#94a3b8"
                   value={analysis.ph}
@@ -605,7 +605,7 @@ export default function QualityControlScreen({ navigation }) {
                 <Text style={styles.label}>Densidad (g/cm³)</Text>
                 <TextInput 
                   style={styles.input} 
-                  keyboardType="numeric" 
+                  keyboardType="decimal-pad" 
                   placeholder="1.00"
                   placeholderTextColor="#94a3b8"
                   value={analysis.density}

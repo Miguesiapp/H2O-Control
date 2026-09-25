@@ -139,7 +139,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
   const isOverdraft = selectedLot && remainingLiters < 0;
 
   // Cajas solo aplican para bidones de 5L y 1L (nunca para contenedor)
-  const appliesBox = !isContainer && (presentation === 5 || presentation === 1);
+  const appliesBox = !isContainer && (presentation === 5 || presentation === 1) && formData.brandCaja !== 'SIN CAJAS';
   let requiredBoxes = 0;
   let boxFormat = '';
   

@@ -139,7 +139,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
   const isOverdraft = selectedLot && remainingLiters < 0;
   
   const isContainer = presentation === 1000;
-  const appliesBox = !isContainer && (presentation === 5 || presentation === 1);
+  const appliesBox = !isContainer && (presentation === 5 || presentation === 1) && formData.brandCaja !== 'SIN CAJAS';
   let requiredBoxes = 0;
   let boxFormat = '';
   

@@ -1203,7 +1203,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
               <TextInput
                 style={styles.input}
                 placeholder="0.00"
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
                 value={editQtyInput}
                 onChangeText={setEditQtyInput}
                 placeholderTextColor="#94a3b8"
@@ -1273,7 +1273,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
               <TextInput
                 style={styles.input}
                 placeholder="0.00"
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
                 value={extraIngQty}
                 onChangeText={setExtraIngQty}
                 placeholderTextColor="#94a3b8"
