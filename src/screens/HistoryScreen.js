@@ -5,7 +5,7 @@ import { db } from '../config/firebase';
 import { collection, onSnapshot, query, orderBy, limit, getDocs, where } from 'firebase/firestore';
 import { ChevronLeft, Clock, ArrowDownToLine, ArrowUpFromLine, Activity, User, ArrowRightLeft, Filter, ChevronDown, ChevronUp, FileText, X, Search, Printer } from 'lucide-react-native';
 import { generateAuditSummary } from '../services/aiService';
-import { generateAndSharePDF } from '../services/reportService';
+import { generateAndSharePDF, generateWeeklyBackupPDF } from '../services/reportService';
 import { printOrder, printTraceabilityReport } from '../services/printService';
 
 const FILTER_TABS = [
@@ -225,6 +225,35 @@ export default function HistoryScreen({ navigation }) {
     }
   };
 
+  const handleExportWeeklyBackup = async () => {
+    try {
+      setGeneratingPdfFor('WEEKLY');
+      const now = new Date();
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(now.getDate() - 7);
+      
+      const weeklyData = history.filter(item => {
+        const time = item.timestamp?.toMillis ? item.timestamp.toMillis() : Date.now();
+        return time >= oneWeekAgo.getTime();
+      });
+      
+      const filterLabel = "Todos los Movimientos de la Semana";
+      const periodString = `Del ${oneWeekAgo.toLocaleDateString()} al ${now.toLocaleDateString()}`;
+      
+      // AI audit summary
+      const aiSummary = await generateAuditSummary(weeklyData, filterLabel, periodString);
+      
+      // Use the premium OP/OE template style
+      await generateWeeklyBackupPDF(periodString, filterLabel, aiSummary, weeklyData, "Supervisor de Planta");
+      
+    } catch (error) {
+      alert("Hubo un error al generar el respaldo semanal.");
+      console.error(error);
+    } finally {
+      setGeneratingPdfFor(null);
+    }
+  };
+
   const renderLog = (item, isLast) => {
     const theme = getActionTheme(item.action);
     const IconComponent = theme.icon;
@@ -373,15 +402,30 @@ export default function HistoryScreen({ navigation }) {
             showsVerticalScrollIndicator={false}
             renderItem={renderSection}
             ListHeaderComponent={
-              filteredHistory.length > 0 ? (
+              <View style={{ marginBottom: 20 }}>
+                {filteredHistory.length > 0 && (
+                  <TouchableOpacity 
+                    style={[styles.pdfButton, { marginBottom: 10, backgroundColor: '#2563eb' }]}
+                    onPress={() => printTraceabilityReport(filteredHistory, searchQuery)}
+                  >
+                    <FileText color="#fff" size={18} style={{marginRight: 8}} />
+                    <Text style={styles.pdfButtonText}>Imprimir Trazabilidad Consolidada</Text>
+                  </TouchableOpacity>
+                )}
+                
                 <TouchableOpacity 
-                  style={[styles.pdfButton, { marginBottom: 20, backgroundColor: '#2563eb' }]}
-                  onPress={() => printTraceabilityReport(filteredHistory, searchQuery)}
+                  style={[styles.pdfButton, { backgroundColor: '#10b981', borderColor: '#059669', borderWidth: 1 }]}
+                  onPress={handleExportWeeklyBackup}
+                  disabled={generatingPdfFor === 'WEEKLY'}
                 >
-                  <FileText color="#fff" size={18} style={{marginRight: 8}} />
-                  <Text style={styles.pdfButtonText}>Imprimir Trazabilidad Consolidada</Text>
+                  {generatingPdfFor === 'WEEKLY' ? (
+                    <ActivityIndicator size="small" color="#fff" style={{marginRight: 8}} />
+                  ) : (
+                    <Printer color="#fff" size={18} style={{marginRight: 8}} />
+                  )}
+                  <Text style={styles.pdfButtonText}>Generar Respaldo Semanal (con IA)</Text>
                 </TouchableOpacity>
-              ) : null
+              </View>
             }
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
