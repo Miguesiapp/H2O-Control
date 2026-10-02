@@ -234,12 +234,18 @@ export default function ProductionOrderScreen({ route, navigation }) {
         possibleIngredients = [...new Set([...possibleIngredients, ...allEquivalencies])];
         const possibleNorm = possibleIngredients.map(n => normalizeString(n));
 
-        const isGranel = PRODUCTS_MADRE_LIST.some(pm => pm.split('/')[0].trim() === ingUpper);
+        const isGranel = PRODUCTS_MADRE_LIST.some(pm => {
+          const pmNorm = normalizeString(pm);
+          return possibleNorm.some(pn => pmNorm.includes(pn) || pmNorm === pn);
+        });
         
         // CONVERSIÓN A LITROS SI ES UN GRANEL (solo para comparar/descontar stock)
         if (isGranel) {
-           const baseName = ingUpper.split('/')[0].trim();
-           const ingDensity = densityMap[normalizeString(baseName)] || 1;
+           let ingDensity = 1;
+           const matchedFormulaKey = Object.keys(densityMap).find(k => possibleNorm.some(pn => k.includes(pn) || k === pn));
+           if (matchedFormulaKey) {
+              ingDensity = densityMap[matchedFormulaKey];
+           }
            requiredQty = Number((requiredKg / ingDensity).toFixed(2));
         }
 

@@ -121,10 +121,17 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
           let amountNeeded = (targetKilos * Number(ing.percentage)) / 100;
           
           // CONVERSIÓN A LITROS SI ES UN GRANEL
-          const isGranel = PRODUCTS_MADRE_LIST.some(pm => pm.split('/')[0].trim() === ingNameUpper);
+          const possibleNorm = [ingNameUpper];
+          const isGranel = PRODUCTS_MADRE_LIST.some(pm => {
+            const pmNorm = (pm || '').trim().toUpperCase();
+            return possibleNorm.some(pn => pmNorm.includes(pn) || pmNorm === pn);
+          });
           if (isGranel) {
-             const baseName = ingNameUpper.split('/')[0].trim();
-             const ingDensity = densityMap[normalizeString(baseName)] || 1;
+             let ingDensity = 1;
+             const matchedFormulaKey = Object.keys(densityMap).find(k => possibleNorm.some(pn => k.includes(pn) || k === pn));
+             if (matchedFormulaKey) {
+                ingDensity = densityMap[matchedFormulaKey];
+             }
              amountNeeded = amountNeeded / ingDensity;
           }
           
