@@ -284,8 +284,15 @@ export const printOrder = async (order) => {
     const html = generateHTML(order);
 
     if (Platform.OS === 'web') {
+      // Limpiar iframe previo si quedó atascado
+      const oldIframe = document.getElementById('h2o-print-iframe');
+      if (oldIframe) {
+        oldIframe.remove();
+      }
+
       // Usamos un iframe oculto para no abrir ni dejar tabs adicionales
       const iframe = document.createElement('iframe');
+      iframe.id = 'h2o-print-iframe';
       iframe.style.position = 'fixed';
       iframe.style.right = '0';
       iframe.style.bottom = '0';
@@ -492,7 +499,13 @@ export const printTraceabilityReport = async (logs, query) => {
     const html = generateTraceabilityHTML(logs, query);
 
     if (Platform.OS === 'web') {
+      const oldIframe = document.getElementById('h2o-trace-iframe');
+      if (oldIframe) {
+        oldIframe.remove();
+      }
+
       const iframe = document.createElement('iframe');
+      iframe.id = 'h2o-trace-iframe';
       iframe.style.position = 'fixed';
       iframe.style.right = '0';
       iframe.style.bottom = '0';
