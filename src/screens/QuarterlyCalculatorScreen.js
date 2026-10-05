@@ -9,7 +9,7 @@ import { collection, getDocs, query, where, addDoc, serverTimestamp } from 'fire
 import { ChevronLeft, Calculator, AlertCircle, CheckCircle2, ShoppingCart, Target, Beaker, Factory, ChevronDown, X, ClipboardList, Download, Plus, Trash2, Printer } from 'lucide-react-native';
 
 import { EQUIVALENCIES } from '../services/formulaService';
-import { PRODUCTS_MADRE_LIST } from '../config/constants';
+import { PRODUCTS_MADRE_LIST, RAW_MATERIALS_LIST } from '../config/constants';
 import AutocompleteInput from '../components/AutocompleteInput';
 
 const normalizeString = (str) => {
@@ -121,14 +121,17 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
           let amountNeeded = (targetKilos * Number(ing.percentage)) / 100;
           
           // CONVERSIÓN A LITROS SI ES UN GRANEL
-          const possibleNorm = [ingNameUpper];
-          const isGranel = PRODUCTS_MADRE_LIST.some(pm => {
-            const pmNorm = (pm || '').trim().toUpperCase();
-            return possibleNorm.some(pn => pmNorm.includes(pn) || pmNorm === pn);
+          const isRawMaterial = RAW_MATERIALS_LIST.some(rm => {
+            const rmParts = rm.split('/').map(p => normalizeString(p.trim()));
+            return rmParts.includes(normalizeString(ingNameUpper));
+          });
+          const isGranel = !isRawMaterial && PRODUCTS_MADRE_LIST.some(pm => {
+            const pmParts = pm.split('/').map(p => normalizeString(p.replace(/^granel\s+/i, '').trim()));
+            return pmParts.includes(normalizeString(ingNameUpper));
           });
           if (isGranel) {
              let ingDensity = 1;
-             const matchedFormulaKey = Object.keys(densityMap).find(k => possibleNorm.some(pn => k.includes(pn) || k === pn));
+             const matchedFormulaKey = Object.keys(densityMap).find(k => k === normalizeString(ingNameUpper) || k.includes(normalizeString(ingNameUpper)));
              if (matchedFormulaKey) {
                 ingDensity = densityMap[matchedFormulaKey];
              }

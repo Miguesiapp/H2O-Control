@@ -119,13 +119,34 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
 
       if (isExactDeduction) {
         // DESCUENTO EXACTO: Va directo al Lote que el usuario eligió en pantalla
-        const qExact = query(
+        let qExact = query(
           inventoryRef, 
           where("company", "==", effectiveCompany), 
           where("itemName", "==", itemNameUpper),
           where("batchInternal", "==", data.batchInternal)
         );
-        const snapExact = await getDocs(qExact);
+        let snapExact = await getDocs(qExact);
+
+        // Fallback 1: Buscar por la company explícita enviada si difiere de effectiveCompany
+        if (snapExact.empty && data.company && data.company !== effectiveCompany) {
+          qExact = query(
+            inventoryRef, 
+            where("company", "==", data.company), 
+            where("itemName", "==", itemNameUpper),
+            where("batchInternal", "==", data.batchInternal)
+          );
+          snapExact = await getDocs(qExact);
+        }
+
+        // Fallback 2: Buscar por lote exacto e itemName en cualquier company
+        if (snapExact.empty && data.batchInternal && data.batchInternal !== 'S/D') {
+          qExact = query(
+            inventoryRef, 
+            where("itemName", "==", itemNameUpper), 
+            where("batchInternal", "==", data.batchInternal)
+          );
+          snapExact = await getDocs(qExact);
+        }
         
         if (!snapExact.empty) {
           const itemDoc = snapExact.docs[0];

@@ -234,9 +234,16 @@ export default function ProductionOrderScreen({ route, navigation }) {
         possibleIngredients = [...new Set([...possibleIngredients, ...allEquivalencies])];
         const possibleNorm = possibleIngredients.map(n => normalizeString(n));
 
-        const isGranel = PRODUCTS_MADRE_LIST.some(pm => {
-          const pmNorm = normalizeString(pm);
-          return possibleNorm.some(pn => pmNorm.includes(pn) || pmNorm === pn);
+        // Verificar si es Materia Prima conocida de la lista maestra
+        const isRawMaterial = RAW_MATERIALS_LIST.some(rm => {
+          const rmParts = rm.split('/').map(p => normalizeString(p.trim()));
+          return possibleNorm.some(pn => rmParts.includes(pn));
+        });
+
+        // Solo es granel si NO es materia prima Y coincide con un Producto Madre
+        const isGranel = !isRawMaterial && PRODUCTS_MADRE_LIST.some(pm => {
+          const pmParts = pm.split('/').map(p => normalizeString(p.replace(/^granel\s+/i, '').trim()));
+          return possibleNorm.some(pn => pmParts.includes(pn) || pmParts.some(pp => pp === pn));
         });
         
         // CONVERSIÓN A LITROS SI ES UN GRANEL (solo para comparar/descontar stock)
@@ -249,33 +256,33 @@ export default function ProductionOrderScreen({ route, navigation }) {
            requiredQty = Number((requiredKg / ingDensity).toFixed(2));
         }
 
-        const searchCompany = isGranel ? 'H2O' : 'STOCK_CENTRAL_MP';
-        const searchStockType = isGranel ? 'GRANEL' : 'MP';
-        
         let currentStock = 0;
         const availableBatches = [];
         
         const BLOCKED_STATUSES = ['PENDIENTE', 'PENDIENTE_LABORATORIO'];
         allActiveStock.forEach(item => {
            if (BLOCKED_STATUSES.includes(item.status)) return; // Respetar cuarentena de BBS Calidad
-           if (item.company === searchCompany && item.stockType === searchStockType) {
-              const itemNorm = normalizeString(item.itemName);
-              // Match exacto O por subcadena bidireccional (para fórmulas viejas con nombre parcial)
-              const isMatch = possibleNorm.some(pn => 
-                pn === itemNorm || 
-                itemNorm.includes(pn) || 
-                pn.includes(itemNorm)
-              );
-              if (isMatch) {
-                  availableBatches.push({
-                     batchInternal: item.batchInternal || 'S/D',
-                     batchProvider: item.batchProvider || 'S/D',
-                     quantity: item.quantity,
-                     createdAt: item._createdAt,
-                     realItemName: item.itemName
-                  });
-                  currentStock += item.quantity || 0;
-              }
+           // Debe ser stock de Materia Prima o Granel (ignora insumos y producto terminado)
+           if (item.stockType !== 'MP' && item.stockType !== 'GRANEL') return;
+
+           const itemNorm = normalizeString(item.itemName);
+           // Match exacto O por subcadena bidireccional (para fórmulas con sinónimos o nombres parciales)
+           const isMatch = possibleNorm.some(pn => 
+             pn === itemNorm || 
+             itemNorm.includes(pn) || 
+             pn.includes(itemNorm)
+           );
+           if (isMatch) {
+               availableBatches.push({
+                  batchInternal: item.batchInternal || 'S/D',
+                  batchProvider: item.batchProvider || 'S/D',
+                  quantity: Number(item.quantity) || 0,
+                  createdAt: item._createdAt,
+                  realItemName: item.itemName,
+                  company: item.company,
+                  stockType: item.stockType
+               });
+               currentStock += Number(item.quantity) || 0;
            }
         });
         
@@ -383,10 +390,10 @@ export default function ProductionOrderScreen({ route, navigation }) {
       for (const req of requirements.needs) {
         if (req.batchesToConsume && req.batchesToConsume.length > 0) {
           for (const b of req.batchesToConsume) {
-            await registerMovement(currentUser, 'RETIRO_PRODUCCION', req.isGranel ? 'H2O' : companyName, {
+            await registerMovement(currentUser, 'RETIRO_PRODUCCION', b.company || (req.isGranel ? 'H2O' : companyName), {
               itemName: b.realItemName || req.name,
               quantity: -Math.abs(b.consumed), 
-              stockType: req.isGranel ? 'GRANEL' : 'MP',
+              stockType: b.stockType || (req.isGranel ? 'GRANEL' : 'MP'),
               batchInternal: b.batchInternal,
               loteProveedor: b.batchProvider, 
               unit: 'Kg/Lts',
