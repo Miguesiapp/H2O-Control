@@ -167,6 +167,7 @@ export const PROVIDERS_LIST = [
   'PLANTECH',
   'QUIMICA INDUSTRIAL KUBO',
   'RESICONT SA',
+  'RESIKEM SA',
   'SERQUIM SA',
   'SHELTER SA',
   'SOLKEM S.A',
@@ -187,6 +188,7 @@ export const PROVIDERS_LIST = [
   'YPF SA',
   'ZSCHIMMER-SCHWARZ',
   'CIA.QUIMICA Y AGROQUIMICA ARGENTINA S.A',
+  'HENRY HIRSCHEN',
   'H2O CONTROL SRL',
 ];
 
@@ -370,8 +372,7 @@ export const getBaseLabelName = (commercialName) => {
   if (!commercialName) return '';
   const upperName = commercialName.trim().toUpperCase();
 
-  // SPECIAL CASE: MOMENTUM (NF e INDRASA usan las mismas etiquetas)
-  if (upperName.includes('MOMENTUM')) return 'MOMENTUM';
+  // (Removido: MOMENTUM NF e INDRASA ahora usan etiquetas separadas)
 
   // El usuario pidió que PH CONTROL aparezca en las etiquetas, así que no lo forzamos a ACIDO CLORHIDRICO
   // if (upperName === 'PH CONTROL') return 'ACIDO CLORHIDRICO';
