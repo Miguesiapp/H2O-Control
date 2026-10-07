@@ -4,8 +4,9 @@ import {
   ActivityIndicator, StatusBar, TextInput, ScrollView, Modal, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { db } from '../config/firebase';
+import { auth, db } from '../config/firebase';
 import { collection, query, where, onSnapshot, writeBatch, doc, deleteDoc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
+import { registerMovement } from '../services/logisticsService';
 import { ChevronLeft, Search, PackageOpen, AlertTriangle, ShieldCheck, X, FlaskConical, Droplet, Box, Tag, Printer, ChevronDown, ChevronUp, Edit2, Trash2 } from 'lucide-react-native';
 import { RAW_MATERIALS_LIST, PRODUCTS_MADRE_LIST } from '../config/constants';
 
@@ -57,18 +58,30 @@ export default function StockView({ route, navigation }) {
       }
       const oldQty = selectedEditLot.quantity;
       const difference = newQtyNum - oldQty;
+      
       if (difference === 0) {
         setEditLotModalVisible(false);
         return;
       }
-      if (selectedEditLot.rawDocs && selectedEditLot.rawDocs.length > 0) {
-        const firstDocId = selectedEditLot.rawDocs[0];
-        const docRef = doc(db, "Inventory", firstDocId);
-        await updateDoc(docRef, { quantity: increment(difference), lastUpdated: serverTimestamp() });
-      }
+      
+      const currentUser = auth.currentUser?.email || 'Sistema';
+      const actionType = difference > 0 ? 'INGRESO_AJUSTE' : 'BAJA_POR_AJUSTE';
+      
+      // Llamar a registerMovement para que audite y descuente/sume correctamente
+      await registerMovement(currentUser, actionType, companyName, {
+        itemName: selectedEditLot.itemName,
+        quantity: difference,
+        stockType: stockType,
+        batchInternal: selectedEditLot.batchInternal,
+        loteProveedor: selectedEditLot.batchProvider,
+        unit: stockType === 'INSUMOS' ? 'Uds' : (stockType === 'PT' || stockType === 'GRANEL') ? 'Lts' : 'Kg',
+        details: 'Ajuste manual desde botón Editar'
+      });
+      
       setEditLotModalVisible(false);
     } catch (error) {
-      Alert.alert("Error", "No se pudo actualizar.");
+      console.error(error);
+      Alert.alert("Error", "No se pudo actualizar el stock.");
     }
   };
 
@@ -83,11 +96,22 @@ export default function StockView({ route, navigation }) {
   const confirmDeleteLot = async () => {
     if (!selectedDeleteLot) return;
     try {
-      for (const docId of selectedDeleteLot.rawDocs) {
-        await deleteDoc(doc(db, "Inventory", docId));
-      }
+      const currentUser = auth.currentUser?.email || 'Sistema';
+      
+      // Registrar baja completa del lote para que quede en el historial
+      await registerMovement(currentUser, 'BAJA_POR_AJUSTE', companyName, {
+        itemName: selectedDeleteLot.itemName,
+        quantity: -Math.abs(selectedDeleteLot.quantity),
+        stockType: stockType,
+        batchInternal: selectedDeleteLot.batchInternal,
+        loteProveedor: selectedDeleteLot.batchProvider,
+        unit: stockType === 'INSUMOS' ? 'Uds' : (stockType === 'PT' || stockType === 'GRANEL') ? 'Lts' : 'Kg',
+        details: 'Eliminación manual completa del lote'
+      });
+      
       setDeleteLotModalVisible(false);
     } catch (error) {
+      console.error(error);
       Alert.alert("Error", "No se pudo eliminar.");
     }
   };

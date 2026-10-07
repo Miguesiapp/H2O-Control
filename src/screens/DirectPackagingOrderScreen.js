@@ -166,10 +166,12 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
       setIsSubmitting(true);
       
       // Variables de Búsqueda Generalizada (Fuzzy)
-      const capacityKeywords = [`${presentation}L`, `${presentation} L`, `${presentation} LTS`, `${presentation}LTS`, `X${presentation}`, `X ${presentation}`, `${presentation}-L`];
+      // BIDONES Y ETIQUETAS usan litros (ej: 5L, 5 L, 5 LTS) pero NO X5
+      const capacityKeywords = [`${presentation}L`, `${presentation} L`, `${presentation} LTS`, `${presentation}LTS`, `${presentation}-L`];
       const fuzzyBidon = ['BIDON', capacityKeywords, formData.brandBidon];
       
-      const boxKeywords = [boxFormat, `${presentation}L`, `${presentation} L`, `X ${presentation}L`, `X${presentation}L`];
+      // CAJAS usan formato multiplicador (ej: x5, x1, X5, X 5) pero NO 5L
+      const boxKeywords = [boxFormat, `X${presentation}`, `X ${presentation}`];
       const fuzzyCaja = appliesBox ? ['CAJA', boxKeywords, formData.brandCaja] : null;
 
       const baseLabelName = getBaseLabelName(commercialName);
