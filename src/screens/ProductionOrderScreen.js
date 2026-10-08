@@ -214,25 +214,39 @@ export default function ProductionOrderScreen({ route, navigation }) {
         const requiredKg = Number((targetKilos * percentageValue).toFixed(2)); // Siempre en Kg (para mostrar al operario)
         let requiredQty = requiredKg; // En Lts si es Granel (para comparar/descontar stock)
         
-        const ingUpper = (ingredient.name || '').trim().toUpperCase();
-        if (!ingUpper) continue;
-        
-        // El nombre en la fórmula puede ser un string viejo (ej: A / B)
-        // Separamos por barras para buscar equivalencias de cualquier parte
-        let possibleIngredients = [ingUpper];
-        if (ingUpper.includes('/')) {
-           possibleIngredients.push(...ingUpper.split('/').map(p => p.trim()));
+        let possibleNorm = [normalizeString(ingredient.name)];
+        if ((ingredient.name || '').includes('/')) {
+           possibleNorm.push(...ingredient.name.split('/').map(p => normalizeString(p)));
         }
         
-        const allEquivalencies = [];
-        possibleIngredients.forEach(p => {
-           if (EQUIVALENCIES[p]) {
-              allEquivalencies.push(...EQUIVALENCIES[p]);
+        // 1. Expandir buscando en RAW_MATERIALS_LIST
+        RAW_MATERIALS_LIST.forEach(rm => {
+           const parts = rm.split('/').map(p => normalizeString(p));
+           if (parts.some(p => possibleNorm.some(pn => p === pn || p.includes(pn) || pn.includes(p)))) {
+               possibleNorm.push(...parts);
            }
         });
-        
-        possibleIngredients = [...new Set([...possibleIngredients, ...allEquivalencies])];
-        const possibleNorm = possibleIngredients.map(n => normalizeString(n));
+
+        // 2. Expandir buscando en PRODUCTS_MADRE_LIST
+        PRODUCTS_MADRE_LIST.forEach(pm => {
+           const parts = pm.split('/').map(p => normalizeString(p.replace(/^granel\s+/i, '')));
+           const fullParts = pm.split('/').map(p => normalizeString(p));
+           if (parts.some(p => possibleNorm.some(pn => p === pn || p.includes(pn) || pn.includes(p))) ||
+               fullParts.some(p => possibleNorm.some(pn => p === pn || p.includes(pn) || pn.includes(p)))) {
+               possibleNorm.push(...parts);
+               possibleNorm.push(...fullParts);
+           }
+        });
+
+        // 3. Expandir buscando en EQUIVALENCIES (manuales)
+        Object.keys(EQUIVALENCIES).forEach(k => {
+           const normK = normalizeString(k);
+           if (possibleNorm.some(pn => normK === pn || normK.includes(pn) || pn.includes(normK))) {
+               possibleNorm.push(...EQUIVALENCIES[k].map(e => normalizeString(e)));
+           }
+        });
+
+        possibleNorm = [...new Set(possibleNorm)];
 
         // Verificar si es Materia Prima conocida de la lista maestra
         const isRawMaterial = RAW_MATERIALS_LIST.some(rm => {
