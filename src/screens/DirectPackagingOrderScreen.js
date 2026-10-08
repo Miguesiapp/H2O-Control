@@ -117,12 +117,17 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
 
   const getCommercialNameSuggestions = () => {
     if (!selectedLot) return [];
-    const madre = selectedLot.itemName.toUpperCase();
+    const madre = (selectedLot.itemName || "").trim().toUpperCase();
     const suggestions = [madre];
+    const madreParts = madre.split("/").map(p => p.trim());
     
     Object.keys(EQUIVALENCIES_MAP).forEach(key => {
       const equiv = EQUIVALENCIES_MAP[key].toUpperCase();
-      if (equiv.includes(madre) || madre.includes(equiv)) {
+      const equivParts = equiv.split("/").map(p => p.trim());
+      const matches = madreParts.some(mp => equivParts.includes(mp)) ||
+                      equivParts.some(ep => madreParts.includes(ep)) ||
+                      madre === equiv;
+      if (matches) {
         suggestions.push(key);
       }
     });
@@ -229,12 +234,13 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
       const currentUser = auth.currentUser?.email || 'Sistema';
 
       // 1. DEDUCCIÓN AUTOMÁTICA DEL LÍQUIDO A GRANEL
-      await registerMovement(currentUser, 'CONSUMO_ENVASADO_DIRECTO', companyName, {
+      await registerMovement(currentUser, 'CONSUMO_ENVASADO_DIRECTO', selectedLot.company || companyName, {
+          docId: selectedLot.id,
           itemName: itemName,
           quantity: -Math.abs(litersToConsume), 
-          stockType: 'MP',
+          stockType: selectedLot.stockType || 'MP',
           batchInternal: batchId,
-          unit: 'Kg'
+          unit: selectedLot.unit || 'Kg'
       });
 
       if (!isContainer) {

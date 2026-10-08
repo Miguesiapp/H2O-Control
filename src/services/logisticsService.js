@@ -107,12 +107,31 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
       // ---------------------------------------------------
       const absQty = Number(Math.abs(numericQty).toFixed(2));
 
+      // Caso 0: Deducción directa inmediata por docId si el cliente seleccionó el registro exacto de Inventory
+      if (data.docId) {
+        try {
+          const directDocRef = doc(db, "Inventory", data.docId);
+          const directSnap = await getDoc(directDocRef);
+          if (directSnap.exists()) {
+            await updateDoc(directDocRef, {
+              quantity: increment(-absQty),
+              lastUpdated: serverTimestamp()
+            });
+            await checkAndCleanupEmptyStock(directDocRef);
+            return;
+          }
+        } catch (docErr) {
+          console.warn("Fallo en deducción directa por docId, intentando búsqueda por lote...", docErr);
+        }
+      }
+
       // ENRUTADOR INTELIGENTE: ¿Descuento Exacto o FIFO?
       // NOTA: Insumos (Bidones, Cajas, Etiquetas) siempre usan FIFO porque no comparten el lote del granel.
       const isExactDeduction = 
         !isFuzzyItem && (
           actionType === 'EGRESO_DESPACHO_CLIENTE' || 
           actionType === 'CONSUMO_ENVASADO' ||
+          actionType === 'CONSUMO_ENVASADO_DIRECTO' ||
           actionType === 'RETIRO_PRODUCCION' ||
           ((actionType === 'EGRESO_CLEARING' || actionType === 'BAJA_POR_AJUSTE') && data.batchInternal && data.batchInternal !== 'S/D')
         );
@@ -147,6 +166,15 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
           );
           snapExact = await getDocs(qExact);
         }
+
+        // Fallback 3: Buscar por lote exacto en cualquier company (ignora diferencias menores de nombre)
+        if (snapExact.empty && data.batchInternal && data.batchInternal !== 'S/D') {
+          qExact = query(
+            inventoryRef, 
+            where("batchInternal", "==", data.batchInternal)
+          );
+          snapExact = await getDocs(qExact);
+        }
         
         if (!snapExact.empty) {
           const itemDoc = snapExact.docs[0];
@@ -157,7 +185,8 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
           });
           await checkAndCleanupEmptyStock(docRef);
         } else {
-          console.warn(`Alerta: No se encontró el lote exacto ${data.batchInternal} para descontar.`);
+          console.warn(`Alerta: No se encontró el lote exacto ${data.batchInternal} para descontar ${itemNameUpper}. Aplicando salvaguarda FIFO...`);
+          await deductStockFIFO(effectiveCompany, itemNameUpper, absQty);
         }
       } else {
         // DESCUENTO FIFO: Se usa para Producción o Retiros casuales donde no importa qué tambor se abre primero.
@@ -207,6 +236,39 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
         }
         return true;
       });
+
+    // Salvaguarda multi-empresa: si no se encontró en la empresa actual y no es STOCK_CENTRAL_MP ni H2O,
+    // buscar en STOCK_CENTRAL_MP o H2O (donde reside el stock unificado de planta)
+    if (docs.length === 0 && company !== 'STOCK_CENTRAL_MP' && company !== 'H2O') {
+      const fallbackCompanies = ['STOCK_CENTRAL_MP', 'H2O'];
+      for (const altCompany of fallbackCompanies) {
+        const altQ = isFuzzy
+          ? query(inventoryRef, where("company", "==", altCompany))
+          : query(inventoryRef, where("company", "==", altCompany), where("itemName", "==", itemName));
+        const altSnap = await getDocs(altQ);
+        const altDocs = altSnap.docs
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter(doc => {
+            if ((doc.quantity || 0) <= 0) return false;
+            const pendingStatuses = ['PENDIENTE', 'PENDIENTE_LABORATORIO'];
+            if (pendingStatuses.includes(doc.status)) return false;
+            if (isFuzzy) {
+              const name = (doc.itemName || '').toUpperCase();
+              return itemName.every(kw => {
+                if (Array.isArray(kw)) {
+                  return kw.some(subKw => name.includes(subKw.toUpperCase()));
+                }
+                return name.includes(kw.toUpperCase());
+              });
+            }
+            return true;
+          });
+        if (altDocs.length > 0) {
+          docs = altDocs;
+          break;
+        }
+      }
+    }
 
     if (docs.length === 0) {
       const nameStr = isFuzzy ? itemName.join(' + ') : itemName;

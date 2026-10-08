@@ -128,7 +128,21 @@ export default function PackagingOrderScreen({ route, navigation }) {
 
   const mappedGranelStr = commercialName ? (EQUIVALENCIES_MAP[commercialName.trim().toUpperCase()] || commercialName.trim().toUpperCase()) : '';
   const synonyms = mappedGranelStr.split('/').map(s => s.trim().toUpperCase());
-  const filteredApprovedLots = commercialName ? approvedLots.filter(l => synonyms.some(syn => l.itemName?.toUpperCase().includes(syn))) : [];
+  const normalizePart = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+  const synParts = synonyms.map(s => normalizePart(s).replace(/^GRANEL\s+/i, ''));
+
+  // Filtrado robusto por coincidencia exacta de parte o nombre completo, evitando falsos positivos por subcadenas
+  const filteredApprovedLots = commercialName ? approvedLots.filter(l => {
+    if (!l.itemName) return false;
+    const lotNameNorm = normalizePart(l.itemName);
+    const lotParts = l.itemName.split('/').map(p => normalizePart(p).replace(/^GRANEL\s+/i, ''));
+    return synParts.some(syn => {
+      return lotNameNorm === syn || 
+             lotNameNorm.replace(/^GRANEL\s+/i, '') === syn || 
+             lotParts.includes(syn) || 
+             synonyms.includes(l.itemName.trim().toUpperCase());
+    });
+  }) : [];
 
   const units = Number(formData.unitsProduced) || 0;
   const presentation = Number(formData.presentation);
@@ -233,7 +247,8 @@ export default function PackagingOrderScreen({ route, navigation }) {
       }
 
       // 1. DEDUCCIÓN AUTOMÁTICA DEL LÍQUIDO A GRANEL
-      await registerMovement(currentUser, 'CONSUMO_ENVASADO', companyName, {
+      await registerMovement(currentUser, 'CONSUMO_ENVASADO', selectedLot.company || companyName, {
+          docId: selectedLot.id,
           itemName: itemName,
           quantity: -Math.abs(litersToConsume), 
           stockType: 'GRANEL',

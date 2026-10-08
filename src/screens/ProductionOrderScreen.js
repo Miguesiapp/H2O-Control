@@ -274,6 +274,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
            );
            if (isMatch) {
                availableBatches.push({
+                  docId: item._id,
                   batchInternal: item.batchInternal || 'S/D',
                   batchProvider: item.batchProvider || 'S/D',
                   quantity: Number(item.quantity) || 0,
@@ -294,10 +295,13 @@ export default function ProductionOrderScreen({ route, navigation }) {
            if (remainingRequired <= 0) break;
            const consumeQty = Number(Math.min(b.quantity, remainingRequired).toFixed(2));
            batchesToConsume.push({
+              docId: b.docId,
               batchInternal: b.batchInternal,
               batchProvider: b.batchProvider,
               consumed: consumeQty,
-              realItemName: b.realItemName
+              realItemName: b.realItemName,
+              company: b.company,
+              stockType: b.stockType
            });
            remainingRequired = Number((remainingRequired - consumeQty).toFixed(2));
         }
@@ -391,6 +395,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
         if (req.batchesToConsume && req.batchesToConsume.length > 0) {
           for (const b of req.batchesToConsume) {
             await registerMovement(currentUser, 'RETIRO_PRODUCCION', b.company || (req.isGranel ? 'H2O' : companyName), {
+              docId: b.docId,
               itemName: b.realItemName || req.name,
               quantity: -Math.abs(b.consumed), 
               stockType: b.stockType || (req.isGranel ? 'GRANEL' : 'MP'),
@@ -459,10 +464,10 @@ export default function ProductionOrderScreen({ route, navigation }) {
 
           if (req.batchesToConsume && req.batchesToConsume.length > 0) {
             for (const b of req.batchesToConsume) {
-              await registerMovement(currentUser, 'DEVOLUCION_RECHAZO_OP', req.isGranel ? 'H2O' : companyName, {
+              await registerMovement(currentUser, 'DEVOLUCION_RECHAZO_OP', b.company || (req.isGranel ? 'H2O' : companyName), {
                 itemName: b.realItemName || req.name,
                 quantity: Math.abs(b.consumed), // positivo para devolver al stock
-                stockType: req.isGranel ? 'GRANEL' : 'MP',
+                stockType: b.stockType || (req.isGranel ? 'GRANEL' : 'MP'),
                 batchInternal: b.batchInternal,
                 loteProveedor: b.batchProvider,
                 unit: 'Kg/Lts',
