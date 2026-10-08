@@ -409,3 +409,9 @@ export const generateBatchId = () => {
   // El usuario solicitó el formato H2O-DDMMAAAA sin id único al final para respetar el día que el operario aceptó la orden
   return `H2O-${day}${month}${year}`;
 };
+
+// Utilidad para limpiar visualmente los nombres largos y mostrar solo el principal
+export const formatDisplayName = (str) => {
+  if (!str) return '';
+  return str.split(' / ')[0].trim();
+};

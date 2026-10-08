@@ -7,6 +7,7 @@ import { ChevronLeft, Clock, ArrowDownToLine, ArrowUpFromLine, Activity, User, A
 import { generateAuditSummary } from '../services/aiService';
 import { generateAndSharePDF, generateWeeklyBackupPDF } from '../services/reportService';
 import { printOrder, printTraceabilityReport } from '../services/printService';
+import { formatDisplayName } from '../config/constants';
 
 const FILTER_TABS = [
   { id: 'MP', label: 'Ingresos MP' },
@@ -166,7 +167,7 @@ export default function HistoryScreen({ navigation }) {
     // FILTRO POR BÚSQUEDA
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
-      const name = (item.itemName || '').toLowerCase();
+      const name = (formatDisplayName(item.itemName) || '').toLowerCase();
       const batch = (item.batchInternal || '').toLowerCase();
       const company = (item.company || '').toLowerCase();
       const client = (item.clientName || '').toLowerCase();
@@ -284,7 +285,7 @@ export default function HistoryScreen({ navigation }) {
 
           <View style={styles.logBody}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.logItemName}>{item.itemName || '—'}</Text>
+              <Text style={styles.logItemName}>{formatDisplayName(item.itemName) || '—'}</Text>
               <Text style={styles.logCompany}>{item.clientName || item.company || '—'}</Text>
             </View>
             <View style={styles.qtyBox}>
@@ -461,7 +462,7 @@ export default function HistoryScreen({ navigation }) {
 
                <View style={{backgroundColor: '#f1f5f9', padding: 15, borderRadius: 12, marginBottom: 20}}>
                  <Text style={{fontSize: 12, color: '#64748b', textTransform: 'uppercase', fontWeight: '800'}}>Producto</Text>
-                 <Text style={{fontSize: 18, fontWeight: '900', color: '#3b82f6', marginBottom: 5}}>{selectedOPLog?.itemName}</Text>
+                 <Text style={{fontSize: 18, fontWeight: '900', color: '#3b82f6', marginBottom: 5}}>{formatDisplayName(selectedOPLog?.itemName)}</Text>
                  <Text style={{fontSize: 14, color: '#475569'}}>Cantidad Producida: <Text style={{fontWeight: '800', color: '#0f172a'}}>{selectedOPLog?.quantity} {selectedOPLog?.unit}</Text></Text>
                  <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 5}}>
                    <User size={14} color="#64748b" />
@@ -518,7 +519,7 @@ export default function HistoryScreen({ navigation }) {
             <View style={styles.modalHeader}>
               <View>
                 <Text style={styles.modalTitle}>Detalle del Despacho</Text>
-                <Text style={styles.modalSub}>{selectedODLog?.itemName}</Text>
+                <Text style={styles.modalSub}>{formatDisplayName(selectedODLog?.itemName)}</Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15 }}>
                 {odDetails?.orderData && (
@@ -529,7 +530,7 @@ export default function HistoryScreen({ navigation }) {
                           id: odDetails?.orderData?.id || selectedODLog?.id || 'OD-MOCK',
                           data: {
                              fechaCreacion: odDetails?.orderData?.createdAt || selectedODLog?.timestamp,
-                             productName: selectedODLog?.itemName,
+                             productName: formatDisplayName(selectedODLog?.itemName),
                              dispatchId: selectedODLog?.batchInternal,
                              quantity: Math.abs(selectedODLog?.quantity || 0),
                              presentation: odDetails?.orderData?.data?.presentation || (selectedODLog?.unit === 'Lts' ? 'Granel' : 'S/D'),

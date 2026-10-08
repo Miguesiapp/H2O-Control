@@ -8,7 +8,7 @@ import { auth, db } from '../config/firebase';
 import { collection, query, where, onSnapshot, writeBatch, doc, deleteDoc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
 import { registerMovement } from '../services/logisticsService';
 import { ChevronLeft, Search, PackageOpen, AlertTriangle, ShieldCheck, X, FlaskConical, Droplet, Box, Tag, Printer, ChevronDown, ChevronUp, Edit2, Trash2 } from 'lucide-react-native';
-import { RAW_MATERIALS_LIST, PRODUCTS_MADRE_LIST } from '../config/constants';
+import { RAW_MATERIALS_LIST, PRODUCTS_MADRE_LIST, formatDisplayName } from '../config/constants';
 
 const normalizeString = (str) => {
   if (!str) return '';
@@ -233,7 +233,7 @@ export default function StockView({ route, navigation }) {
 
   // Agrupar items por nombre (Insensible a mayúsculas y tildes)
   const groupedItemsMap = displayedItems.reduce((acc, item) => {
-    const rawName = item.itemName || item.productName || 'Desconocido';
+    const rawName = formatDisplayName(item.itemName || item.productName) || 'Desconocido';
     const groupKey = normalizeString(rawName); // Llave unificada
 
     const rawBatch = item.batchInternal || 'S/D';
@@ -282,7 +282,7 @@ export default function StockView({ route, navigation }) {
       <View style={[styles.itemCard, { backgroundColor: status.bg, borderColor: status.color, borderWidth: 1 }]}>
         <TouchableOpacity activeOpacity={0.7} onPress={() => toggleExpand(item.id)}>
           <View style={styles.itemHeader}>
-            <Text style={styles.itemName}>{item.itemName}</Text>
+            <Text style={styles.itemName}>{formatDisplayName(item.itemName)}</Text>
             <View style={{flexDirection: 'row', alignItems: 'center'}}>
               <TouchableOpacity 
                 style={[styles.statusBadge, { backgroundColor: '#fff', borderWidth: 1, borderColor: status.color }]}

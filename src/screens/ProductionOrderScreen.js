@@ -16,7 +16,7 @@ import { printBatchLabels } from '../services/labelService';
 import { printOrder } from '../services/printService';
 import AutocompleteInput from '../components/AutocompleteInput';
 import { EQUIVALENCIES } from '../services/formulaService';
-import { PRODUCTS_MADRE_LIST, generateBatchId, RAW_MATERIALS_LIST } from '../config/constants';
+import { PRODUCTS_MADRE_LIST, generateBatchId, RAW_MATERIALS_LIST, formatDisplayName } from '../config/constants';
 import { canCreateOrders } from '../config/permissions';
 import Toast from 'react-native-toast-message';
 
@@ -895,7 +895,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
                 return (
                   <View key={index} style={styles.reqRow}>
                     <View style={{flex: 1}}>
-                      <Text style={styles.reqName}>{req.ingredientName || req.name}</Text>
+                      <Text style={styles.reqName}>{formatDisplayName(req.ingredientName || req.name)}</Text>
                       <Text style={styles.reqDetail}>
                         Req: {req.isGranel 
                           ? `${(req.requiredKg || req.required).toFixed(2)} Kg (≈ ${req.required.toFixed(2)} Lts)` 
