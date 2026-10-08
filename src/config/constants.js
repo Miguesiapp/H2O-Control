@@ -286,7 +286,8 @@ export const PRODUCTS_FINAL_LIST = [
   'ULTRA',
   'BF-5000',
   'SYNERGYCIDE AB',
-  'PT48'
+  'PT48',
+  'DISPERSACALE 82'
 ];
 
 // Equivalencias: De nombre comercial a Producto Madre y viceversa
@@ -357,6 +358,7 @@ export const EQUIVALENCIES_MAP = {
   'BIOCONTROL': 'GRANEL BIOCONTROL / BIOCONTROL',
   'GRANEL CLEAR': 'GRANEL CLEAR / CLEAR',
   'CLEAR': 'GRANEL CLEAR / CLEAR',
+  'DISPERSACALE 82': 'CUBLEN K60 / HEDP / DISPERSACALE 82',
 };
 
 // Helper para obtener la lista exacta de nombres comerciales dado un granel seleccionado
