@@ -399,9 +399,14 @@ export const generateExecutiveReport = async (period, stats, aiInsights, operato
           <title>Reporte Ejecutivo - H2O Neural</title>
           <style>
               body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #0f172a; background-color: #f8fafc; }
+              .h2o-logo-box { display: inline-block; width: 60px; height: 60px; border: 3px solid #2563eb; border-radius: 12px; text-align: center; vertical-align: middle; padding-top: 8px; box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; margin-right: 15px;}
+              .h2o-logo-big { display: block; font-size: 16px; font-weight: 900; color: #2563eb; line-height: 1.2; }
+              .h2o-logo-small { display: block; font-size: 7px; font-weight: 700; color: #2563eb; letter-spacing: 2px; }
+              
               .header { border-bottom: 4px solid #0f172a; padding-bottom: 15px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; }
-              .title-box h1 { font-size: 28px; font-weight: 900; color: #0f172a; margin: 0; letter-spacing: -0.5px; text-transform: uppercase; }
-              .title-box p { font-size: 14px; color: #3b82f6; margin: 5px 0 0 0; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; }
+              .title-box { display: flex; align-items: center; }
+              .title-text h1 { font-size: 24px; font-weight: 900; color: #0f172a; margin: 0; letter-spacing: -0.5px; text-transform: uppercase; }
+              .title-text p { font-size: 12px; color: #3b82f6; margin: 5px 0 0 0; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; }
               .meta-box { text-align: right; font-size: 11px; color: #64748b; font-weight: bold; }
               
               .stats-grid { display: flex; gap: 15px; margin-bottom: 30px; }
@@ -423,8 +428,14 @@ export const generateExecutiveReport = async (period, stats, aiInsights, operato
       <body>
           <div class="header">
               <div class="title-box">
-                  <h1>Inteligencia Gerencial</h1>
-                  <p>H2O Neural Auditoría ${period}</p>
+                  <div class="h2o-logo-box">
+                    <span class="h2o-logo-big">H₂O</span>
+                    <span class="h2o-logo-small">CONTROL</span>
+                  </div>
+                  <div class="title-text">
+                    <h1>Inteligencia Gerencial</h1>
+                    <p>H2O Neural Auditoría ${period}</p>
+                  </div>
               </div>
               <div class="meta-box">
                   Generado: ${new Date().toLocaleDateString()}<br>

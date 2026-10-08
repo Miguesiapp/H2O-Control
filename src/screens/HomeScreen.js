@@ -472,15 +472,11 @@ export default function HomeScreen({ navigation }) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Funciones Extras</Text>
           <View style={styles.row}>
-            <TouchableOpacity style={styles.adminSmallCard} onPress={() => navigation.navigate('SmartAICargo', { companyName: 'STOCK_CENTRAL_MP' })}>
-              <Sparkles color="#3b82f6" size={20} />
-              <Text style={styles.adminSmallCardText}>Ingreso IA</Text>
-            </TouchableOpacity>
-
             <TouchableOpacity style={styles.adminSmallCard} onPress={() => navigation.navigate('ExecutiveReports')}>
               <BrainCircuit color="#3b82f6" size={20} />
               <Text style={styles.adminSmallCardText}>Auditoría IA</Text>
             </TouchableOpacity>
+            <View style={{flex: 1}} />
           </View>
           <View style={[styles.row, { marginTop: 15 }]}>
             <TouchableOpacity style={styles.adminSmallCard} onPress={() => navigation.navigate('QuarterlyCalculator')}>

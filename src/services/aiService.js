@@ -262,7 +262,7 @@ ${briefStock || 'Ningún quiebre inminente.'}
 
 Tu respuesta debe ser estrictamente en formato JSON válido con esta estructura:
 {
-  "review": "Tu análisis general del período: destaca cuellos de botella, problemas en la carga de datos, mermas, intensidad de trabajo, si el autoelevador fue un limitante (infiévelo si hay demasiados movimientos simultáneos), etc. Sé empático pero directivo.",
+  "review": "Tu análisis general del período: destaca cuellos de botella, problemas en la carga de datos, mermas, intensidad de trabajo, si el autoelevador fue un limitante (infiévelo si hay demasiados movimientos simultáneos), e incluye un cálculo/estimación del tiempo promedio que se tardó en concretar las órdenes desde que se iniciaron hasta que se completaron (infiévelo de las fechas y horas). Sé empático pero directivo.",
   "futureNeeds": "Proyección: Qué materias primas o insumos debe comprar ya mismo (basado en las alertas de stock y en los consumos), qué debe delegar y qué precauciones tomar para la semana que entra."
 }`;
 
