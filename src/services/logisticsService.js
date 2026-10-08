@@ -218,7 +218,7 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
 
     const querySnapshot = await getDocs(q);
 
-    const docs = querySnapshot.docs
+    let docs = querySnapshot.docs
       .map(doc => ({ id: doc.id, ...doc.data() }))
       .filter(doc => {
         if ((doc.quantity || 0) <= 0) return false;
