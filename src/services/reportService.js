@@ -485,7 +485,7 @@ export const generateExecutiveReport = async (period, stats, aiInsights, operato
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, {
           mimeType: 'application/pdf',
-          dialogTitle: \`Reporte_Gerencial_\${period}.pdf\`
+          dialogTitle: `Reporte_Gerencial_${period}.pdf`
         });
       }
     }
