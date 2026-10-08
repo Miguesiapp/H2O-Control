@@ -378,9 +378,122 @@ export const generateWeeklyBackupPDF = async (periodString, filterName, summaryT
         });
       }
     }
+      }
+    }
     return true;
   } catch (error) {
     console.error("Error generando PDF Respaldo Semanal:", error);
+    throw error;
+  }
+};
+
+/**
+ * Genera el Reporte Ejecutivo C-Level (Inteligencia Gerencial)
+ */
+export const generateExecutiveReport = async (period, stats, aiInsights, operatorEmail) => {
+  try {
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Reporte Ejecutivo - H2O Neural</title>
+          <style>
+              body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #0f172a; background-color: #f8fafc; }
+              .header { border-bottom: 4px solid #0f172a; padding-bottom: 15px; margin-bottom: 30px; display: flex; justify-content: space-between; align-items: flex-end; }
+              .title-box h1 { font-size: 28px; font-weight: 900; color: #0f172a; margin: 0; letter-spacing: -0.5px; text-transform: uppercase; }
+              .title-box p { font-size: 14px; color: #3b82f6; margin: 5px 0 0 0; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; }
+              .meta-box { text-align: right; font-size: 11px; color: #64748b; font-weight: bold; }
+              
+              .stats-grid { display: flex; gap: 15px; margin-bottom: 30px; }
+              .stat-card { flex: 1; background: #fff; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; text-align: center; }
+              .stat-value { font-size: 24px; font-weight: 900; color: #0f172a; margin-bottom: 5px; }
+              .stat-label { font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 1px; }
+              
+              .ai-section { background: #fff; border-left: 6px solid #3b82f6; padding: 25px; margin-bottom: 25px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+              .ai-header { display: flex; align-items: center; margin-bottom: 15px; }
+              .ai-title { font-size: 16px; font-weight: 900; color: #1d4ed8; margin: 0; text-transform: uppercase; letter-spacing: 1px; }
+              .ai-content { font-size: 14px; line-height: 1.6; color: #334155; margin: 0; }
+              
+              .ai-needs { background: #fff; border-left: 6px solid #f59e0b; padding: 25px; margin-bottom: 30px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+              .ai-needs-title { font-size: 16px; font-weight: 900; color: #d97706; margin: 0 0 15px 0; text-transform: uppercase; letter-spacing: 1px; }
+              
+              .footer { margin-top: 50px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 20px; }
+          </style>
+      </head>
+      <body>
+          <div class="header">
+              <div class="title-box">
+                  <h1>Inteligencia Gerencial</h1>
+                  <p>H2O Neural Auditoría ${period}</p>
+              </div>
+              <div class="meta-box">
+                  Generado: ${new Date().toLocaleDateString()}<br>
+                  Solicitado por: ${operatorEmail || 'Director'}
+              </div>
+          </div>
+
+          <div class="stats-grid">
+              <div class="stat-card">
+                  <div class="stat-value">${stats.totalProduced}</div>
+                  <div class="stat-label">Producción Total</div>
+              </div>
+              <div class="stat-card">
+                  <div class="stat-value" style="color: #ef4444;">${stats.totalConsumed}</div>
+                  <div class="stat-label">Materia Prima Usada</div>
+              </div>
+              <div class="stat-card">
+                  <div class="stat-value" style="color: #10b981;">${stats.efficiencyScore}%</div>
+                  <div class="stat-label">Eficiencia Operativa</div>
+              </div>
+          </div>
+
+          <div class="ai-section">
+              <div class="ai-header">
+                  <h2 class="ai-title">Análisis Estratégico y Operativo</h2>
+              </div>
+              <p class="ai-content">${aiInsights.review.replace(/\n/g, '<br>')}</p>
+          </div>
+
+          <div class="ai-needs">
+              <h2 class="ai-needs-title">Proyección y Cuellos de Botella (Próxima Semana)</h2>
+              <p class="ai-content">${aiInsights.futureNeeds.replace(/\n/g, '<br>')}</p>
+          </div>
+
+          <div class="footer">
+              Este es un reporte oficial gerencial generado por IA para la toma de decisiones. H2O Control System.
+          </div>
+      </body>
+      </html>
+    `;
+
+    if (Platform.OS === 'web') {
+      const newWindow = window.open('', '_blank');
+      if (newWindow) {
+        newWindow.document.write(htmlContent);
+        newWindow.document.close();
+        newWindow.setTimeout(() => {
+          newWindow.print();
+        }, 500);
+      } else {
+        await Print.printAsync({ html: htmlContent });
+      }
+    } else {
+      const { uri } = await Print.printToFileAsync({
+        html: htmlContent,
+        base64: false
+      });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, {
+          mimeType: 'application/pdf',
+          dialogTitle: \`Reporte_Gerencial_\${period}.pdf\`
+        });
+      }
+    }
+    return true;
+  } catch (error) {
+    console.error("Error generando PDF Ejecutivo:", error);
     throw error;
   }
 };

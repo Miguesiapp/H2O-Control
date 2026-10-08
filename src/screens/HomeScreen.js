@@ -9,7 +9,7 @@ import { collection, query, where, getDocs, onSnapshot, getDoc, doc } from 'fire
 import { updateProfile } from 'firebase/auth';
 import { canAccessQualityControl } from '../config/permissions';
 import { ALLOWED_ATTENDANCE_EMAILS } from '../config/constants';
-import { LogOut, FlaskConical, ClipboardCheck, ChevronRight, Clock, Sparkles, Calculator, UserCheck, Database, Keyboard, Package, Truck, Beaker, Container, Box, MonitorPlay, ShoppingCart, Search, ShieldAlert, Book, CheckCircle2, AlertTriangle } from 'lucide-react-native';
+import { LogOut, FlaskConical, ClipboardCheck, ChevronRight, Clock, Sparkles, Calculator, UserCheck, Database, Keyboard, Package, Truck, Beaker, Container, Box, MonitorPlay, ShoppingCart, Search, ShieldAlert, Book, CheckCircle2, AlertTriangle, BrainCircuit } from 'lucide-react-native';
 
 export default function HomeScreen({ navigation }) {
   const { width, height } = useWindowDimensions();
@@ -477,11 +477,16 @@ export default function HomeScreen({ navigation }) {
               <Text style={styles.adminSmallCardText}>Ingreso IA</Text>
             </TouchableOpacity>
 
+            <TouchableOpacity style={styles.adminSmallCard} onPress={() => navigation.navigate('ExecutiveReports')}>
+              <BrainCircuit color="#3b82f6" size={20} />
+              <Text style={styles.adminSmallCardText}>Auditoría IA</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={[styles.row, { marginTop: 15 }]}>
             <TouchableOpacity style={styles.adminSmallCard} onPress={() => navigation.navigate('QuarterlyCalculator')}>
               <Calculator color="#334155" size={20} />
               <Text style={styles.adminSmallCardText}>Calculadora</Text>
             </TouchableOpacity>
-          </View>
           <View style={[styles.row, { marginTop: 15 }]}>
             <TouchableOpacity style={styles.adminSmallCard} onPress={() => navigation.navigate('InventoryAdjustment')}>
               <Keyboard color="#334155" size={20} />

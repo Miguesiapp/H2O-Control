@@ -233,3 +233,60 @@ REGLA: Responde SOLO con el párrafo redactado, sin saludos ni introducciones ex
     return "La auditoría automática de IA no está disponible en este momento. Revisa el listado de movimientos para analizar el balance general del mes.";
   }
 };
+
+/**
+ * 💼 AUDITORÍA EJECUTIVA / C-LEVEL
+ */
+export const generateAIExecutiveAudit = async (logs, lowStock, period) => {
+  try {
+    // Resumimos los movimientos para que no excedan el límite de tokens
+    // Solo pasamos acciones clave para la auditoría
+    const briefLogs = logs
+      .filter(m => m.action && (m.action.includes('PRODUCCION') || m.action.includes('CONSUMO') || m.action.includes('AJUSTE') || m.action.includes('INGRESO')))
+      .map(m => `[${new Date(m.timestamp?.seconds * 1000 || Date.now()).toLocaleDateString()}] ${m.action}: ${m.quantity} de ${m.itemName} (${m.user})`)
+      .slice(0, 150); // Limite de 150 para no saturar
+
+    const briefStock = lowStock.map(s => `${s.name}: ${s.qty}`).join(', ');
+
+    const prompt = `Eres H2O Neural, el Auditor Jefe y Director de Operaciones de H2O Control. 
+Miguel, el Jefe de Planta, está sobrecargado combinando tareas operativas y de gestión, y tiene poco tiempo.
+Tu objetivo es analizar los datos de este período (${period}) y generar un reporte estratégico que le diga EXACTAMENTE qué debe saber, qué está fallando y qué debe comprar/planear para la próxima semana, ahorrándole todo el estrés analítico.
+
+DATOS DEL PERÍODO:
+---
+MOVIMIENTOS CLAVE (Últimos ${period}):
+${briefLogs.join('\n') || 'Sin movimientos registrados.'}
+---
+ALERTAS DE STOCK (Cercano a agotarse):
+${briefStock || 'Ningún quiebre inminente.'}
+
+Tu respuesta debe ser estrictamente en formato JSON válido con esta estructura:
+{
+  "review": "Tu análisis general del período: destaca cuellos de botella, problemas en la carga de datos, mermas, intensidad de trabajo, si el autoelevador fue un limitante (infiévelo si hay demasiados movimientos simultáneos), etc. Sé empático pero directivo.",
+  "futureNeeds": "Proyección: Qué materias primas o insumos debe comprar ya mismo (basado en las alertas de stock y en los consumos), qué debe delegar y qué precauciones tomar para la semana que entra."
+}`;
+
+    const payload = {
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: "application/json" }
+    };
+
+    const response = await fetch(GEMINI_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message || data.error || "Error en proxy");
+
+    const jsonString = data.candidates[0].content.parts[0].text;
+    return JSON.parse(jsonString);
+  } catch (error) {
+    console.error("Error en AI Executive Audit:", error);
+    return {
+      review: "No se pudo generar la auditoría de IA debido a un problema de conexión. Por favor, revisa manualmente los consumos del período.",
+      futureNeeds: "Se recomienda revisar el inventario de materias primas críticas manualmente y verificar las órdenes pendientes."
+    };
+  }
+};

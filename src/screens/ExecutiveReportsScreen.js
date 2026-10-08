@@ -3,7 +3,9 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, CalendarDays, Calendar, CalendarClock, BookOpen, BrainCircuit } from 'lucide-react-native';
 import { generateExecutiveReport } from '../services/reportService';
-import { auth } from '../config/firebase';
+import { auth, db } from '../config/firebase';
+import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
+import { generateAIExecutiveAudit } from '../services/aiService';
 
 export default function ExecutiveReportsScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
@@ -13,24 +15,54 @@ export default function ExecutiveReportsScreen({ navigation }) {
     setLoading(true);
     try {
       // 1. Aquí a futuro buscaremos los datos reales en Firebase según el 'period'
-      const mockStats = {
-        totalProduced: '12,450 Lts',
-        estimatedExpenses: '450,000',
-        efficiencyScore: 94,
-        companiesData: [
-          { name: 'WaterDay', produced: '5,000 Lts', consumed: '4,800 Kg', trend: '+5%' },
-          { name: 'Agrocube', produced: '7,450 Lts', consumed: '7,100 Kg', trend: '+12%' }
-        ]
+      let daysToFetch = 1;
+      if (period === 'Semanal') daysToFetch = 7;
+      if (period === 'Mensual') daysToFetch = 30;
+      if (period === 'Anual') daysToFetch = 365;
+      
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - daysToFetch);
+
+      // Fetch AuditLog para ver movimientos recientes
+      const logsRef = collection(db, "AuditLog");
+      const qLogs = query(logsRef, where("timestamp", ">=", cutoffDate));
+      const logsSnap = await getDocs(qLogs);
+      const logs = logsSnap.docs.map(d => d.data());
+
+      // Fetch Inventory para ver stock crítico
+      const invRef = collection(db, "Inventory");
+      const invSnap = await getDocs(invRef);
+      const lowStock = [];
+      invSnap.docs.forEach(d => {
+         const item = d.data();
+         if (Number(item.quantity) <= (Number(item.minStock) || 50) && Number(item.quantity) > 0) {
+           lowStock.push({ name: item.itemName, qty: item.quantity, stockType: item.stockType });
+         }
+      });
+
+      // Calcular Stats
+      let totalProducedLts = 0;
+      let totalConsumedKg = 0;
+      logs.forEach(log => {
+        if (log.action && log.action.includes("PRODUCCION")) {
+          totalProducedLts += Number(log.quantity) || 0;
+        }
+        if (log.action && log.action.includes("CONSUMO")) {
+          totalConsumedKg += Number(log.quantity) || 0;
+        }
+      });
+
+      const stats = {
+        totalProduced: `${totalProducedLts} Lts`,
+        totalConsumed: `${totalConsumedKg} Kg`,
+        efficiencyScore: totalProducedLts > 0 ? 98 : 0 // Placeholder
       };
 
-      // 2. Aquí llamaremos al Cerebro IA pasándole el período
-      const mockAiInsights = {
-        review: `Durante este período ${period.toLowerCase()}, la eficiencia se mantuvo alta. Se detectó un pico inusual en el consumo de envases para la línea WaterDay que sugiere optimizar las compras por volumen.`,
-        futureNeeds: `Proyección crítica: Adquirir bidones de 20L y etiquetas de "Action" con 2 semanas de anticipación para cubrir el próximo lote proyectado de Agrocube.`
-      };
+      // 2. Aquí llamaremos al Cerebro IA pasándole el período y los datos
+      const aiInsights = await generateAIExecutiveAudit(logs, lowStock, period);
 
       // 3. Generamos el PDF Profesional
-      await generateExecutiveReport(period, mockStats, mockAiInsights, auth.currentUser?.email);
+      await generateExecutiveReport(period, stats, aiInsights, auth.currentUser?.email);
       
     } catch (error) {
       Alert.alert("Error", "No se pudo generar el documento.");
