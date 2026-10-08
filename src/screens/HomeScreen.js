@@ -487,6 +487,8 @@ export default function HomeScreen({ navigation }) {
               <Calculator color="#334155" size={20} />
               <Text style={styles.adminSmallCardText}>Calculadora</Text>
             </TouchableOpacity>
+            <View style={{flex: 1}} />
+          </View>
           <View style={[styles.row, { marginTop: 15 }]}>
             <TouchableOpacity style={styles.adminSmallCard} onPress={() => navigation.navigate('InventoryAdjustment')}>
               <Keyboard color="#334155" size={20} />
