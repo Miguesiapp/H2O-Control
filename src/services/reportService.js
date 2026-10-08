@@ -378,8 +378,6 @@ export const generateWeeklyBackupPDF = async (periodString, filterName, summaryT
         });
       }
     }
-      }
-    }
     return true;
   } catch (error) {
     console.error("Error generando PDF Respaldo Semanal:", error);
