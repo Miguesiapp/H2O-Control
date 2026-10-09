@@ -231,7 +231,10 @@ export default function QualityControlScreen({ navigation }) {
                <TouchableOpacity 
                  key={lote.id || index.toString()}
                  style={[styles.loteCard, selectedLot?.id === lote.id && styles.loteCardSelected]}
-                 onPress={() => setSelectedLot(lote)}
+                 onPress={() => {
+                   setSelectedLot(prev => prev?.id === lote.id ? null : lote);
+                   setAnalysis({ ph: '', density: '', obs: '' });
+                 }}
                >
                   <View style={styles.loteHeaderSmall}>
                     <Text style={styles.loteTitleSmall}>
