@@ -1,14 +1,33 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Keyboard, Alert, ScrollView } from 'react-native';
+import React, { useState, useEffect, useRef } from "react";
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Keyboard, ScrollView } from "react-native";
+import { ChevronDown } from "lucide-react-native";
 
 const normalizeString = (str) => {
-  if (!str) return '';
-  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (!str) return "";
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 };
 
 const getDisplayName = (str) => {
-  if (!str) return '';
-  return str.split(' / ')[0];
+  if (!str) return "";
+  return str.split(" / ")[0];
+};
+
+const filterData = (dataList, input) => {
+  if (!dataList || dataList.length === 0) return [];
+  const rawNorm = normalizeString(input).trim();
+  if (!rawNorm) return dataList;
+
+  const stopWords = new Set(["etiqueta", "etiquetas", "bidon", "bidones", "caja", "cajas", "de", "para", "mp", "granel"]);
+  const tokens = rawNorm.split(/\s+/).filter(t => t.length > 0 && !stopWords.has(t));
+
+  if (tokens.length === 0) {
+    return dataList.filter(item => normalizeString(item).includes(rawNorm));
+  }
+
+  return dataList.filter(item => {
+    const itemNorm = normalizeString(item);
+    return tokens.every(tok => itemNorm.includes(tok)) || itemNorm.includes(rawNorm);
+  });
 };
 
 export default function AutocompleteInput({ 
@@ -20,36 +39,27 @@ export default function AutocompleteInput({
   containerStyle,
   allowCustom = false
 }) {
-  const [inputText, setInputText] = useState(getDisplayName(value || ''));
+  const [inputText, setInputText] = useState(getDisplayName(value || ""));
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [filteredData, setFilteredData] = useState([]);
   
-  // Sincronizar el estado local si el valor externo cambia (ej: cuando se resetea el form)
-  // Nota: Si el usuario escribe manualmente (allowCustom), value puede ser lo que escribió.
+  // Sincronizar el estado local si el valor externo cambia
   useEffect(() => {
-    // Si estamos escribiendo, no queremos que un re-render externo pise lo que tipeamos 
-    // a menos que sea un reset (value vacío) o un cambio programático real.
-    // Usar getDisplayName limpia la vista si viene con ' / '
-    setInputText(getDisplayName(value || ''));
+    setInputText(getDisplayName(value || ""));
   }, [value]);
 
   useEffect(() => {
-    if (inputText && showSuggestions) {
-      const normalizedInput = normalizeString(inputText);
-      const filtered = data.filter(item => 
-        normalizeString(item).includes(normalizedInput)
-      );
-
+    if (showSuggestions) {
+      const items = filterData(data || [], inputText);
       const uniqueFiltered = [];
       const seenNames = new Set();
-      filtered.forEach(item => {
+      items.forEach(item => {
         const dName = getDisplayName(item);
         if (!seenNames.has(dName)) {
           seenNames.add(dName);
           uniqueFiltered.push(item);
         }
       });
-
       setFilteredData(uniqueFiltered);
     } else {
       setFilteredData([]);
@@ -65,7 +75,6 @@ export default function AutocompleteInput({
   };
 
   const handleBlur = () => {
-    // Esconder sugerencias con un retraso mayor para asegurar que onPress en Web se registre
     setTimeout(() => {
       setShowSuggestions(false);
     }, 300);
@@ -84,20 +93,29 @@ export default function AutocompleteInput({
             if (allowCustom) {
                onChangeText(txt);
             } else {
-               // Vaciamos el valor en el componente padre hasta que seleccione algo válido
-               // si no coincide exactamente con el displayName
-               // (Evitamos limpiar si solo está tipeando, pero el padre necesita la cadena completa)
-               if (value !== '') onChangeText(''); 
+               const exactMatch = (data || []).find(d => getDisplayName(d).toUpperCase() === txt.trim().toUpperCase());
+               if (exactMatch) {
+                 onChangeText(exactMatch);
+               } else if (value !== "") {
+                 onChangeText("");
+               }
             }
             setShowSuggestions(true);
           }}
           onFocus={() => {
-             if (inputText) setShowSuggestions(true);
+             setShowSuggestions(true);
           }}
           onBlur={handleBlur}
           placeholderTextColor="#94a3b8"
           autoCapitalize="characters"
         />
+        <TouchableOpacity 
+          style={styles.chevronBtn} 
+          onPress={() => setShowSuggestions(prev => !prev)}
+          activeOpacity={0.7}
+        >
+          <ChevronDown color="#94a3b8" size={18} />
+        </TouchableOpacity>
       </View>
 
       {showSuggestions && filteredData.length > 0 && (
@@ -106,8 +124,7 @@ export default function AutocompleteInput({
           keyboardShouldPersistTaps="handled"
           nestedScrollEnabled={true}
         >
-          {filteredData.slice(0, 5).map((item, index) => {
-             return (
+          {filteredData.map((item, index) => (
              <TouchableOpacity 
                key={index.toString()} 
                style={styles.suggestionItem}
@@ -115,7 +132,7 @@ export default function AutocompleteInput({
              >
                <Text style={styles.suggestionText}>{getDisplayName(item)}</Text>
              </TouchableOpacity>
-          )})}
+          ))}
         </ScrollView>
       )}
     </View>
@@ -124,20 +141,20 @@ export default function AutocompleteInput({
 
 const styles = StyleSheet.create({
   container: {
-    position: 'relative',
+    position: "relative",
     marginBottom: 15,
     zIndex: 1000,
-    width: '100%',
+    width: "100%",
   },
   inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f8fafc',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f8fafc",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: "#e2e8f0",
     paddingHorizontal: 15,
-    width: '100%',
+    width: "100%",
   },
   icon: {
     marginRight: 10,
@@ -145,37 +162,42 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     paddingVertical: 14,
-    color: '#0f172a',
+    color: "#0f172a",
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: "600",
+  },
+  chevronBtn: {
+    padding: 6,
+    marginLeft: 4,
   },
   dropdown: {
-    position: 'absolute',
-    top: '100%',
+    position: "absolute",
+    top: "100%",
     left: 0,
     right: 0,
-    backgroundColor: '#ffffff',
+    backgroundColor: "#ffffff",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#cbd5e1',
+    borderColor: "#cbd5e1",
     maxHeight: 250,
-    overflow: 'hidden',
+    overflow: "hidden",
     marginTop: -5,
     marginBottom: 15,
-    elevation: 3,
-    shadowColor: '#000', // Sombra para iOS
+    elevation: 10,
+    zIndex: 9999,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
   },
   suggestionItem: {
     padding: 15,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: "#f1f5f9",
   },
   suggestionText: {
     fontSize: 15,
-    color: '#334155',
-    fontWeight: '600',
+    color: "#334155",
+    fontWeight: "600",
   }
 });

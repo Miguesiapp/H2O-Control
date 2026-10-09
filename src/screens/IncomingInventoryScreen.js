@@ -188,7 +188,7 @@ export default function IncomingInventoryScreen({ navigation }) {
   };
 
   const INSUMOS_CATEGORIES = ['Bidones', 'Cajas', 'Etiquetas'];
-  const UNIQUE_LABELS_LIST = [...new Set(PRODUCTS_FINAL_LIST.map(getBaseLabelName))].sort();
+  const UNIQUE_LABELS_LIST = [...new Set([...PRODUCTS_FINAL_LIST.map(getBaseLabelName), 'XTM'])].sort();
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -253,8 +253,9 @@ export default function IncomingInventoryScreen({ navigation }) {
                 data={inventoryType === 'MP' ? mergedMaterialsList : UNIQUE_LABELS_LIST} 
                 value={formData.itemName}
                 onChangeText={(txt) => setFormData({...formData, itemName: txt})}
-                placeholder={inventoryType === 'MP' ? "Ej: ÁCIDO SULFÚRICO" : "Ej: ACTION"}
+                placeholder={inventoryType === 'MP' ? "Ej: ÁCIDO SULFÚRICO" : "Ej: XTM o ACTION"}
                 icon={<FileText color="#94a3b8" size={18} />}
+                allowCustom={true}
               />
               {inventoryType === 'MP' && (
                 <TouchableOpacity 
