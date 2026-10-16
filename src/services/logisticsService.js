@@ -79,7 +79,19 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
         where("itemName", "==", itemNameUpper)
       );
       
-      const querySnapshot = await getDocs(q);
+      let querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty && data.batchInternal && data.batchInternal !== 'S/D') {
+        const qFallback = query(
+          inventoryRef, 
+          where("company", "==", effectiveCompany), 
+          where("batchInternal", "==", data.batchInternal)
+        );
+        const snapFallback = await getDocs(qFallback);
+        if (!snapFallback.empty) {
+          querySnapshot = snapFallback;
+        }
+      }
 
       if (!querySnapshot.empty) {
         // El lote ya existe: Sumamos a la cantidad actual

@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
-import { collection, query, where, getDocs, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot, serverTimestamp, doc, updateDoc, addDoc, increment } from 'firebase/firestore';
 import { registerMovement, createOrder, updateOrderStatus, checkTotalStock } from '../services/logisticsService'; 
 import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box, Droplet, Building2, Tag, Plus, ClipboardList, Play, CheckSquare, XCircle, ChevronDown, ChevronUp, Printer, ShieldAlert, FileText, X } from 'lucide-react-native';
 import AutocompleteInput from '../components/AutocompleteInput';
@@ -300,6 +300,8 @@ export default function PackagingOrderScreen({ route, navigation }) {
       // 4. CREA LA ORDEN EN MÁQUINA DE ESTADOS (Ticket ENVIADO)
       const orderData = {
         itemName: packagedItemName,
+        granelItemName: itemName,
+        granelDocId: selectedLot.id,
         quantity: isContainer ? litersToConsume : units,
         litersConsumed: litersToConsume,
         presentation: isContainer ? 1000 : presentation,
@@ -454,11 +456,203 @@ export default function PackagingOrderScreen({ route, navigation }) {
     }
   };
 
+  const returnInsumoStock = async (company, fuzzyKeywords, quantityToReturn, fallbackName, userEmail, batchId, insumoType) => {
+    try {
+      const inventoryRef = collection(db, "Inventory");
+      const q = query(
+        inventoryRef,
+        where("company", "==", company),
+        where("stockType", "==", "INSUMOS")
+      );
+      const snap = await getDocs(q);
+
+      let matchedDoc = null;
+      for (const d of snap.docs) {
+        const data = d.data();
+        const name = (data.itemName || '').toUpperCase();
+        const matches = fuzzyKeywords.every(kw => {
+          if (Array.isArray(kw)) {
+            return kw.some(subKw => name.includes(subKw.toUpperCase()));
+          }
+          return name.includes(kw.toUpperCase());
+        });
+        if (matches) {
+          matchedDoc = { id: d.id, ...data };
+          break;
+        }
+      }
+
+      if (matchedDoc) {
+        const docRef = doc(db, "Inventory", matchedDoc.id);
+        await updateDoc(docRef, {
+          quantity: increment(quantityToReturn),
+          lastUpdated: serverTimestamp()
+        });
+      } else {
+        await addDoc(inventoryRef, {
+          itemName: fallbackName,
+          company: company,
+          stockType: 'INSUMOS',
+          quantity: quantityToReturn,
+          unit: 'Uds',
+          status: 'APTO',
+          batchInternal: 'S/D',
+          createdAt: serverTimestamp(),
+          lastUpdated: serverTimestamp()
+        });
+      }
+
+      await addDoc(collection(db, "AuditLog"), {
+        user: userEmail,
+        action: 'DEVOLUCION_RECHAZO_OE',
+        company: company,
+        itemName: matchedDoc ? matchedDoc.itemName : fallbackName,
+        quantity: quantityToReturn,
+        unit: 'Uds',
+        stockType: 'INSUMOS',
+        batchInternal: batchId,
+        details: `OE ${batchId} Rechazada - Devolución de ${insumoType} (${quantityToReturn} Uds)`,
+        timestamp: serverTimestamp()
+      });
+    } catch (err) {
+      console.error(`Error devolviendo ${insumoType}:`, err);
+    }
+  };
+
+  const handleRejectOrder = async () => {
+    if (!selectedOrder) return;
+
+    const executeRejection = async () => {
+      try {
+        setProcessingOrder(true);
+        const currentUser = auth.currentUser?.email || 'Sistema';
+        const orderData = selectedOrder.data || {};
+        const batchId = orderData.batchInternal;
+
+        const totalLts = Number(orderData.litersConsumed) || 0;
+        const confirmedLts = Number(orderData.confirmedLts) || 0;
+        const ltsToReturn = parseFloat((totalLts - confirmedLts).toFixed(2));
+
+        const totalQty = Number(orderData.quantity) || 0;
+        const confirmedQty = Number(orderData.confirmedQty) || 0;
+        const unitsToReturn = Math.max(0, totalQty - confirmedQty);
+
+        const presentation = Number(orderData.presentation) || 20;
+        const isContainer = presentation === 1000 || orderData.brandBidon === 'CONTENEDOR';
+
+        // 1. DETERMINAR Y DEVOLVER EL GRANEL RESERVADO
+        if (ltsToReturn > 0) {
+          let granelName = orderData.granelItemName;
+
+          if (!granelName && batchId) {
+            try {
+              const qAudit = query(
+                collection(db, "AuditLog"),
+                where("action", "==", "CONSUMO_ENVASADO"),
+                where("batchInternal", "==", batchId)
+              );
+              const auditSnap = await getDocs(qAudit);
+              if (!auditSnap.empty) {
+                granelName = auditSnap.docs[0].data().itemName;
+              }
+            } catch (err) {
+              console.warn("No se pudo obtener granel desde AuditLog:", err);
+            }
+          }
+
+          if (!granelName) {
+            const rawCommName = (orderData.itemName || '').split(' - ')[0].trim().toUpperCase();
+            granelName = EQUIVALENCIES_MAP[rawCommName] || `GRANEL ${rawCommName}`;
+          }
+
+          await registerMovement(currentUser, 'DEVOLUCION_RECHAZO_OE', orderData.company || companyName, {
+            itemName: granelName,
+            quantity: ltsToReturn,
+            stockType: 'GRANEL',
+            batchInternal: batchId,
+            batchProvider: orderData.batchProvider || 'S/D',
+            expiryDate: orderData.expiryDate || 'S/V',
+            unit: 'Lts',
+            status: 'APTO',
+            details: `OE ${batchId} Rechazada - Devolución de Granel (${ltsToReturn} Lts)`
+          });
+        }
+
+        // 2. DEVOLVER INSUMOS (BIDONES, CAJAS, ETIQUETAS) SI NO ES CONTENEDOR
+        if (!isContainer && unitsToReturn > 0) {
+          const rawCommName = (orderData.itemName || '').split(' - ')[0].trim().toUpperCase();
+
+          // A) DEVOLVER BIDONES
+          const capacityKeywords = [`${presentation}L`, `${presentation} L`, `${presentation} LTS`, `${presentation}LTS`, `${presentation}-L`];
+          const fuzzyBidon = ['BIDON', capacityKeywords, orderData.brandBidon || 'H2O'];
+          const fallbackBidonName = `BIDON ${presentation}L ${orderData.brandBidon || 'H2O'}`;
+
+          await returnInsumoStock('STOCK_CENTRAL_INSUMOS', fuzzyBidon, unitsToReturn, fallbackBidonName, currentUser, batchId, 'Bidones');
+
+          // B) DEVOLVER CAJAS (si correspondían)
+          const appliesBox = (presentation === 5 || presentation === 1) && orderData.brandCaja && orderData.brandCaja !== 'SIN CAJAS';
+          if (appliesBox) {
+            const totalBoxes = Number(orderData.requiredBoxes) || 0;
+            const boxesToReturn = totalQty > 0 ? Math.ceil((unitsToReturn / totalQty) * totalBoxes) : 0;
+            if (boxesToReturn > 0) {
+              const boxFormat = presentation === 5 ? 'x5' : 'x1';
+              const boxKeywords = [boxFormat, `X${presentation}`, `X ${presentation}`];
+              const fuzzyCaja = ['CAJA', boxKeywords, orderData.brandCaja];
+              const fallbackCajaName = `CAJA ${boxFormat} ${orderData.brandCaja}`;
+
+              await returnInsumoStock('STOCK_CENTRAL_INSUMOS', fuzzyCaja, boxesToReturn, fallbackCajaName, currentUser, batchId, 'Cajas');
+            }
+          }
+
+          // C) DEVOLVER ETIQUETAS
+          const baseLabelName = getBaseLabelName(rawCommName);
+          const labelKeywords = [baseLabelName, rawCommName];
+          const fuzzyEtiqueta = ['ETIQUETA', capacityKeywords, labelKeywords];
+          const fallbackEtiquetaName = `ETIQUETA ${presentation}L ${rawCommName}`;
+
+          await returnInsumoStock('STOCK_CENTRAL_INSUMOS', fuzzyEtiqueta, unitsToReturn, fallbackEtiquetaName, currentUser, batchId, 'Etiquetas');
+        }
+
+        // 3. ACTUALIZAR ESTADO DE LA ORDEN
+        await updateOrderStatus(selectedOrder.id, 'RECHAZADO', currentUser);
+
+        Toast.show({
+          type: 'info',
+          text1: 'OE Rechazada',
+          text2: 'El granel y los insumos han sido devueltos al stock.'
+        });
+
+        setOrderModalVisible(false);
+      } catch (error) {
+        console.error("Error al rechazar OE:", error);
+        Alert.alert("Error", "No se pudo rechazar la orden.");
+      } finally {
+        setProcessingOrder(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm("¿Estás seguro que deseas rechazar esta Orden de Envasado? Los litros de granel y los insumos reservados volverán al stock.")) {
+        executeRejection();
+      }
+    } else {
+      Alert.alert(
+        "Rechazar Orden de Envasado",
+        "¿Estás seguro que deseas rechazar esta orden? Los litros de granel y los insumos reservados volverán al stock.",
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Sí, Rechazar", style: "destructive", onPress: executeRejection }
+        ]
+      );
+    }
+  };
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'ENVIADO': return '#3b82f6';
       case 'EN_PROCESO': return '#f59e0b';
       case 'FINALIZADO': return '#10b981';
+      case 'RECHAZADO': return '#ef4444';
       default: return '#64748b';
     }
   };
@@ -898,6 +1092,23 @@ export default function PackagingOrderScreen({ route, navigation }) {
                 </View>
               );
             })()}
+
+            {(selectedOrder?.status === 'ENVIADO' || selectedOrder?.status === 'EN_PROCESO') && (
+              <TouchableOpacity
+                style={[styles.mainButton, { backgroundColor: '#ef4444', marginTop: 12 }]}
+                onPress={handleRejectOrder}
+                disabled={processingOrder}
+              >
+                {processingOrder ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <XCircle color="#fff" size={20} />
+                    <Text style={styles.submitText}>Rechazar y Devolver Stock</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
 
             <View style={{height: 40}}/>
           </ScrollView>

@@ -20,6 +20,7 @@ export default function HomeScreen({ navigation }) {
   const [mpModalVisible, setMpModalVisible] = useState(false);
   const [pendingOPCount, setPendingOPCount] = useState(0);
   const [pendingOECount, setPendingOECount] = useState(0);
+  const [pendingOEMCount, setPendingOEMCount] = useState(0);
   const [pendingODCount, setPendingODCount] = useState(0);
   const [pendingPurchasesCount, setPendingPurchasesCount] = useState(0);
   const [pendingLabCount, setPendingLabCount] = useState(0);
@@ -113,6 +114,17 @@ export default function HomeScreen({ navigation }) {
       console.error("Error fetching pending OE:", error);
     });
 
+    const qOEM = query(
+      collection(db, "Orders"),
+      where("type", "==", "OEM"),
+      where("status", "in", ["ENVIADO", "EN_PROCESO"])
+    );
+    const unsubscribeOEM = onSnapshot(qOEM, (snapshot) => {
+      setPendingOEMCount(snapshot.docs.length);
+    }, (error) => {
+      console.error("Error fetching pending OEM:", error);
+    });
+
     const qOD = query(
       collection(db, "Orders"),
       where("type", "==", "OD"),
@@ -147,6 +159,7 @@ export default function HomeScreen({ navigation }) {
     return () => {
       unsubscribeOP();
       unsubscribeOE();
+      unsubscribeOEM();
       unsubscribeOD();
       unsubscribePurchases();
       unsubscribeLab();
@@ -391,6 +404,14 @@ export default function HomeScreen({ navigation }) {
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Text style={styles.labCardTitle}>Orden Envasado Directo (OED)</Text>
+                {pendingOEMCount === 1 && (
+                  <View style={styles.badgeDot} />
+                )}
+                {pendingOEMCount >= 2 && (
+                  <View style={styles.badgeCount}>
+                    <Text style={styles.badgeCountText}>{pendingOEMCount}</Text>
+                  </View>
+                )}
               </View>
               <Text style={styles.labCardSub}>Envasar Materia Prima en Bidones/Cajas</Text>
             </View>
@@ -553,6 +574,8 @@ const styles = StyleSheet.create({
   labCardSub: { fontSize: 11, color: '#64748b', marginTop: 2 },
   badgeCount: { backgroundColor: '#ef4444', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, marginLeft: 8 },
   badgeCountText: { color: '#fff', fontSize: 10, fontWeight: '900' },
+  badgeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444', marginLeft: 8 },
+  notificationDot: { position: 'absolute', top: 6, right: 6, width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444' },
 
   adminSmallCard: { flex: 1, flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#fff', gap: 12, elevation: 1 },
   adminSmallCardText: { color: '#334155', fontSize: 13, fontWeight: '800' },

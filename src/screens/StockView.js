@@ -5,8 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
-import { collection, query, where, onSnapshot, writeBatch, doc, deleteDoc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
-import { registerMovement } from '../services/logisticsService';
+import { collection, query, where, onSnapshot, writeBatch, doc, deleteDoc, updateDoc, increment, serverTimestamp, addDoc } from 'firebase/firestore';
 import { ChevronLeft, Search, PackageOpen, AlertTriangle, ShieldCheck, X, FlaskConical, Droplet, Box, Tag, Printer, ChevronDown, ChevronUp, Edit2, Trash2 } from 'lucide-react-native';
 import { RAW_MATERIALS_LIST, PRODUCTS_MADRE_LIST, formatDisplayName } from '../config/constants';
 
@@ -47,41 +46,82 @@ export default function StockView({ route, navigation }) {
   const [editLotModalVisible, setEditLotModalVisible] = useState(false);
   const [selectedEditLot, setSelectedEditLot] = useState(null);
   const [editLotQuantity, setEditLotQuantity] = useState('');
+  const [isProcessingLot, setIsProcessingLot] = useState(false);
   
   const handleEditQuantity = async () => {
+    if (!selectedEditLot || isProcessingLot) return;
     try {
-      if (!selectedEditLot) return;
-      const newQtyNum = Number(editLotQuantity);
+      const sanitized = String(editLotQuantity || '').replace(',', '.').trim();
+      const newQtyNum = parseFloat(Number(sanitized).toFixed(2));
       if (isNaN(newQtyNum) || newQtyNum < 0) {
-        Alert.alert("Error", "Cantidad inválida.");
+        Alert.alert("Error", "Cantidad inválida. Ingrese un número mayor o igual a 0.");
         return;
       }
-      const oldQty = selectedEditLot.quantity;
-      const difference = newQtyNum - oldQty;
+      const oldQty = selectedEditLot.quantity || 0;
+      const difference = parseFloat((newQtyNum - oldQty).toFixed(2));
       
       if (difference === 0) {
         setEditLotModalVisible(false);
         return;
       }
-      
+
+      setIsProcessingLot(true);
       const currentUser = auth.currentUser?.email || 'Sistema';
       const actionType = difference > 0 ? 'INGRESO_AJUSTE' : 'BAJA_POR_AJUSTE';
       
-      // Llamar a registerMovement para que audite y descuente/sume correctamente
-      await registerMovement(currentUser, actionType, companyName, {
-        itemName: selectedEditLot.itemName,
+      // 1. Auditoría: Registrar movimiento en AuditLog para trazabilidad histórica
+      await addDoc(collection(db, "AuditLog"), {
+        user: currentUser,
+        action: actionType,
+        company: companyName,
+        itemName: (selectedEditLot.itemName || '').toUpperCase(),
         quantity: difference,
+        unit: selectedEditLot.unit || (stockType === 'INSUMOS' ? 'Uds' : (stockType === 'PT' || stockType === 'GRANEL') ? 'Lts' : 'Kg'),
         stockType: stockType,
-        batchInternal: selectedEditLot.batchInternal,
-        loteProveedor: selectedEditLot.batchProvider,
-        unit: stockType === 'INSUMOS' ? 'Uds' : (stockType === 'PT' || stockType === 'GRANEL') ? 'Lts' : 'Kg',
-        details: 'Ajuste manual desde botón Editar'
+        batchInternal: selectedEditLot.batchInternal || 'S/D',
+        loteProveedor: selectedEditLot.batchProvider || selectedEditLot.loteProveedor || 'S/D',
+        details: `Ajuste manual de stock desde app (anterior: ${oldQty}, nuevo: ${newQtyNum})`,
+        timestamp: serverTimestamp(),
       });
+
+      // 2. Modificación real y definitiva en Inventory (sin fantasmas ni duplicados)
+      const rawDocs = selectedEditLot.rawDocs || [];
+      if (rawDocs.length > 0) {
+        if (newQtyNum === 0) {
+          // Si la cantidad se fija en 0, eliminamos los documentos de este lote
+          for (const docId of rawDocs) {
+            await deleteDoc(doc(db, "Inventory", docId));
+          }
+        } else {
+          // Actualizamos el documento principal con la nueva cantidad exacta
+          const mainDocId = rawDocs[0];
+          await updateDoc(doc(db, "Inventory", mainDocId), {
+            quantity: newQtyNum,
+            lastUpdated: serverTimestamp()
+          });
+
+          // Si hubiera documentos fragmentados de este mismo lote, los eliminamos para evitar duplicados
+          for (let i = 1; i < rawDocs.length; i++) {
+            await deleteDoc(doc(db, "Inventory", rawDocs[i]));
+          }
+        }
+      } else if (selectedEditLot.id) {
+        if (newQtyNum === 0) {
+          await deleteDoc(doc(db, "Inventory", selectedEditLot.id));
+        } else {
+          await updateDoc(doc(db, "Inventory", selectedEditLot.id), {
+            quantity: newQtyNum,
+            lastUpdated: serverTimestamp()
+          });
+        }
+      }
       
       setEditLotModalVisible(false);
     } catch (error) {
-      console.error(error);
-      Alert.alert("Error", "No se pudo actualizar el stock.");
+      console.error("Error al actualizar stock:", error);
+      Alert.alert("Error", "No se pudo actualizar el stock en la base de datos.");
+    } finally {
+      setIsProcessingLot(false);
     }
   };
 
@@ -94,25 +134,42 @@ export default function StockView({ route, navigation }) {
   };
 
   const confirmDeleteLot = async () => {
-    if (!selectedDeleteLot) return;
+    if (!selectedDeleteLot || isProcessingLot) return;
     try {
+      setIsProcessingLot(true);
       const currentUser = auth.currentUser?.email || 'Sistema';
       
-      // Registrar baja completa del lote para que quede en el historial
-      await registerMovement(currentUser, 'BAJA_POR_AJUSTE', companyName, {
-        itemName: selectedDeleteLot.itemName,
-        quantity: -Math.abs(selectedDeleteLot.quantity),
+      // 1. Auditoría: Registrar la baja completa en AuditLog para que quede asentado en Historial
+      await addDoc(collection(db, "AuditLog"), {
+        user: currentUser,
+        action: 'ELIMINACION_LOTE_STOCK',
+        company: companyName,
+        itemName: (selectedDeleteLot.itemName || '').toUpperCase(),
+        quantity: -Math.abs(selectedDeleteLot.quantity || 0),
+        unit: selectedDeleteLot.unit || (stockType === 'INSUMOS' ? 'Uds' : (stockType === 'PT' || stockType === 'GRANEL') ? 'Lts' : 'Kg'),
         stockType: stockType,
-        batchInternal: selectedDeleteLot.batchInternal,
-        loteProveedor: selectedDeleteLot.batchProvider,
-        unit: stockType === 'INSUMOS' ? 'Uds' : (stockType === 'PT' || stockType === 'GRANEL') ? 'Lts' : 'Kg',
-        details: 'Eliminación manual completa del lote'
+        batchInternal: selectedDeleteLot.batchInternal || 'S/D',
+        loteProveedor: selectedDeleteLot.batchProvider || selectedDeleteLot.loteProveedor || 'S/D',
+        details: 'Eliminación manual completa de lote desde StockView',
+        timestamp: serverTimestamp(),
       });
+
+      // 2. Eliminación física real en Inventory de todos los documentos asociados a este lote
+      const rawDocs = selectedDeleteLot.rawDocs || [];
+      if (rawDocs.length > 0) {
+        for (const docId of rawDocs) {
+          await deleteDoc(doc(db, "Inventory", docId));
+        }
+      } else if (selectedDeleteLot.id) {
+        await deleteDoc(doc(db, "Inventory", selectedDeleteLot.id));
+      }
       
       setDeleteLotModalVisible(false);
     } catch (error) {
-      console.error(error);
-      Alert.alert("Error", "No se pudo eliminar.");
+      console.error("Error al eliminar lote:", error);
+      Alert.alert("Error", "No se pudo eliminar el lote de la base de datos.");
+    } finally {
+      setIsProcessingLot(false);
     }
   };
 
@@ -502,6 +559,9 @@ export default function StockView({ route, navigation }) {
             </View>
             
             <View>
+              <Text style={{fontSize: 14, color: '#475569', marginBottom: 4}}>
+                Producto: <Text style={{fontWeight: '700'}}>{formatDisplayName(selectedEditLot?.itemName || '')}</Text>
+              </Text>
               <Text style={{fontSize: 14, color: '#475569', marginBottom: 15}}>
                 Lote: <Text style={{fontWeight: '700'}}>{selectedEditLot?.batchInternal || 'S/D'}</Text>
               </Text>
@@ -515,8 +575,16 @@ export default function StockView({ route, navigation }) {
                 autoFocus
               />
 
-              <TouchableOpacity style={styles.printConfirmBtn} onPress={handleEditQuantity}>
-                <Text style={{color: '#fff', fontWeight: 'bold', textAlign: 'center'}}>GUARDAR AJUSTE</Text>
+              <TouchableOpacity 
+                style={[styles.printConfirmBtn, isProcessingLot && { opacity: 0.7 }]} 
+                onPress={handleEditQuantity}
+                disabled={isProcessingLot}
+              >
+                {isProcessingLot ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={{color: '#fff', fontWeight: 'bold', textAlign: 'center'}}>GUARDAR AJUSTE</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -538,6 +606,9 @@ export default function StockView({ route, navigation }) {
               <Text style={{fontSize: 14, color: '#475569', marginBottom: 15}}>
                 ¿Estás seguro de que deseas eliminar permanentemente este registro?
               </Text>
+              <Text style={{fontSize: 14, color: '#475569', marginBottom: 4}}>
+                Producto: <Text style={{fontWeight: '700'}}>{formatDisplayName(selectedDeleteLot?.itemName || '')}</Text>
+              </Text>
               <Text style={{fontSize: 14, fontWeight: '700', marginBottom: 25}}>
                 Lote: {selectedDeleteLot?.batchInternal || 'S/D'} ({selectedDeleteLot?.quantity} {selectedDeleteLot?.unit})
               </Text>
@@ -546,15 +617,21 @@ export default function StockView({ route, navigation }) {
                 <TouchableOpacity 
                   style={[styles.printConfirmBtn, { flex: 1, marginRight: 10, backgroundColor: '#f1f5f9' }]} 
                   onPress={() => setDeleteLotModalVisible(false)}
+                  disabled={isProcessingLot}
                 >
                   <Text style={{color: '#64748b', fontWeight: 'bold', textAlign: 'center'}}>CANCELAR</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity 
-                  style={[styles.printConfirmBtn, { flex: 1, backgroundColor: '#ef4444' }]} 
+                  style={[styles.printConfirmBtn, { flex: 1, backgroundColor: '#ef4444' }, isProcessingLot && { opacity: 0.7 }]} 
                   onPress={confirmDeleteLot}
+                  disabled={isProcessingLot}
                 >
-                  <Text style={{color: '#fff', fontWeight: 'bold', textAlign: 'center'}}>ELIMINAR</Text>
+                  {isProcessingLot ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={{color: '#fff', fontWeight: 'bold', textAlign: 'center'}}>ELIMINAR</Text>
+                  )}
                 </TouchableOpacity>
               </View>
             </View>
