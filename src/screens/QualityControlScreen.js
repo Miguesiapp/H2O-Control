@@ -9,6 +9,23 @@ import { db, auth } from '../config/firebase';
 import { collection, query, where, onSnapshot, updateDoc, doc, orderBy, limit, getDocs } from 'firebase/firestore';
 import { ChevronLeft, CheckCircle, XCircle, Beaker, ClipboardCheck, AlertCircle, FileSignature, Database, Container, History, ListTodo, ChevronDown, ChevronUp, User } from 'lucide-react-native';
 
+const normalizeString = (str) => {
+  if (!str) return '';
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+};
+
+const matchOpOrder = (docs, lotItemName) => {
+  if (!docs || docs.length === 0) return null;
+  const selNorm = normalizeString(lotItemName);
+  const selParts = selNorm.split('/').map(p => p.replace(/^granel\s+/i, '').trim());
+
+  return docs.find(d => {
+    const dItem = normalizeString(d.data().data?.itemName || '');
+    const dParts = dItem.split('/').map(p => p.replace(/^granel\s+/i, '').trim());
+    return dItem === selNorm || selParts.some(sp => dParts.includes(sp));
+  }) || docs[0];
+};
+
 export default function QualityControlScreen({ navigation }) {
   const [viewMode, setViewMode] = useState('PENDING'); // 'PENDING' o 'HISTORY'
   const [activeTab, setActiveTab] = useState('MP'); // 'MP' o 'GRANEL'
@@ -37,12 +54,19 @@ export default function QualityControlScreen({ navigation }) {
     setExpandedHistoryItems(prev => isExpanding ? [...prev, item.id] : prev.filter(i => i !== item.id));
 
     if (isExpanding && activeTab === 'GRANEL' && (item.batchProvider === 'PROPIA' || item.batchInternal?.startsWith('OP-') || item.batchInternal?.startsWith('H2O-') || item.batchInternal?.startsWith('BBS-'))) {
-      if (!historyOpsDetails[item.batchInternal]) {
+      if (!historyOpsDetails[item.id]) {
         try {
           const q = query(collection(db, 'Orders'), where('data.batchInternal', '==', item.batchInternal));
           const snap = await getDocs(q);
           if (!snap.empty) {
-            setHistoryOpsDetails(prev => ({ ...prev, [item.batchInternal]: { id: snap.docs[0].id, ...snap.docs[0].data() } }));
+            const matchedDoc = matchOpOrder(snap.docs, item.itemName);
+            if (matchedDoc) {
+              setHistoryOpsDetails(prev => ({ 
+                ...prev, 
+                [item.id]: { id: matchedDoc.id, ...matchedDoc.data() },
+                [item.batchInternal]: { id: matchedDoc.id, ...matchedDoc.data() }
+              }));
+            }
           }
         } catch (e) {
           console.error(e);
@@ -126,7 +150,8 @@ export default function QualityControlScreen({ navigation }) {
         const q = query(collection(db, 'Orders'), where('data.batchInternal', '==', selectedLot.batchInternal));
         const snap = await getDocs(q);
         if (!snap.empty) {
-          setSelectedOpDetails({ id: snap.docs[0].id, ...snap.docs[0].data() });
+          const matchedDoc = matchOpOrder(snap.docs, selectedLot.itemName);
+          setSelectedOpDetails(matchedDoc ? { id: matchedDoc.id, ...matchedDoc.data() } : null);
         } else {
           setSelectedOpDetails(null);
         }
@@ -339,11 +364,11 @@ export default function QualityControlScreen({ navigation }) {
                   {isOP ? (
                     <View>
                       <Text style={styles.opDetailsTitle}>📝 MP Comprometida (Fórmula)</Text>
-                      {historyOpsDetails[item.batchInternal] ? (
+                      {(historyOpsDetails[item.id] || historyOpsDetails[item.batchInternal]) ? (
                         <View style={{ marginTop: 5 }}>
-                          {historyOpsDetails[item.batchInternal].data?.ingredients?.map((ing, idx) => {
+                          {(historyOpsDetails[item.id] || historyOpsDetails[item.batchInternal]).data?.ingredients?.map((ing, idx) => {
                             if (ing.type === 'NOTE') return null;
-                            const actual = historyOpsDetails[item.batchInternal].data?.actualIngredients?.find(a => a.name === ing.name);
+                            const actual = (historyOpsDetails[item.id] || historyOpsDetails[item.batchInternal]).data?.actualIngredients?.find(a => a.name === ing.name);
                             const hasAdjustment = !!actual;
                             return (
                               <View key={idx} style={{ marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}>

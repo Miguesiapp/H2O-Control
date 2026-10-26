@@ -219,20 +219,19 @@ export default function ProductionOrderScreen({ route, navigation }) {
            possibleNorm.push(...ingredient.name.split('/').map(p => normalizeString(p)));
         }
         
-        // 1. Expandir buscando en RAW_MATERIALS_LIST
+        // 1. Expandir buscando en RAW_MATERIALS_LIST por coincidencia exacta de parte
         RAW_MATERIALS_LIST.forEach(rm => {
            const parts = rm.split('/').map(p => normalizeString(p));
-           if (parts.some(p => possibleNorm.some(pn => p === pn || p.includes(pn) || pn.includes(p)))) {
+           if (parts.some(p => possibleNorm.includes(p))) {
                possibleNorm.push(...parts);
            }
         });
 
-        // 2. Expandir buscando en PRODUCTS_MADRE_LIST
+        // 2. Expandir buscando en PRODUCTS_MADRE_LIST por coincidencia exacta de parte
         PRODUCTS_MADRE_LIST.forEach(pm => {
            const parts = pm.split('/').map(p => normalizeString(p.replace(/^granel\s+/i, '')));
            const fullParts = pm.split('/').map(p => normalizeString(p));
-           if (parts.some(p => possibleNorm.some(pn => p === pn || p.includes(pn) || pn.includes(p))) ||
-               fullParts.some(p => possibleNorm.some(pn => p === pn || p.includes(pn) || pn.includes(p)))) {
+           if (parts.some(p => possibleNorm.includes(p)) || fullParts.some(p => possibleNorm.includes(p))) {
                possibleNorm.push(...parts);
                possibleNorm.push(...fullParts);
            }
@@ -241,7 +240,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
         // 3. Expandir buscando en EQUIVALENCIES (manuales)
         Object.keys(EQUIVALENCIES).forEach(k => {
            const normK = normalizeString(k);
-           if (possibleNorm.some(pn => normK === pn || normK.includes(pn) || pn.includes(normK))) {
+           if (possibleNorm.includes(normK)) {
                possibleNorm.push(...EQUIVALENCIES[k].map(e => normalizeString(e)));
            }
         });
@@ -251,19 +250,20 @@ export default function ProductionOrderScreen({ route, navigation }) {
         // Verificar si es Materia Prima conocida de la lista maestra
         const isRawMaterial = RAW_MATERIALS_LIST.some(rm => {
           const rmParts = rm.split('/').map(p => normalizeString(p.trim()));
-          return possibleNorm.some(pn => rmParts.some(rp => rp === pn || rp.includes(pn) || pn.includes(rp)));
+          return rmParts.some(rp => possibleNorm.includes(rp));
         });
 
         // Solo es granel si NO es materia prima Y coincide con un Producto Madre
         const isGranel = !isRawMaterial && PRODUCTS_MADRE_LIST.some(pm => {
           const pmParts = pm.split('/').map(p => normalizeString(p.replace(/^granel\s+/i, '').trim()));
-          return possibleNorm.some(pn => pmParts.some(pp => pp === pn || pp.includes(pn) || pn.includes(pp)));
+          const pmFullParts = pm.split('/').map(p => normalizeString(p.trim()));
+          return pmParts.some(pp => possibleNorm.includes(pp)) || pmFullParts.some(pp => possibleNorm.includes(pp));
         });
         
         // CONVERSIÓN A LITROS SI ES UN GRANEL (solo para comparar/descontar stock)
         if (isGranel) {
            let ingDensity = 1;
-           const matchedFormulaKey = Object.keys(densityMap).find(k => possibleNorm.some(pn => k.includes(pn) || k === pn));
+           const matchedFormulaKey = Object.keys(densityMap).find(k => possibleNorm.includes(k));
            if (matchedFormulaKey) {
               ingDensity = densityMap[matchedFormulaKey];
            }
@@ -280,11 +280,14 @@ export default function ProductionOrderScreen({ route, navigation }) {
            if (item.stockType !== 'MP' && item.stockType !== 'GRANEL') return;
 
            const itemNorm = normalizeString(item.itemName);
-           // Match exacto O por subcadena bidireccional (para fórmulas con sinónimos o nombres parciales)
+           const itemCleanParts = (item.itemName || '').split('/').map(p => normalizeString(p.replace(/^granel\s+/i, '').trim()));
+           const itemFullParts = (item.itemName || '').split('/').map(p => normalizeString(p.trim()));
+
+           // Match exacto por nombre completo o por cualquiera de sus partes oficiales (evita colisiones por subcadenas)
            const isMatch = possibleNorm.some(pn => 
              pn === itemNorm || 
-             itemNorm.includes(pn) || 
-             pn.includes(itemNorm)
+             itemCleanParts.includes(pn) || 
+             itemFullParts.includes(pn)
            );
            if (isMatch) {
                availableBatches.push({
@@ -354,9 +357,9 @@ export default function ProductionOrderScreen({ route, navigation }) {
       const currentUser = auth.currentUser?.email || 'Sistema';
 
       // --- GENERACIÓN DE LOTE INCREMENTAL AUTOMÁTICA ---
-      // Buscar si ya existe este lote para ESTE granel hoy
+      // Buscar si ya existe este lote para cualquier OP hoy (evita colisión de lotes entre graneles distintos)
       const ordersRef = collection(db, 'Orders');
-      const qOrders = query(ordersRef, where('type', '==', 'OP'), where('data.itemName', '==', productName.trim().toUpperCase()));
+      const qOrders = query(ordersRef, where('type', '==', 'OP'));
       const snapOrders = await getDocs(qOrders);
       
       let count = 0;
