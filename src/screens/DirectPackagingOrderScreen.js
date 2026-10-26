@@ -76,6 +76,21 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
     brandCaja: 'H2O CON LOGO', 
   });
 
+  const [customMaterials, setCustomMaterials] = useState([]);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "Custom_Materials"), (snapshot) => {
+      const mats = [];
+      snapshot.forEach(doc => {
+        if (doc.data().name) mats.push(doc.data().name);
+      });
+      setCustomMaterials(mats);
+    });
+    return () => unsub();
+  }, []);
+
+  const mergedMaterialsList = [...new Set([...RAW_MATERIALS_LIST, ...customMaterials])].sort();
+
   useEffect(() => {
     const fetchApprovedLots = async () => {
       try {
@@ -93,7 +108,10 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
         );
         
         const [snapGranel, snapMP] = await Promise.all([getDocs(qGranel), getDocs(qMP)]);
-        const lots = [...snapGranel.docs, ...snapMP.docs].map(doc => ({ id: doc.id, ...doc.data() }));
+        const BLOCKED_STATUSES = ['PENDIENTE', 'PENDIENTE_LABORATORIO', 'RECHAZADO'];
+        const lots = [...snapGranel.docs, ...snapMP.docs]
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter(item => (item.quantity || 0) > 0 && !BLOCKED_STATUSES.includes(item.status));
         setApprovedLots(lots);
       } catch (error) {
         console.error(error);
@@ -286,6 +304,10 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
       // 4. CREA LA ORDEN EN MÁQUINA DE ESTADOS (Ticket ENVIADO)
       const orderData = {
         itemName: packagedItemName,
+        rawMaterialName: selectedLot.itemName,
+        commercialName: commercialName.trim().toUpperCase(),
+        sourceCompany: selectedLot.company || 'STOCK_CENTRAL_MP',
+        sourceStockType: selectedLot.stockType || 'MP',
         quantity: units,
         litersConsumed: litersToConsume,
         presentation: isContainer ? 1000 : presentation,
@@ -384,10 +406,10 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
         const isContainer = orderData.presentation === 1000;
 
         // 1. Devolver Líquido / Materia Prima
-        await registerMovement(currentUser, 'DEVOLUCION_RECHAZO_OEM', orderData.company || companyName, {
-          itemName: orderData.commercialName || orderData.itemName.split(' - ')[0],
+        await registerMovement(currentUser, 'DEVOLUCION_RECHAZO_OEM', orderData.sourceCompany || (orderData.sourceStockType === 'GRANEL' ? (orderData.company || companyName) : 'STOCK_CENTRAL_MP'), {
+          itemName: orderData.rawMaterialName || orderData.commercialName || orderData.itemName.split(' - ')[0],
           quantity: Math.abs(orderData.litersConsumed || (orderData.quantity * (orderData.presentation || 20))),
-          stockType: 'MP',
+          stockType: orderData.sourceStockType || 'MP',
           batchInternal: batchId,
           unit: 'Kg',
           details: 'OEM Rechazada - Devolución de Materia Prima'
@@ -562,7 +584,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
           <View style={[styles.card, { zIndex: 2000 }]}>
             <Text style={styles.label}>Buscar Materia Prima</Text>
             <AutocompleteInput 
-              data={RAW_MATERIALS_LIST}
+              data={mergedMaterialsList}
               value={selectedRawMaterial}
               onChangeText={(val) => {
                 setSelectedRawMaterial(val);
@@ -582,11 +604,11 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
                 <Text style={styles.emptyText}>Selecciona una Materia Prima para ver sus lotes disponibles.</Text>
               </View>
             ) : (() => {
-                const selectedPrimary = selectedRawMaterial.split(' / ')[0].trim().toUpperCase();
+                const searchParts = selectedRawMaterial.split('/').map(p => p.trim().toUpperCase());
                 const filteredLots = approvedLots.filter(lot => {
                   if (!lot.itemName) return false;
-                  const lotPrimary = lot.itemName.split(' / ')[0].trim().toUpperCase();
-                  return lotPrimary.includes(selectedPrimary) || selectedPrimary.includes(lotPrimary);
+                  const lotParts = lot.itemName.split('/').map(p => p.trim().toUpperCase());
+                  return searchParts.some(sp => lotParts.some(lp => lp.includes(sp) || sp.includes(lp)));
                 });
                 
                 if (filteredLots.length === 0) {
