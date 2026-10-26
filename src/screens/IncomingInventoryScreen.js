@@ -121,9 +121,17 @@ export default function IncomingInventoryScreen({ navigation }) {
       let finalUnit = 'Uds';
       
       if (!isMP) {
-        if (category === 'Bidones') finalItemName = `BIDON ${formData.capacity}L ${formData.brandBidon}`;
-        if (category === 'Cajas') finalItemName = `CAJA ${formData.format} ${formData.brandCaja}`;
-        if (category === 'Etiquetas') finalItemName = `ETIQUETA ${formData.capacity} ${formData.itemName.trim().toUpperCase()}`;
+        const rawCap = String(formData.capacity || '20').trim();
+        const numCap = rawCap.replace(/[^0-9]/g, '');
+        const brandB = formData.brandBidon || 'H2O';
+        const brandC = formData.brandCaja || 'H2O CON LOGO';
+
+        if (category === 'Bidones') finalItemName = `BIDON ${numCap || '20'}L ${brandB}`;
+        if (category === 'Cajas') finalItemName = `CAJA ${formData.format || 'x5'} ${brandC}`;
+        if (category === 'Etiquetas') {
+          const capFormatted = rawCap.toLowerCase().includes('cc') ? rawCap : `${numCap || '20'}L`;
+          finalItemName = `ETIQUETA ${capFormatted} ${formData.itemName.trim().toUpperCase()}`;
+        }
       } else {
         finalUnit = unitType === 'Kilos' ? 'Kg' : 'Lts';
       }
@@ -166,8 +174,10 @@ export default function IncomingInventoryScreen({ navigation }) {
           expiryDate: '',
           remitNumber: '',
           observations: '',
-          capacity: '20L', 
-          format: 'x5'     
+          capacity: '20', 
+          format: 'x5',
+          brandBidon: 'H2O',
+          brandCaja: 'H2O CON LOGO'
         });
         
         setTimeout(() => navigation.navigate('Home'), 1500);
@@ -273,16 +283,19 @@ export default function IncomingInventoryScreen({ navigation }) {
             <>
               <Text style={styles.label}>Capacidad de la Etiqueta</Text>
               <View style={styles.chipRow}>
-                {ETIQUETA_CAPACITIES.map(cap => (
-                  <TouchableOpacity 
-                    key={cap} 
-                    style={[styles.chip, formData.capacity === cap && styles.chipActive]}
-                    onPress={() => setFormData({...formData, capacity: cap})}
-                  >
-                    <Droplet color={formData.capacity === cap ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
-                    <Text style={[styles.chipText, formData.capacity === cap && styles.chipTextActive]}>{cap}</Text>
-                  </TouchableOpacity>
-                ))}
+                {ETIQUETA_CAPACITIES.map(cap => {
+                  const isActive = formData.capacity === cap || (cap.endsWith('L') && formData.capacity === cap.replace('L', ''));
+                  return (
+                    <TouchableOpacity 
+                      key={cap} 
+                      style={[styles.chip, isActive && styles.chipActive]}
+                      onPress={() => setFormData({...formData, capacity: cap})}
+                    >
+                      <Droplet color={isActive ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
+                      <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{cap}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </>
           )}
@@ -291,16 +304,20 @@ export default function IncomingInventoryScreen({ navigation }) {
             <>
               <Text style={styles.label}>Capacidad del Bidón</Text>
               <View style={styles.chipRow}>
-                {BIDON_CAPACITIES.map(cap => (
-                  <TouchableOpacity 
-                    key={cap} 
-                    style={[styles.chip, formData.capacity === cap && styles.chipActive]}
-                    onPress={() => setFormData({...formData, capacity: cap})}
-                  >
-                    <Droplet color={formData.capacity === cap ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
-                    <Text style={[styles.chipText, formData.capacity === cap && styles.chipTextActive]}>{cap}L</Text>
-                  </TouchableOpacity>
-                ))}
+                {BIDON_CAPACITIES.map(cap => {
+                  const cleanCap = String(formData.capacity || '').replace(/[^0-9]/g, '');
+                  const isActive = cleanCap === cap;
+                  return (
+                    <TouchableOpacity 
+                      key={cap} 
+                      style={[styles.chip, isActive && styles.chipActive]}
+                      onPress={() => setFormData({...formData, capacity: cap})}
+                    >
+                      <Droplet color={isActive ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
+                      <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{cap}L</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
               
               <Text style={styles.label}>Marca del Bidón</Text>

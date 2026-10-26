@@ -6,7 +6,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
 import { collection, query, where, onSnapshot, writeBatch, doc, deleteDoc, updateDoc, increment, serverTimestamp, addDoc } from 'firebase/firestore';
-import { ChevronLeft, Search, PackageOpen, AlertTriangle, ShieldCheck, X, FlaskConical, Droplet, Box, Tag, Printer, ChevronDown, ChevronUp, Edit2, Trash2 } from 'lucide-react-native';
+import { registerMovement } from '../services/logisticsService';
+import { ChevronLeft, Search, PackageOpen, AlertTriangle, ShieldCheck, X, FlaskConical, Droplet, Box, Tag, Printer, ChevronDown, ChevronUp, Edit2, Trash2, Boxes } from 'lucide-react-native';
 import { RAW_MATERIALS_LIST, PRODUCTS_MADRE_LIST, formatDisplayName } from '../config/constants';
 
 const normalizeString = (str) => {
@@ -15,9 +16,13 @@ const normalizeString = (str) => {
 };
 
 export default function StockView({ route, navigation }) {
-  const { companyName, stockType, title } = route.params;
+  const params = route?.params || {};
+  const companyName = params.companyName || 'STOCK_CENTRAL_MP';
+  const stockType = params.stockType || 'MP';
+  const title = params.title || (stockType === 'MP' ? 'Stock Materia Prima' : (stockType === 'INSUMOS' ? 'Stock Insumos' : 'Stock'));
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
+  const [quarantineCount, setQuarantineCount] = useState(0);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -208,21 +213,26 @@ export default function StockView({ route, navigation }) {
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const stockData = [];
       const toCleanup = []; // docs con cantidad negativa o cero que deben eliminarse
+      let pendingCount = 0;
 
       querySnapshot.forEach((doc) => {
         const data = doc.data();
         // CUARENTENA: Excluir lotes pendientes de aprobación BBS Calidad del stock disponible
         const pendingStatuses = ['PENDIENTE', 'PENDIENTE_LABORATORIO'];
-        if (!pendingStatuses.includes(data.status)) {
-          // Solo incluir documentos con cantidad positiva (evitar negativos por condiciones de carrera)
-          if ((data.quantity || 0) > 0) {
-            stockData.push({ ...data, id: doc.id });
-          } else {
-            // Marcar para limpieza silenciosa
-            toCleanup.push(doc.id);
-          }
+        if (pendingStatuses.includes(data.status)) {
+          pendingCount += 1;
+          return;
+        }
+        // Solo incluir documentos con cantidad positiva (evitar negativos por condiciones de carrera)
+        if ((data.quantity || 0) > 0) {
+          stockData.push({ ...data, id: doc.id });
+        } else {
+          // Marcar para limpieza silenciosa
+          toCleanup.push(doc.id);
         }
       });
+
+      setQuarantineCount(pendingCount);
 
       // Limpieza silenciosa de documentos con cantidad ≤ 0
       if (toCleanup.length > 0) {
@@ -484,7 +494,29 @@ export default function StockView({ route, navigation }) {
             <Tag color={activeInsumoTab === 'ETIQUETAS' ? '#fff' : '#64748b'} size={16} />
             <Text style={[styles.tabText, activeInsumoTab === 'ETIQUETAS' && styles.tabTextActive]}>ETIQUETAS</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.tabBtn, activeInsumoTab === 'TODOS' && styles.tabActive]}
+            onPress={() => setActiveInsumoTab('TODOS')}
+          >
+            <Boxes color={activeInsumoTab === 'TODOS' ? '#fff' : '#64748b'} size={16} />
+            <Text style={[styles.tabText, activeInsumoTab === 'TODOS' && styles.tabTextActive]}>TODOS</Text>
+          </TouchableOpacity>
         </View>
+      )}
+
+      {quarantineCount > 0 && (
+        <TouchableOpacity 
+          style={styles.quarantineBanner}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate('QualityControl')}
+        >
+          <AlertTriangle color="#d97706" size={18} style={{marginRight: 8}} />
+          <Text style={styles.quarantineText}>
+            Hay <Text style={{fontWeight: '800'}}>{quarantineCount} lote(s)</Text> en Cuarentena en BBS Calidad.
+          </Text>
+          <Text style={styles.quarantineLink}>IR A BBS</Text>
+        </TouchableOpacity>
       )}
 
       {loading ? (
@@ -717,5 +749,13 @@ const styles = StyleSheet.create({
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 18, fontWeight: '800', color: '#0f172a' },
   modalInput: { backgroundColor: '#f1f5f9', borderRadius: 12, paddingHorizontal: 15, paddingVertical: 12, fontSize: 16, color: '#0f172a', borderWidth: 1, borderColor: '#e2e8f0' },
-  printConfirmBtn: { backgroundColor: '#3b82f6', borderRadius: 12, paddingVertical: 15, marginTop: 25, elevation: 2, shadowColor: '#3b82f6', shadowOpacity: 0.3, shadowRadius: 5 }
+  printConfirmBtn: { backgroundColor: '#3b82f6', borderRadius: 12, paddingVertical: 15, marginTop: 25, elevation: 2, shadowColor: '#3b82f6', shadowOpacity: 0.3, shadowRadius: 5 },
+  
+  quarantineBanner: { 
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fffbeb', 
+    borderWidth: 1, borderColor: '#fde68a', borderRadius: 12, 
+    marginHorizontal: 20, marginTop: 12, paddingHorizontal: 14, paddingVertical: 10 
+  },
+  quarantineText: { flex: 1, fontSize: 12, color: '#92400e', fontWeight: '500' },
+  quarantineLink: { fontSize: 11, fontWeight: '900', color: '#b45309', marginLeft: 8, textDecorationLine: 'underline' }
 });

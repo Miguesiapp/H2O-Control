@@ -144,7 +144,8 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
   const isOverdraft = selectedLot && remainingLiters < 0;
   
   const isContainer = presentation === 1000;
-  const appliesBox = !isContainer && (presentation === 5 || presentation === 1) && formData.brandCaja !== 'SIN CAJAS';
+  const canUseBox = !isContainer && (presentation === 5 || presentation === 1);
+  const appliesBox = canUseBox && formData.brandCaja !== 'SIN CAJAS';
   let requiredBoxes = 0;
   let boxFormat = '';
   
@@ -170,8 +171,10 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
       const capacityKeywords = [`${presentation}L`, `${presentation} L`, `${presentation} LTS`, `${presentation}LTS`, `${presentation}-L`];
       const fuzzyBidon = ['BIDON', capacityKeywords, formData.brandBidon];
       
-      // CAJAS usan formato multiplicador (ej: x5, x1, X5, X 5) pero NO 5L
-      const boxKeywords = [boxFormat, `X${presentation}`, `X ${presentation}`];
+      // CAJAS usan formato multiplicador y litros como fallback
+      const boxKeywords = presentation === 5
+        ? ['x5', 'X5', 'X 5', 'x4', 'X4', 'X 4', '5L', '5 L']
+        : ['x1', 'X1', 'X 1', 'x12', 'X12', 'X 12', '1L', '1 L'];
       const fuzzyCaja = appliesBox ? ['CAJA', boxKeywords, formData.brandCaja] : null;
 
       const baseLabelName = getBaseLabelName(commercialName);
@@ -309,7 +312,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
             presentation: '20', 
             unitsProduced: '',  
             brandBidon: 'H2O',
-            brandCaja: 'H2O', 
+            brandCaja: 'H2O CON LOGO', 
           });
         }}]
       );
@@ -322,7 +325,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
   };
 
   // ======================================================================
-  // FUNCIONES DE ESTADO DE ÓRDEN (ACEPTAR / FINALIZAR)
+  // FUNCIONES DE ESTADO DE ÓRDEN (ACEPTAR / FINALIZAR / RECHAZAR)
   // ======================================================================
   const handleAcceptOrder = async () => {
     if (!selectedOrder) return;
@@ -369,11 +372,112 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
     }
   };
 
+  const handleRejectOrder = async () => {
+    if (!selectedOrder) return;
+
+    const executeRejection = async () => {
+      try {
+        setProcessingOrder(true);
+        const currentUser = auth.currentUser?.email || 'Sistema';
+        const orderData = selectedOrder.data;
+        const batchId = orderData.batchInternal;
+        const isContainer = orderData.presentation === 1000;
+
+        // 1. Devolver Líquido / Materia Prima
+        await registerMovement(currentUser, 'DEVOLUCION_RECHAZO_OEM', orderData.company || companyName, {
+          itemName: orderData.commercialName || orderData.itemName.split(' - ')[0],
+          quantity: Math.abs(orderData.litersConsumed || (orderData.quantity * (orderData.presentation || 20))),
+          stockType: 'MP',
+          batchInternal: batchId,
+          unit: 'Kg',
+          details: 'OEM Rechazada - Devolución de Materia Prima'
+        });
+
+        if (!isContainer) {
+          const presentation = orderData.presentation || 20;
+          const capacityKeywords = [`${presentation}L`, `${presentation} L`, `${presentation} LTS`, `${presentation}LTS`, `${presentation}-L`];
+          const fuzzyBidon = ['BIDON', capacityKeywords, orderData.brandBidon];
+
+          const boxKeywords = presentation === 5
+            ? ['x5', 'X5', 'X 5', 'x4', 'X4', 'X 4', '5L', '5 L']
+            : ['x1', 'X1', 'X 1', 'x12', 'X12', 'X 12', '1L', '1 L'];
+          const fuzzyCaja = orderData.brandCaja && orderData.brandCaja !== 'SIN CAJAS' ? ['CAJA', boxKeywords, orderData.brandCaja] : null;
+
+          const baseLabelName = getBaseLabelName(orderData.commercialName || orderData.itemName.split(' - ')[0]);
+          const labelKeywords = [baseLabelName, orderData.commercialName || orderData.itemName.split(' - ')[0]];
+          const fuzzyEtiqueta = ['ETIQUETA', capacityKeywords, labelKeywords];
+
+          // 2. Devolver Bidones
+          await registerMovement(currentUser, 'DEVOLUCION_RECHAZO_OEM', 'STOCK_CENTRAL_INSUMOS', {
+            itemName: fuzzyBidon,
+            quantity: Math.abs(orderData.quantity),
+            stockType: 'INSUMOS',
+            batchInternal: batchId,
+            unit: 'Uds',
+            details: 'OEM Rechazada - Devolución Bidones'
+          });
+
+          // 3. Devolver Cajas si correspondía
+          if (orderData.requiredBoxes > 0 && fuzzyCaja) {
+            await registerMovement(currentUser, 'DEVOLUCION_RECHAZO_OEM', 'STOCK_CENTRAL_INSUMOS', {
+              itemName: fuzzyCaja,
+              quantity: Math.abs(orderData.requiredBoxes),
+              stockType: 'INSUMOS',
+              batchInternal: batchId,
+              unit: 'Uds',
+              details: 'OEM Rechazada - Devolución Cajas'
+            });
+          }
+
+          // 4. Devolver Etiquetas
+          await registerMovement(currentUser, 'DEVOLUCION_RECHAZO_OEM', 'STOCK_CENTRAL_INSUMOS', {
+            itemName: fuzzyEtiqueta,
+            quantity: Math.abs(orderData.quantity),
+            stockType: 'INSUMOS',
+            batchInternal: batchId,
+            unit: 'Uds',
+            details: 'OEM Rechazada - Devolución Etiquetas'
+          });
+        }
+
+        // 5. Actualizar Ticket a RECHAZADO
+        await updateOrderStatus(selectedOrder.id, 'RECHAZADO', currentUser);
+
+        Alert.alert(
+          "OEM Rechazada",
+          `La orden fue rechazada y se devolvieron los insumos y la materia prima al stock.`
+        );
+        setOrderModalVisible(false);
+      } catch (error) {
+        console.error("Error al rechazar OEM:", error);
+        Alert.alert("Error", "No se pudo rechazar la orden de envasado directo.");
+      } finally {
+        setProcessingOrder(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm("¿Estás seguro que deseas rechazar esta orden? La materia prima y los insumos reservados volverán al inventario.")) {
+        executeRejection();
+      }
+    } else {
+      Alert.alert(
+        "Rechazar OEM",
+        "¿Estás seguro que deseas rechazar esta orden? La materia prima y los insumos reservados volverán al inventario.",
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Sí, Rechazar", style: "destructive", onPress: executeRejection }
+        ]
+      );
+    }
+  };
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'ENVIADO': return '#3b82f6';
       case 'EN_PROCESO': return '#f59e0b';
       case 'FINALIZADO': return '#10b981';
+      case 'RECHAZADO': return '#64748b';
       default: return '#64748b';
     }
   };
@@ -585,7 +689,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
                   </View>
                 </View>
 
-                {appliesBox && (
+                {canUseBox && (
                   <>
                     <View style={styles.divider} />
                     <Text style={styles.label}>Marca de las Cajas ({boxFormat})</Text>
@@ -601,9 +705,15 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
                         </TouchableOpacity>
                       ))}
                     </View>
-                    <Text style={styles.calcHelper}>
-                      Se descontarán {requiredBoxes} cajas automáticamente.
-                    </Text>
+                    {formData.brandCaja !== 'SIN CAJAS' ? (
+                      <Text style={styles.calcHelper}>
+                        Se descontarán {requiredBoxes} cajas automáticamente.
+                      </Text>
+                    ) : (
+                      <Text style={styles.calcHelper}>
+                        Esta orden no utilizará cajas ni descontará stock de cajas.
+                      </Text>
+                    )}
                   </>
                 )}
 
@@ -708,6 +818,21 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
                   <>
                     <CheckCircle2 color="#fff" size={20} />
                     <Text style={styles.submitText}>Finalizar (Terminado a Stock)</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {(selectedOrder?.status === 'ENVIADO' || selectedOrder?.status === 'EN_PROCESO') && (
+              <TouchableOpacity 
+                style={[styles.mainButton, { backgroundColor: '#fee2e2', borderWidth: 1, borderColor: '#ef4444', marginTop: 12 }]} 
+                onPress={handleRejectOrder} 
+                disabled={processingOrder}
+              >
+                {processingOrder ? <ActivityIndicator color="#ef4444" /> : (
+                  <>
+                    <XCircle color="#ef4444" size={20} />
+                    <Text style={[styles.submitText, { color: '#ef4444' }]}>Rechazar Orden (Devolver Insumos y MP)</Text>
                   </>
                 )}
               </TouchableOpacity>

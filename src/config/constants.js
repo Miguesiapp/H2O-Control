@@ -398,7 +398,7 @@ export const getBaseLabelName = (commercialName) => {
 // Formatos de Insumos Centralizados
 export const ETIQUETA_CAPACITIES = ['20L', '10L', '5L', '1L', '500cc', '250cc', '50cc'];
 export const BIDON_CAPACITIES = ['20', '10', '5', '1'];
-export const CAJA_FORMATS = ['x5', 'x1'];
+export const CAJA_FORMATS = ['x5', 'x4', 'x12', 'x1'];
 
 export const BIDON_BRANDS = ['H2O', 'AGROCUBE', 'ALIANZA', 'AGROFONTEZUELA', 'AZUL', 'NEUTRO'];
 export const CAJA_BRANDS = ['H2O CON LOGO', 'H2O SIN LOGO', 'AGROCUBE', 'AGROFONTEZUELA', 'GENERICAS', 'BIOACKER', 'NEUTRO', 'SIN CAJAS'];

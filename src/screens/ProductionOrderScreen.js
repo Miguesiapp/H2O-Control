@@ -251,13 +251,13 @@ export default function ProductionOrderScreen({ route, navigation }) {
         // Verificar si es Materia Prima conocida de la lista maestra
         const isRawMaterial = RAW_MATERIALS_LIST.some(rm => {
           const rmParts = rm.split('/').map(p => normalizeString(p.trim()));
-          return possibleNorm.some(pn => rmParts.includes(pn));
+          return possibleNorm.some(pn => rmParts.some(rp => rp === pn || rp.includes(pn) || pn.includes(rp)));
         });
 
         // Solo es granel si NO es materia prima Y coincide con un Producto Madre
         const isGranel = !isRawMaterial && PRODUCTS_MADRE_LIST.some(pm => {
           const pmParts = pm.split('/').map(p => normalizeString(p.replace(/^granel\s+/i, '').trim()));
-          return possibleNorm.some(pn => pmParts.includes(pn) || pmParts.some(pp => pp === pn));
+          return possibleNorm.some(pn => pmParts.some(pp => pp === pn || pp.includes(pn) || pn.includes(pp)));
         });
         
         // CONVERSIÓN A LITROS SI ES UN GRANEL (solo para comparar/descontar stock)
@@ -1296,6 +1296,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
                 onChangeText={setExtraIngName}
                 placeholder="Ej: MONOETALONAMINA"
                 icon={<Beaker color="#94a3b8" size={18} />}
+                allowCustom={true}
               />
             </View>
 

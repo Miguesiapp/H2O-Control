@@ -27,8 +27,8 @@ export default function CompanyDetailScreen({ route, navigation }) {
   ];
 
   const stockOptions = [
-    { id: 'stock_pt', title: 'Granel (En Proceso)', sub: 'Líquido en Tanques', icon: <Beaker color="#64748b" size={24} />, type: 'PT' },
-    { id: 'stock_envases', title: 'Envases', sub: 'Tapas, Botellas, Bidones', icon: <Container color="#64748b" size={24} />, type: 'ENVASES' },
+    { id: 'stock_pt', title: 'Granel (En Proceso)', sub: 'Líquido en Tanques', icon: <Beaker color="#64748b" size={24} />, type: 'GRANEL' },
+    { id: 'stock_envases', title: 'Insumos y Envases', sub: 'Bidones, Cajas, Etiquetas', icon: <Container color="#64748b" size={24} />, type: 'INSUMOS', companyOverride: 'STOCK_CENTRAL_INSUMOS' },
     { id: 'stock_final', title: 'Producto Terminado', sub: 'Stock Envasado', icon: <Archive color="#64748b" size={24} />, type: 'FINAL' },
   ];
 
@@ -84,7 +84,7 @@ export default function CompanyDetailScreen({ route, navigation }) {
               key={item.id} 
               activeOpacity={0.7}
               style={styles.stockCard}
-              onPress={() => navigation.navigate('StockView', { companyName, stockType: item.type, title: item.title })}
+              onPress={() => navigation.navigate('StockView', { companyName: item.companyOverride || companyName, stockType: item.type, title: item.title })}
             >
               <View style={styles.stockInfo}>
                 <View style={styles.stockIconBox}>{item.icon}</View>

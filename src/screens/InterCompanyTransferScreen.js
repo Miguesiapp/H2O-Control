@@ -12,8 +12,9 @@ import { ChevronLeft, ArrowRightLeft, Package, CheckCircle2, Box } from 'lucide-
 const COMPANIES = ["H2Ocontrol", "WaterDay", "Alianza", "Agrocube", "BioAcker", "AgroFontezuela"];
 const STOCK_TYPES = [
   { id: 'FINAL', label: 'Envasado' },
-  { id: 'PT', label: 'Granel' },
-  { id: 'INSUMOS', label: 'Bidones/Cajas' }
+  { id: 'GRANEL', label: 'Granel' },
+  { id: 'INSUMOS', label: 'Insumos' },
+  { id: 'MP', label: 'Materia Prima' }
 ];
 
 export default function InterCompanyTransferScreen({ navigation }) {
@@ -51,7 +52,7 @@ export default function InterCompanyTransferScreen({ navigation }) {
       setIsSubmitting(true);
       const itemName = formData.itemName.trim().toUpperCase();
       const batchId = formData.batchInternal.trim().toUpperCase() || 'S/D';
-      const dbStockType = formData.stockType === 'INSUMOS' ? 'MP' : formData.stockType;
+      const dbStockType = formData.stockType;
       const currentUser = auth.currentUser?.email || 'Sistema';
 
       const q = query(

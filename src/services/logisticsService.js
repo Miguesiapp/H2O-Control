@@ -239,11 +239,13 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
         if (pendingStatuses.includes(doc.status)) return false;
         if (isFuzzy) {
           const name = (doc.itemName || '').toUpperCase();
-          return itemName.every(kw => {
+          return itemName.filter(Boolean).every(kw => {
             if (Array.isArray(kw)) {
-              return kw.some(subKw => name.includes(subKw.toUpperCase()));
+              const validSubs = kw.filter(Boolean);
+              if (validSubs.length === 0) return true;
+              return validSubs.some(subKw => name.includes(String(subKw).toUpperCase()));
             }
-            return name.includes(kw.toUpperCase());
+            return name.includes(String(kw).toUpperCase());
           });
         }
         return true;
@@ -266,11 +268,13 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
             if (pendingStatuses.includes(doc.status)) return false;
             if (isFuzzy) {
               const name = (doc.itemName || '').toUpperCase();
-              return itemName.every(kw => {
+              return itemName.filter(Boolean).every(kw => {
                 if (Array.isArray(kw)) {
-                  return kw.some(subKw => name.includes(subKw.toUpperCase()));
+                  const validSubs = kw.filter(Boolean);
+                  if (validSubs.length === 0) return true;
+                  return validSubs.some(subKw => name.includes(String(subKw).toUpperCase()));
                 }
-                return name.includes(kw.toUpperCase());
+                return name.includes(String(kw).toUpperCase());
               });
             }
             return true;
@@ -346,11 +350,13 @@ export const checkTotalStock = async (company, itemName) => {
       if (data.quantity > 0) {
         if (isFuzzy) {
           const name = (data.itemName || '').toUpperCase();
-          if (itemName.every(kw => {
+          if (itemName.filter(Boolean).every(kw => {
             if (Array.isArray(kw)) {
-              return kw.some(subKw => name.includes(subKw.toUpperCase()));
+              const validSubs = kw.filter(Boolean);
+              if (validSubs.length === 0) return true;
+              return validSubs.some(subKw => name.includes(String(subKw).toUpperCase()));
             }
-            return name.includes(kw.toUpperCase());
+            return name.includes(String(kw).toUpperCase());
           })) {
             total += Number(data.quantity);
           }

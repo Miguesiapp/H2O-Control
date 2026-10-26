@@ -153,7 +153,8 @@ export default function PackagingOrderScreen({ route, navigation }) {
   const isOverdraft = selectedLot && remainingLiters < 0;
 
   // Cajas solo aplican para bidones de 5L y 1L (nunca para contenedor)
-  const appliesBox = !isContainer && (presentation === 5 || presentation === 1) && formData.brandCaja !== 'SIN CAJAS';
+  const canUseBox = !isContainer && (presentation === 5 || presentation === 1);
+  const appliesBox = canUseBox && formData.brandCaja !== 'SIN CAJAS';
   let requiredBoxes = 0;
   let boxFormat = '';
   
@@ -182,9 +183,11 @@ export default function PackagingOrderScreen({ route, navigation }) {
       const capacityKeywords = [`${presentation}L`, `${presentation} L`, `${presentation} LTS`, `${presentation}LTS`, `${presentation}-L`];
       const fuzzyBidon = ['BIDON', capacityKeywords, formData.brandBidon];
       
-      // CAJAS usan formato multiplicador (ej: x5, x1, X5, X 5) pero NO 5L
-      const boxKeywords = [boxFormat, `X${presentation}`, `X ${presentation}`];
-      const actuallyUsesBox = appliesBox && formData.brandCaja !== 'SIN CAJAS';
+      // CAJAS usan formato multiplicador y litros como fallback
+      const boxKeywords = presentation === 5
+        ? ['x5', 'X5', 'X 5', 'x4', 'X4', 'X 4', '5L', '5 L']
+        : ['x1', 'X1', 'X 1', 'x12', 'X12', 'X 12', '1L', '1 L'];
+      const actuallyUsesBox = appliesBox;
       const fuzzyCaja = actuallyUsesBox ? ['CAJA', boxKeywords, formData.brandCaja] : null;
 
       const baseLabelName = getBaseLabelName(commercialName);
@@ -314,7 +317,8 @@ export default function PackagingOrderScreen({ route, navigation }) {
         company: companyName,
         unit: isContainer ? 'Lts' : 'Uds',
         clientName: formData.clientName.trim(),
-        clientLot: formData.clientLot.trim()
+        clientLot: formData.clientLot.trim(),
+        commercialName: commercialName.trim()
       };
 
       await createOrder('OE', orderData, currentUser);
@@ -358,6 +362,102 @@ export default function PackagingOrderScreen({ route, navigation }) {
       Toast.show({ type: 'error', text1: 'Error', text2: 'No se pudo aceptar la orden.' });
     } finally {
       setProcessingOrder(false);
+    }
+  };
+
+  const handleRejectOrder = async () => {
+    if (!selectedOrder) return;
+    
+    const executeRejection = async () => {
+      try {
+        setProcessingOrder(true);
+        const currentUser = auth.currentUser?.email || 'Sistema';
+        const orderData = selectedOrder.data;
+        const batchId = orderData.batchInternal;
+        const isContainer = orderData.presentation === 1000;
+        
+        // 1. Devolver Granel
+        await registerMovement(currentUser, 'DEVOLUCION_RECHAZO_OE', orderData.company, {
+            itemName: orderData.commercialName || orderData.itemName.split(' - ')[0],
+            quantity: Math.abs(orderData.litersConsumed), 
+            stockType: 'GRANEL',
+            batchInternal: batchId,
+            unit: 'Lts',
+            details: `OE Rechazada - Devolución de Reserva`
+        });
+
+        if (!isContainer) {
+          const presentation = orderData.presentation;
+          const capacityKeywords = [`${presentation}L`, `${presentation} L`, `${presentation} LTS`, `${presentation}LTS`, `${presentation}-L`];
+          const fuzzyBidon = ['BIDON', capacityKeywords, orderData.brandBidon];
+          
+          let boxFormat = '';
+          if (presentation === 5) boxFormat = 'x5';
+          else if (presentation === 1) boxFormat = 'x1';
+          const boxKeywords = [boxFormat, `X${presentation}`, `X ${presentation}`];
+          const fuzzyCaja = orderData.brandCaja !== 'SIN CAJAS' ? ['CAJA', boxKeywords, orderData.brandCaja] : null;
+
+          const baseLabelName = getBaseLabelName(orderData.commercialName || orderData.itemName.split(' - ')[0]);
+          const labelKeywords = [baseLabelName, orderData.commercialName || orderData.itemName.split(' - ')[0]];
+          const fuzzyEtiqueta = ['ETIQUETA', capacityKeywords, labelKeywords];
+
+          // 2. Devolver Bidones
+          await registerMovement(currentUser, 'DEVOLUCION_RECHAZO_OE', 'STOCK_CENTRAL_INSUMOS', {
+              itemName: fuzzyBidon,
+              quantity: Math.abs(orderData.quantity),
+              stockType: 'INSUMOS',
+              batchInternal: batchId,
+              unit: 'Uds',
+              details: `OE Rechazada - Devolución Bidones`
+          });
+
+          // 3. Devolver Cajas
+          if (orderData.requiredBoxes > 0) {
+            await registerMovement(currentUser, 'DEVOLUCION_RECHAZO_OE', 'STOCK_CENTRAL_INSUMOS', {
+                itemName: fuzzyCaja,
+                quantity: Math.abs(orderData.requiredBoxes),
+                stockType: 'INSUMOS',
+                batchInternal: batchId,
+                unit: 'Uds',
+                details: `OE Rechazada - Devolución Cajas`
+            });
+          }
+
+          // 4. Devolver Etiquetas
+          await registerMovement(currentUser, 'DEVOLUCION_RECHAZO_OE', 'STOCK_CENTRAL_INSUMOS', {
+              itemName: fuzzyEtiqueta,
+              quantity: Math.abs(orderData.quantity),
+              stockType: 'INSUMOS',
+              batchInternal: batchId,
+              unit: 'Uds',
+              details: `OE Rechazada - Devolución Etiquetas`
+          });
+        }
+
+        await updateOrderStatus(selectedOrder.id, 'RECHAZADO', currentUser);
+        Toast.show({ type: 'info', text1: 'Orden Rechazada', text2: 'El stock ha sido devuelto exitosamente.' });
+        setOrderModalVisible(false);
+      } catch (error) {
+        console.error(error);
+        Alert.alert("Error", "No se pudo rechazar la orden.");
+      } finally {
+        setProcessingOrder(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm("¿Estás seguro que deseas rechazar esta orden? El granel y los insumos reservados volverán al stock.")) {
+        executeRejection();
+      }
+    } else {
+      Alert.alert(
+        "Rechazar OE",
+        "¿Estás seguro que deseas rechazar esta orden? El granel y los insumos reservados volverán al stock.",
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Sí, Rechazar", style: "destructive", onPress: executeRejection }
+        ]
+      );
     }
   };
 
@@ -912,7 +1012,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
                   </View>
                 </View>
 
-                {appliesBox && (
+                {canUseBox && (
                   <>
                     <View style={styles.divider} />
                     <Text style={styles.label}>Marca de las Cajas ({boxFormat})</Text>
@@ -1042,14 +1142,24 @@ export default function PackagingOrderScreen({ route, navigation }) {
             </View>
 
             {selectedOrder?.status === 'ENVIADO' && (
-              <TouchableOpacity style={[styles.mainButton, {backgroundColor: '#f59e0b'}]} onPress={handleAcceptOrder} disabled={processingOrder}>
-                {processingOrder ? <ActivityIndicator color="#fff" /> : (
-                  <>
-                    <CheckSquare color="#fff" size={20} />
-                    <Text style={styles.submitText}>Aceptar Orden (Iniciar)</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              <View>
+                <TouchableOpacity style={[styles.mainButton, {backgroundColor: '#f59e0b'}]} onPress={handleAcceptOrder} disabled={processingOrder}>
+                  {processingOrder ? <ActivityIndicator color="#fff" /> : (
+                    <>
+                      <CheckSquare color="#fff" size={20} />
+                      <Text style={styles.submitText}>Aceptar Orden (Iniciar)</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.mainButton, {backgroundColor: '#ef4444', marginTop: 10}]} onPress={handleRejectOrder} disabled={processingOrder}>
+                  {processingOrder ? <ActivityIndicator color="#fff" /> : (
+                    <>
+                      <XCircle color="#fff" size={20} />
+                      <Text style={styles.submitText}>Rechazar OE</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
             )}
 
             {selectedOrder?.status === 'EN_PROCESO' && (() => {

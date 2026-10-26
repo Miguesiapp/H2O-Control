@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, TextInput, 
-  TouchableOpacity, Alert, StatusBar, ActivityIndicator, FlatList, Modal
+  TouchableOpacity, Alert, StatusBar, ActivityIndicator, FlatList, Modal, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
 import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { registerMovement, createOrder, updateOrderStatus } from '../services/logisticsService';
-import { ChevronLeft, Truck, Send, PackageMinus, MapPin, Hash, ClipboardType, Plus, ClipboardList, CheckSquare, CheckCircle2, Play, Droplet, ChevronDown, X, Printer } from 'lucide-react-native';
+import { ChevronLeft, Truck, Send, PackageMinus, MapPin, Hash, ClipboardType, Plus, ClipboardList, CheckSquare, CheckCircle2, Play, Droplet, ChevronDown, X, Printer, XCircle } from 'lucide-react-native';
 import { canCreateOrders } from '../config/permissions';
 import { printOrder } from '../services/printService';
 
@@ -277,11 +277,69 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
     }
   };
 
+  const handleRejectOrder = async () => {
+    if (!selectedOrder) return;
+
+    const executeRejection = async () => {
+      try {
+        setProcessingOrder(true);
+        const currentUser = auth.currentUser?.email || 'Sistema';
+        const orderData = selectedOrder.data;
+
+        // 1. Devolver Producto Terminado al stock
+        await registerMovement(
+          currentUser,
+          'DEVOLUCION_RECHAZO_OD',
+          orderData.company || companyName,
+          {
+            itemName: orderData.itemName,
+            quantity: Math.abs(orderData.quantity),
+            batchInternal: orderData.batchInternal,
+            loteProveedor: orderData.batchProvider || 'S/D',
+            stockType: 'FINAL',
+            unit: orderData.unit || 'Uds',
+            clientName: orderData.clientName || 'N/A'
+          }
+        );
+
+        // 2. Actualizar estado del Ticket a RECHAZADO
+        await updateOrderStatus(selectedOrder.id, 'RECHAZADO', currentUser);
+
+        Alert.alert(
+          "Orden Rechazada",
+          `La orden fue rechazada y se devolvieron ${orderData.quantity} ${orderData.unit || 'Uds'} al inventario de ${orderData.company || companyName}.`
+        );
+        setOrderModalVisible(false);
+      } catch (error) {
+        console.error("Error al rechazar OD:", error);
+        Alert.alert("Error", "No se pudo rechazar la orden de despacho.");
+      } finally {
+        setProcessingOrder(false);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm("¿Estás seguro que deseas rechazar esta Orden de Despacho? El producto envasado volverá al inventario disponible.")) {
+        executeRejection();
+      }
+    } else {
+      Alert.alert(
+        "Rechazar Despacho",
+        "¿Estás seguro que deseas rechazar esta Orden de Despacho? El producto terminado volverá al inventario disponible.",
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Sí, Rechazar", style: "destructive", onPress: executeRejection }
+        ]
+      );
+    }
+  };
+
   const getStatusColor = (status) => {
     switch (status) {
       case 'ENVIADO': return '#ef4444'; // Rojo para despacho pendiente
       case 'EN_PROCESO': return '#f59e0b';
       case 'FINALIZADO': return '#10b981';
+      case 'RECHAZADO': return '#64748b';
       default: return '#64748b';
     }
   };
@@ -601,6 +659,21 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
                   <>
                     <Truck color="#fff" size={20} />
                     <Text style={styles.mainButtonText}>Confirmar Salida</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {(selectedOrder?.status === 'ENVIADO' || selectedOrder?.status === 'EN_PROCESO') && (
+              <TouchableOpacity 
+                style={[styles.mainButton, { backgroundColor: '#fee2e2', borderWidth: 1, borderColor: '#ef4444', marginTop: 12 }]} 
+                onPress={handleRejectOrder} 
+                disabled={processingOrder}
+              >
+                {processingOrder ? <ActivityIndicator color="#ef4444" /> : (
+                  <>
+                    <XCircle color="#ef4444" size={20} />
+                    <Text style={[styles.mainButtonText, { color: '#ef4444' }]}>Rechazar Despacho (Devolver Stock)</Text>
                   </>
                 )}
               </TouchableOpacity>

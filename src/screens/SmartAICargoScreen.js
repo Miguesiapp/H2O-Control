@@ -131,16 +131,13 @@ export default function SmartAICargoScreen({ navigation }) {
           [
             { text: "Cerrar", onPress: () => { setRawText(''); setProcessedData(null); } },
             { 
-              text: opMode.includes('INGRESO') ? "IMPRIMIR QR" : "VER STOCK", 
+              text: "VER STOCK", 
               onPress: () => {
-                if(opMode.includes('INGRESO')) {
-                  navigation.navigate('QRGenerator', { 
-                    itemData: firstItemForQR,
-                    companyName: companyDest 
-                  });
-                } else {
-                  navigation.navigate('StockView', { companyName: companyDest });
-                }
+                navigation.navigate('StockView', { 
+                  companyName: companyDest,
+                  stockType: targetStock,
+                  title: targetStock === 'MP' ? 'Stock Materia Prima' : (targetStock === 'INSUMOS' ? 'Stock Insumos' : (targetStock === 'GRANEL' ? 'Stock Granel' : 'Producto Terminado'))
+                });
               } 
             }
           ]
