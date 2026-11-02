@@ -18,10 +18,76 @@ const BIDON_CAPACITIES = ['20', '10', '5', '1'];
 
 const OED_SEARCH_LIST = [
   ...new Set([
+    'DRY CONTROL',
+    'OXOFERT +',
+    'OXOFERT',
+    'PH CONTROL',
+    'PERCYDE',
     ...PRODUCTS_FINAL_LIST,
-    ...RAW_MATERIALS_LIST
+    ...RAW_MATERIALS_LIST.flatMap(rm => {
+      const parts = rm.split(' / ').map(p => p.trim());
+      return [parts[0], rm];
+    })
   ])
-].sort();
+].filter(Boolean).sort();
+
+const doesLotMatchSelection = (lotItemName, searchInput) => {
+  if (!lotItemName || !searchInput) return false;
+  const lotUpper = String(lotItemName).toUpperCase().trim();
+  const searchUpper = String(searchInput).toUpperCase().trim();
+
+  // Coincidencia exacta o directa
+  if (lotUpper === searchUpper) return true;
+
+  // Casos específicos conocidos de envasado directo (PT <-> MP)
+  if (searchUpper.includes('DRY CONTROL') || searchUpper === 'DRY') {
+    if (lotUpper.includes('CLORITO') || lotUpper.includes('SERCLOR') || lotUpper.includes('DRY')) return true;
+  }
+  if (searchUpper.includes('OXOFERT +') || searchUpper.includes('OXOFERT PLUS')) {
+    if (lotUpper.includes('CLORHIDRICO') || lotUpper.includes('HCL') || lotUpper.includes('OXOFERT +')) return true;
+  }
+  if (searchUpper === 'OXOFERT') {
+    if (lotUpper.includes('OX') || lotUpper.includes('OXOCAT') || lotUpper.includes('OXOFERT')) return true;
+  }
+  if (searchUpper.includes('PH CONTROL')) {
+    if (lotUpper.includes('CLORHIDRICO') || lotUpper.includes('HCL') || lotUpper.includes('PH CONTROL')) return true;
+  }
+  if (searchUpper.includes('PERCYDE')) {
+    if (lotUpper.includes('PERACETICO') || lotUpper.includes('PERCYDE')) return true;
+  }
+
+  // Partes separadas por '/'
+  const lotParts = lotUpper.split('/').map(p => p.trim());
+  const searchParts = searchUpper.split('/').map(p => p.trim());
+
+  if (lotParts.some(lp => searchParts.some(sp => lp.includes(sp) || sp.includes(lp)))) {
+    return true;
+  }
+
+  // Búsqueda en EQUIVALENCIES_MAP
+  for (const [commercialKey, equivRaw] of Object.entries(EQUIVALENCIES_MAP)) {
+    const commUpper = commercialKey.toUpperCase().trim();
+    if (searchUpper === commUpper || searchUpper.includes(commUpper) || commUpper.includes(searchUpper)) {
+      const equivParts = equivRaw.toUpperCase().split('/').map(p => p.trim());
+      if (lotParts.some(lp => equivParts.some(ep => lp.includes(ep) || ep.includes(lp)))) {
+        return true;
+      }
+    }
+  }
+
+  // Búsqueda en RAW_MATERIALS_LIST
+  for (const rawLine of RAW_MATERIALS_LIST) {
+    const rawUpper = rawLine.toUpperCase();
+    const rawParts = rawUpper.split('/').map(p => p.trim());
+    const lotMatchesLine = lotParts.some(lp => rawParts.some(rp => lp.includes(rp) || rp.includes(lp)));
+    const searchMatchesLine = searchParts.some(sp => rawParts.some(rp => sp.includes(rp) || rp.includes(sp)));
+    if (lotMatchesLine && searchMatchesLine) {
+      return true;
+    }
+  }
+
+  return false;
+};
 
 export default function DirectPackagingOrderScreen({ route, navigation }) {
   const { companyName } = route.params;
@@ -135,17 +201,47 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
 
   useEffect(() => {
     if (selectedLot) {
-      // Si el usuario ya había buscado un PT específico (ej: OXOFERT + o DRY CONTROL), respetarlo
       const userSelectedPT = (selectedRawMaterial || '').trim().toUpperCase();
+
+      // Si el usuario buscó específicamente DRY CONTROL u OXOFERT + o cualquier PT conocido, preseleccionarlo
+      if (userSelectedPT === 'DRY CONTROL') {
+        setCommercialName('DRY CONTROL');
+        return;
+      }
+      if (userSelectedPT === 'OXOFERT +' || userSelectedPT === 'OXOFERT PLUS') {
+        setCommercialName('OXOFERT +');
+        return;
+      }
+      if (userSelectedPT === 'OXOFERT') {
+        setCommercialName('OXOFERT');
+        return;
+      }
+      if (userSelectedPT === 'PH CONTROL') {
+        setCommercialName('PH CONTROL');
+        return;
+      }
       if (PRODUCTS_FINAL_LIST.includes(userSelectedPT)) {
         setCommercialName(userSelectedPT);
         return;
       }
 
       const madre = (selectedLot.itemName || "").trim().toUpperCase();
-      const madreParts = madre.split("/").map(p => p.trim());
 
-      // Buscar si la MP tiene un PT asignado en EQUIVALENCIES_MAP (ej: Clorito de Sodio -> DRY CONTROL, Ácido Clorhídrico -> OXOFERT + / PH CONTROL)
+      // Asignación inteligente por defecto según el lote
+      if (madre.includes('CLORITO') || madre.includes('SERCLOR')) {
+        setCommercialName('DRY CONTROL');
+        return;
+      }
+      if (madre.includes('CLORHIDRICO') || madre.includes('HCL')) {
+        setCommercialName('OXOFERT +');
+        return;
+      }
+      if (madre.includes('PERACETICO')) {
+        setCommercialName('PERCYDE');
+        return;
+      }
+
+      const madreParts = madre.split("/").map(p => p.trim());
       let matchingCommercial = null;
       for (const [key, equivValue] of Object.entries(EQUIVALENCIES_MAP)) {
         const equiv = equivValue.toUpperCase();
@@ -160,7 +256,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
         }
       }
 
-      setCommercialName(matchingCommercial || selectedLot.itemName);
+      setCommercialName(matchingCommercial || selectedLot.itemName.split(' / ')[0].trim());
     } else {
       setCommercialName('');
     }
@@ -170,14 +266,28 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
     if (!selectedLot) return [];
     const madre = (selectedLot.itemName || "").trim().toUpperCase();
     const suggestions = [];
-    const madreParts = madre.split("/").map(p => p.trim());
+
+    // Priorizar productos específicos según la MP / Granel del lote
+    if (madre.includes('CLORITO') || madre.includes('SERCLOR') || madre.includes('DRY')) {
+      suggestions.push('DRY CONTROL');
+    }
+    if (madre.includes('CLORHIDRICO') || madre.includes('HCL') || madre.includes('OXOFERT') || madre.includes('PH CONTROL')) {
+      suggestions.push('OXOFERT +', 'PH CONTROL', 'OXOFERT');
+    }
+    if (madre.includes('PERACETICO') || madre.includes('PERCYDE')) {
+      suggestions.push('PERCYDE');
+    }
+    if (madre.includes('GLICERINA') || madre.includes('GLICEROL')) {
+      suggestions.push('SYNERGYCIDE AB');
+    }
 
     // Si el usuario buscó un PT específico primero, colocarlo arriba
     const userSelectedPT = (selectedRawMaterial || '').trim().toUpperCase();
-    if (userSelectedPT && PRODUCTS_FINAL_LIST.includes(userSelectedPT)) {
-      suggestions.push(userSelectedPT);
+    if (userSelectedPT && (PRODUCTS_FINAL_LIST.includes(userSelectedPT) || userSelectedPT === 'DRY CONTROL' || userSelectedPT === 'OXOFERT +')) {
+      suggestions.unshift(userSelectedPT);
     }
 
+    const madreParts = madre.split("/").map(p => p.trim());
     Object.keys(EQUIVALENCIES_MAP).forEach(key => {
       const equiv = EQUIVALENCIES_MAP[key].toUpperCase();
       const equivParts = equiv.split("/").map(p => p.trim());
@@ -189,10 +299,9 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
       }
     });
 
-    suggestions.push(madre);
     suggestions.push(...PRODUCTS_FINAL_LIST);
 
-    return [...new Set(suggestions)];
+    return [...new Set(suggestions)].filter(Boolean);
   };
 
   const units = Number(formData.unitsProduced) || 0;
@@ -622,13 +731,13 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
           <View style={[styles.card, { zIndex: 2000 }]}>
             <Text style={styles.label}>Buscar Materia Prima o Producto Final (PT)</Text>
             <AutocompleteInput
-              data={RAW_MATERIALS_LIST}
+              data={OED_SEARCH_LIST}
               value={selectedRawMaterial}
               onChangeText={(val) => {
                 setSelectedRawMaterial(val);
                 setSelectedLot(null);
               }}
-              placeholder="Ej: DRY CONTROL, OXOFERT +, ATMP"
+              placeholder="Ej: DRY CONTROL, OXOFERT +, CLORITO DE SODIO"
               icon={<Search color="#94a3b8" size={20} />}
               allowCustom={false}
               containerStyle={{ marginBottom: 20 }}
@@ -642,11 +751,9 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
                 <Text style={styles.emptyText}>Selecciona una Materia Prima o PT para ver sus lotes disponibles.</Text>
               </View>
             ) : (() => {
-              const selectedPrimary = selectedRawMaterial.split(' / ')[0].trim().toUpperCase();
               const filteredLots = approvedLots.filter(lot => {
                 if (!lot.itemName) return false;
-                const lotPrimary = lot.itemName.split(' / ')[0].trim().toUpperCase();
-                return lotPrimary.includes(selectedPrimary) || selectedPrimary.includes(lotPrimary);
+                return doesLotMatchSelection(lot.itemName, selectedRawMaterial);
               });
 
               if (filteredLots.length === 0) {
@@ -702,7 +809,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
                   data={getCommercialNameSuggestions()}
                   value={commercialName}
                   onChangeText={setCommercialName}
-                  placeholder="Ej: ACTION"
+                  placeholder="Ej: DRY CONTROL, OXOFERT +, ACTION"
                   icon={<Tag color="#94a3b8" size={20} />}
                   allowCustom={true}
                 />
