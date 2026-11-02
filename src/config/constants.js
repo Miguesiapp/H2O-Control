@@ -512,6 +512,20 @@ export const getCapacityKeywords = (presentation) => {
   return [...new Set(keywords)];
 };
 
+export const KNOWN_DISTRIBUTOR_BRANDS = [
+  'AGROFONTEZUELA', 'AGROFONTEZUELAS', 'AGF', 'INDRASA', 'AGROCUBE', 'BIOACKER', 'ALIANZA', 'MARISCAL', 'BERN SEED', 'WATERDAY', 'NF'
+];
+
+export const getDistributorFromText = (str) => {
+  if (!str) return null;
+  const upper = String(str).toUpperCase();
+  for (const b of KNOWN_DISTRIBUTOR_BRANDS) {
+    const regex = new RegExp(`(^|\\s|\\-|\\/)${b}(\\s|\\-|\\/|$)`, 'i');
+    if (regex.test(upper)) return b;
+  }
+  return null;
+};
+
 // Generador de palabras clave de nombre para búsqueda difusa de etiquetas considerando sinónimos y equivalencias
 export const getLabelKeywords = (commercialName) => {
   if (!commercialName) return [];
@@ -519,10 +533,13 @@ export const getLabelKeywords = (commercialName) => {
   const baseLabel = getBaseLabelName(upper);
   const keywords = new Set([upper, baseLabel]);
 
-  // Raíz sin marcas / sufijos de distribuidor (ej: "MOMENTUM INDRASA" -> "MOMENTUM")
-  const words = upper.split(/\s+/);
-  if (words.length > 1) {
-    keywords.add(words[0]);
+  // Si el producto no tiene una marca distribuidora, solo buscar el nombre base
+  const dist = getDistributorFromText(upper);
+  if (!dist) {
+    const words = upper.split(/\s+/);
+    if (words.length > 1) {
+      keywords.add(words[0]);
+    }
   }
 
   // Equivalencias registradas en el mapa técnico
@@ -535,7 +552,6 @@ export const getLabelKeywords = (commercialName) => {
 
   checkEquiv(upper);
   checkEquiv(baseLabel);
-  if (words.length > 1) checkEquiv(words[0]);
 
   // Casos específicos conocidos
   if (upper.includes('DRY CONTROL') || upper.includes('SERCLOR') || upper.includes('CLORITO')) {

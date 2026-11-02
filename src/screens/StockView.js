@@ -74,22 +74,25 @@ export default function StockView({ route, navigation }) {
       const currentUser = auth.currentUser?.email || 'Sistema';
       const actionType = difference > 0 ? 'INGRESO_AJUSTE' : 'BAJA_POR_AJUSTE';
       
-      // 1. Auditoría: Registrar movimiento en AuditLog para trazabilidad histórica
+      const effectiveCompany = selectedEditLot.company || (isCentralInsumos ? 'STOCK_CENTRAL_INSUMOS' : companyName);
+      const effectiveStockType = selectedEditLot.stockType || (isCentralInsumos ? 'INSUMOS' : stockType);
+
+      // 1. Auditoría: Registrar movimiento en AuditLog para trazabilidad histórica precisa
       await addDoc(collection(db, "AuditLog"), {
         user: currentUser,
         action: actionType,
-        company: companyName,
+        company: effectiveCompany,
         itemName: (selectedEditLot.itemName || '').toUpperCase(),
         quantity: difference,
-        unit: selectedEditLot.unit || (stockType === 'INSUMOS' ? 'Uds' : (stockType === 'PT' || stockType === 'GRANEL') ? 'Lts' : 'Kg'),
-        stockType: stockType,
+        unit: selectedEditLot.unit || (effectiveStockType === 'INSUMOS' ? 'Uds' : (effectiveStockType === 'PT' || effectiveStockType === 'GRANEL') ? 'Lts' : 'Kg'),
+        stockType: effectiveStockType,
         batchInternal: selectedEditLot.batchInternal || 'S/D',
         loteProveedor: selectedEditLot.batchProvider || selectedEditLot.loteProveedor || 'S/D',
         details: `Ajuste manual de stock desde app (anterior: ${oldQty}, nuevo: ${newQtyNum})`,
         timestamp: serverTimestamp(),
       });
 
-      // 2. Modificación real y definitiva en Inventory (sin fantasmas ni duplicados)
+      // 2. Modificación real y definitiva en Inventory
       const rawDocs = selectedEditLot.rawDocs || [];
       if (rawDocs.length > 0) {
         if (newQtyNum === 0) {
@@ -97,18 +100,19 @@ export default function StockView({ route, navigation }) {
           for (const docId of rawDocs) {
             await deleteDoc(doc(db, "Inventory", docId));
           }
-        } else {
-          // Actualizamos el documento principal con la nueva cantidad exacta
-          const mainDocId = rawDocs[0];
-          await updateDoc(doc(db, "Inventory", mainDocId), {
+        } else if (rawDocs.length === 1) {
+          // Un solo documento: fijamos la cantidad exacta
+          await updateDoc(doc(db, "Inventory", rawDocs[0]), {
             quantity: newQtyNum,
             lastUpdated: serverTimestamp()
           });
-
-          // Si hubiera documentos fragmentados de este mismo lote, los eliminamos para evitar duplicados
-          for (let i = 1; i < rawDocs.length; i++) {
-            await deleteDoc(doc(db, "Inventory", rawDocs[i]));
-          }
+        } else {
+          // Múltiples documentos agrupados bajo este lote: aplicamos la diferencia al doc principal sin destruir los demás registros
+          const mainDocId = rawDocs[0];
+          await updateDoc(doc(db, "Inventory", mainDocId), {
+            quantity: increment(difference),
+            lastUpdated: serverTimestamp()
+          });
         }
       } else if (selectedEditLot.id) {
         if (newQtyNum === 0) {
@@ -144,15 +148,18 @@ export default function StockView({ route, navigation }) {
       setIsProcessingLot(true);
       const currentUser = auth.currentUser?.email || 'Sistema';
       
+      const effectiveCompany = selectedDeleteLot.company || (isCentralInsumos ? 'STOCK_CENTRAL_INSUMOS' : companyName);
+      const effectiveStockType = selectedDeleteLot.stockType || (isCentralInsumos ? 'INSUMOS' : stockType);
+
       // 1. Auditoría: Registrar la baja completa en AuditLog para que quede asentado en Historial
       await addDoc(collection(db, "AuditLog"), {
         user: currentUser,
         action: 'ELIMINACION_LOTE_STOCK',
-        company: companyName,
+        company: effectiveCompany,
         itemName: (selectedDeleteLot.itemName || '').toUpperCase(),
         quantity: -Math.abs(selectedDeleteLot.quantity || 0),
-        unit: selectedDeleteLot.unit || (stockType === 'INSUMOS' ? 'Uds' : (stockType === 'PT' || stockType === 'GRANEL') ? 'Lts' : 'Kg'),
-        stockType: stockType,
+        unit: selectedDeleteLot.unit || (effectiveStockType === 'INSUMOS' ? 'Uds' : (effectiveStockType === 'PT' || effectiveStockType === 'GRANEL') ? 'Lts' : 'Kg'),
+        stockType: effectiveStockType,
         batchInternal: selectedDeleteLot.batchInternal || 'S/D',
         loteProveedor: selectedDeleteLot.batchProvider || selectedDeleteLot.loteProveedor || 'S/D',
         details: 'Eliminación manual completa de lote desde StockView',
@@ -362,7 +369,7 @@ export default function StockView({ route, navigation }) {
     const groupKey = normalizeString(rawName); // Llave unificada
 
     const rawBatch = item.batchInternal || 'S/D';
-    const batchKey = normalizeString(rawBatch);
+    const batchKey = (rawBatch && rawBatch !== 'S/D' && rawBatch !== 'SIN DATO') ? normalizeString(rawBatch) : item.id;
 
     if (!acc[groupKey]) {
       acc[groupKey] = {

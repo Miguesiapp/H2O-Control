@@ -1,6 +1,49 @@
 import { db } from '../config/firebase';
 import { collection, addDoc, updateDoc, doc, increment, serverTimestamp, query, where, getDocs, getDoc, deleteDoc } from 'firebase/firestore';
-import { PRODUCT_SYNONYMS } from '../config/constants';
+import { PRODUCT_SYNONYMS, getDistributorFromText } from '../config/constants';
+
+// Helper para verificar coincidencia difusa precisa (especialmente etiquetas e insumos con marcas de clientes)
+export const matchesFuzzyItem = (docItemName, fuzzyFilter) => {
+  if (!docItemName || !fuzzyFilter) return false;
+  const name = String(docItemName).toUpperCase();
+
+  // Si es búsqueda de etiquetas: ['ETIQUETA', capacityKeywords, labelKeywords]
+  const isLabelSearch = Array.isArray(fuzzyFilter) && fuzzyFilter.length > 0 && String(fuzzyFilter[0]).toUpperCase() === 'ETIQUETA';
+  if (isLabelSearch) {
+    // 1. Debe ser una etiqueta
+    if (!name.includes('ETIQUETA') && !name.includes('ETIQ')) return false;
+
+    // 2. Capacidad debe coincidir
+    const capKeywords = Array.isArray(fuzzyFilter[1]) ? fuzzyFilter[1] : [fuzzyFilter[1]];
+    const hasCap = capKeywords.some(c => c && name.includes(String(c).toUpperCase()));
+    if (!hasCap) return false;
+
+    // 3. Marca distribuidora: si el producto busca una marca (ej: AGROFONTEZUELA), la etiqueta debe coincidir
+    const targetKeywords = Array.isArray(fuzzyFilter[2]) ? fuzzyFilter[2] : [fuzzyFilter[2]];
+    const targetDist = targetKeywords.map(k => getDistributorFromText(k)).find(Boolean) || null;
+    const docDist = getDistributorFromText(name);
+
+    if (targetDist && docDist !== targetDist) return false;
+    if (!targetDist && docDist) return false; // Producto genérico nunca debe consumir etiquetas de un cliente o distribuidor
+
+    // 4. Palabra clave del producto
+    return targetKeywords.some(subKw => {
+      if (!subKw) return false;
+      const cleanSub = String(subKw).toUpperCase().replace(new RegExp(`\\b${targetDist || ''}\\b`, 'gi'), '').trim();
+      return name.includes(String(subKw).toUpperCase()) || (cleanSub && name.includes(cleanSub));
+    });
+  }
+
+  // Comportamiento general para otros insumos (Bidones, Cajas) y productos
+  return fuzzyFilter.filter(Boolean).every(kw => {
+    if (Array.isArray(kw)) {
+      const validSubs = kw.filter(Boolean);
+      if (validSubs.length === 0) return true;
+      return validSubs.some(subKw => name.includes(String(subKw).toUpperCase()));
+    }
+    return name.includes(String(kw).toUpperCase());
+  });
+};
 
 // Helper: Elimina el documento de inventario si la cantidad llega a 0 o menos
 const checkAndCleanupEmptyStock = async (docRef) => {
@@ -282,15 +325,7 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
         const pendingStatuses = ['PENDIENTE', 'PENDIENTE_LABORATORIO'];
         if (!isDocInsumo && pendingStatuses.includes(doc.status)) return false;
         if (isFuzzy) {
-          const name = (doc.itemName || '').toUpperCase();
-          return itemName.filter(Boolean).every(kw => {
-            if (Array.isArray(kw)) {
-              const validSubs = kw.filter(Boolean);
-              if (validSubs.length === 0) return true;
-              return validSubs.some(subKw => name.includes(String(subKw).toUpperCase()));
-            }
-            return name.includes(String(kw).toUpperCase());
-          });
+          return matchesFuzzyItem(doc.itemName, itemName);
         }
         return true;
       });
@@ -320,15 +355,7 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
             const pendingStatuses = ['PENDIENTE', 'PENDIENTE_LABORATORIO'];
             if (!isDocInsumo && pendingStatuses.includes(doc.status)) return false;
             if (isFuzzy) {
-              const name = (doc.itemName || '').toUpperCase();
-              return itemName.filter(Boolean).every(kw => {
-                if (Array.isArray(kw)) {
-                  const validSubs = kw.filter(Boolean);
-                  if (validSubs.length === 0) return true;
-                  return validSubs.some(subKw => name.includes(String(subKw).toUpperCase()));
-                }
-                return name.includes(String(kw).toUpperCase());
-              });
+              return matchesFuzzyItem(doc.itemName, itemName);
             }
             return true;
           });
@@ -415,15 +442,7 @@ export const checkTotalStock = async (company, itemName) => {
         if (!isDocInsumo && pendingStatuses.includes(data.status)) return;
 
         if (isFuzzy) {
-          const name = (data.itemName || '').toUpperCase();
-          if (itemName.filter(Boolean).every(kw => {
-            if (Array.isArray(kw)) {
-              const validSubs = kw.filter(Boolean);
-              if (validSubs.length === 0) return true;
-              return validSubs.some(subKw => name.includes(String(subKw).toUpperCase()));
-            }
-            return name.includes(String(kw).toUpperCase());
-          })) {
+          if (matchesFuzzyItem(data.itemName, itemName)) {
             subTotal += Number(data.quantity);
           }
         } else {
