@@ -12,9 +12,7 @@ import { ChevronLeft, ArrowRightLeft, Package, CheckCircle2, Box } from 'lucide-
 const COMPANIES = ["H2Ocontrol", "WaterDay", "Alianza", "Agrocube", "BioAcker", "AgroFontezuela"];
 const STOCK_TYPES = [
   { id: 'FINAL', label: 'Envasado' },
-  { id: 'GRANEL', label: 'Granel' },
-  { id: 'INSUMOS', label: 'Insumos' },
-  { id: 'MP', label: 'Materia Prima' }
+  { id: 'GRANEL', label: 'Granel' }
 ];
 
 export default function InterCompanyTransferScreen({ navigation }) {

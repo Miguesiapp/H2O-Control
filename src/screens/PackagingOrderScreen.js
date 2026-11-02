@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
 import { collection, query, where, getDocs, onSnapshot, serverTimestamp, doc, updateDoc, addDoc, increment } from 'firebase/firestore';
-import { registerMovement, createOrder, updateOrderStatus, checkTotalStock } from '../services/logisticsService'; 
+import { registerMovement, createOrder, updateOrderStatus, checkTotalStock, matchesFuzzyItem } from '../services/logisticsService'; 
 import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box, Droplet, Building2, Tag, Plus, ClipboardList, Play, CheckSquare, XCircle, ChevronDown, ChevronUp, Printer, ShieldAlert, FileText, X } from 'lucide-react-native';
 import AutocompleteInput from '../components/AutocompleteInput';
 import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS, getCommercialNamesForGranel, getCapacityKeywords, getLabelKeywords } from '../config/constants';
@@ -498,14 +498,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
       let matchedDoc = null;
       for (const d of snap.docs) {
         const data = d.data();
-        const name = (data.itemName || '').toUpperCase();
-        const matches = fuzzyKeywords.every(kw => {
-          if (Array.isArray(kw)) {
-            return kw.some(subKw => name.includes(subKw.toUpperCase()));
-          }
-          return name.includes(kw.toUpperCase());
-        });
-        if (matches) {
+        if (matchesFuzzyItem(data.itemName, fuzzyKeywords)) {
           matchedDoc = { id: d.id, ...data };
           break;
         }

@@ -380,6 +380,8 @@ export default function StockView({ route, navigation }) {
         minStock: item.minStock || 100,
         lotesMap: {} 
       };
+    } else if (item.minStock && acc[groupKey].minStock === 100) {
+      acc[groupKey].minStock = item.minStock;
     }
     acc[groupKey].quantity += Number(item.quantity) || 0;
 

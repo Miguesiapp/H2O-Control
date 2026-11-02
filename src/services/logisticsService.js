@@ -163,11 +163,16 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
           const existingName = (existingItem.itemName || '').toUpperCase();
           const targetName = (itemNameUpper || '').toUpperCase();
 
+          const existingParts = existingName.split(' / ').map(p => p.trim());
+          const targetParts = targetName.split(' / ').map(p => p.trim());
+
           const isSameOrSynonym = 
             existingName === targetName ||
+            existingParts.includes(targetName) ||
+            targetParts.includes(existingName) ||
             (PRODUCT_SYNONYMS[targetName] && PRODUCT_SYNONYMS[targetName] === PRODUCT_SYNONYMS[existingName]) ||
-            existingName.includes(targetName) ||
-            targetName.includes(existingName);
+            (PRODUCT_SYNONYMS[targetName] && existingParts.includes(PRODUCT_SYNONYMS[targetName])) ||
+            (PRODUCT_SYNONYMS[existingName] && targetParts.includes(PRODUCT_SYNONYMS[existingName]));
 
           if (isSameOrSynonym) {
             querySnapshot = snapFallback;
@@ -183,6 +188,20 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
           lastUpdated: serverTimestamp()
         });
       } else {
+        // Buscar si ya existe algún documento previo de este producto para heredar su minStock configurado
+        let inheritedMinStock = data.minStock;
+        if (!inheritedMinStock) {
+          const qMin = query(
+            inventoryRef,
+            where("company", "==", effectiveCompany),
+            where("itemName", "==", itemNameUpper)
+          );
+          const snapMin = await getDocs(qMin);
+          if (!snapMin.empty) {
+            inheritedMinStock = snapMin.docs[0].data().minStock;
+          }
+        }
+
         // Lote totalmente nuevo (Ingresos, Cargas Iniciales, OP nuevas)
         await addDoc(inventoryRef, {
           ...data,
@@ -191,6 +210,7 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
           quantity: numericQty,
           stockType: effectiveStockType, 
           status: effectiveStatus || 'APTO',
+          minStock: inheritedMinStock || 100,
           createdAt: serverTimestamp(),
           lastUpdated: serverTimestamp()
         });

@@ -403,6 +403,8 @@ export const EQUIVALENCIES_MAP = {
   'GRANEL RESTART M6': 'GRANEL RESTART M6 / RESTART M6 / GRANEL RESTART / RESTART',
 };
 
+export const PRODUCT_SYNONYMS = EQUIVALENCIES_MAP;
+
 // Helper para obtener la lista exacta de nombres comerciales dado un granel seleccionado
 export const getCommercialNamesForGranel = (granelName) => {
   if (!granelName) return [];
