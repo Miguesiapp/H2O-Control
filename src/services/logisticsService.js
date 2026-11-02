@@ -1,5 +1,6 @@
 import { db } from '../config/firebase';
 import { collection, addDoc, updateDoc, doc, increment, serverTimestamp, query, where, getDocs, getDoc, deleteDoc } from 'firebase/firestore';
+import { PRODUCT_SYNONYMS } from '../config/constants';
 
 // Helper: Elimina el documento de inventario si la cantidad llega a 0 o menos
 const checkAndCleanupEmptyStock = async (docRef) => {
@@ -71,12 +72,12 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
     const isItemInsumo = 
       data.stockType === 'INSUMOS' || 
       data.stockType === 'ENVASES' ||
-      data.category === 'Etiquetas' || 
-      data.category === 'Bidones' || 
-      data.category === 'Cajas' ||
-      itemNameStr.startsWith('ETIQUETA') || 
-      itemNameStr.startsWith('BIDON') || 
-      itemNameStr.startsWith('CAJA');
+      (data.category || '').toUpperCase().includes('ETIQUET') || 
+      (data.category || '').toUpperCase().includes('BIDON') || 
+      (data.category || '').toUpperCase().includes('CAJA') ||
+      itemNameStr.includes('ETIQUET') || 
+      itemNameStr.includes('BIDON') || 
+      itemNameStr.includes('CAJA');
 
     let effectiveCompany = company;
     let effectiveStockType = data.stockType || 'MP';
@@ -106,7 +107,8 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
       
       let querySnapshot = await getDocs(q);
 
-      if (querySnapshot.empty && data.batchInternal && data.batchInternal !== 'S/D') {
+      // Fallback SOLO para productos no-insumo (ej: graneles o MP) cuando batch coincide Y los nombres son sinónimos comprobados
+      if (querySnapshot.empty && !isItemInsumo && data.batchInternal && data.batchInternal !== 'S/D') {
         const qFallback = query(
           inventoryRef, 
           where("company", "==", effectiveCompany), 
@@ -114,7 +116,19 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
         );
         const snapFallback = await getDocs(qFallback);
         if (!snapFallback.empty) {
-          querySnapshot = snapFallback;
+          const existingItem = snapFallback.docs[0].data();
+          const existingName = (existingItem.itemName || '').toUpperCase();
+          const targetName = (itemNameUpper || '').toUpperCase();
+
+          const isSameOrSynonym = 
+            existingName === targetName ||
+            (PRODUCT_SYNONYMS[targetName] && PRODUCT_SYNONYMS[targetName] === PRODUCT_SYNONYMS[existingName]) ||
+            existingName.includes(targetName) ||
+            targetName.includes(existingName);
+
+          if (isSameOrSynonym) {
+            querySnapshot = snapFallback;
+          }
         }
       }
 

@@ -32,8 +32,8 @@ export default function StockView({ route, navigation }) {
   const [labelsCount, setLabelsCount] = useState('1');
   const [qtyPerLabel, setQtyPerLabel] = useState('');
 
-  // Tab activo para Insumos (Bidones, Cajas, Etiquetas)
-  const [activeInsumoTab, setActiveInsumoTab] = useState('BIDONES');
+  // Tab activo para Insumos (Bidones, Cajas, Etiquetas, Todos) - Por defecto TODOS para visibilidad inmediata
+  const [activeInsumoTab, setActiveInsumoTab] = useState('TODOS');
 
   // Estado para los acordeones
   const [expandedItems, setExpandedItems] = useState([]);
@@ -235,9 +235,9 @@ export default function StockView({ route, navigation }) {
           cat.includes('ETIQUET') || 
           cat.includes('BIDON') || 
           cat.includes('CAJA') ||
-          itemName.startsWith('ETIQUETA') || 
-          itemName.startsWith('BIDON') || 
-          itemName.startsWith('CAJA');
+          itemName.includes('ETIQUET') || 
+          itemName.includes('BIDON') || 
+          itemName.includes('CAJA');
 
         if (isCentralInsumos) {
           if (!isDocInsumo) return;
@@ -314,9 +314,26 @@ export default function StockView({ route, navigation }) {
            normalizeString(item.providerName).includes(searchNormalized);
   });
 
+  // Conteo de insumos por categoría para los badges de las pestañas
+  const insumoCounts = React.useMemo(() => {
+    if (!isCentralInsumos) return { bidones: 0, cajas: 0, etiquetas: 0, todos: items.length };
+    let bidones = 0, cajas = 0, etiquetas = 0;
+    items.forEach(item => {
+      const name = (item.itemName || item.productName || '').toUpperCase();
+      const cat = (item.category || '').toUpperCase();
+      if (name.includes('BIDON') || cat.includes('BIDON')) bidones++;
+      else if (name.includes('CAJA') || cat.includes('CAJA')) cajas++;
+      else if (name.includes('ETIQUET') || name.includes('ETIQ') || name.includes('STICKER') || cat.includes('ETIQUET')) etiquetas++;
+    });
+    return { bidones, cajas, etiquetas, todos: items.length };
+  }, [items, isCentralInsumos]);
+
   let displayedItems = filteredItems;
   if (isCentralInsumos) {
-    if (activeInsumoTab === 'BIDONES') {
+    if (searchQuery.trim()) {
+      // Si el usuario busca por texto, buscar a lo largo de TODOS los insumos
+      displayedItems = filteredItems;
+    } else if (activeInsumoTab === 'BIDONES') {
       displayedItems = filteredItems.filter(item => {
         const name = (item.itemName || item.productName || '').toUpperCase();
         const cat = (item.category || '').toUpperCase();
@@ -513,11 +530,33 @@ export default function StockView({ route, navigation }) {
       {isCentralInsumos && (
         <View style={styles.tabsContainer}>
           <TouchableOpacity 
+            style={[styles.tabBtn, activeInsumoTab === 'TODOS' && styles.tabActive]}
+            onPress={() => setActiveInsumoTab('TODOS')}
+          >
+            <Boxes color={activeInsumoTab === 'TODOS' ? '#fff' : '#64748b'} size={16} />
+            <Text style={[styles.tabText, activeInsumoTab === 'TODOS' && styles.tabTextActive]}>
+              TODOS ({insumoCounts.todos})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.tabBtn, activeInsumoTab === 'ETIQUETAS' && styles.tabActive]}
+            onPress={() => setActiveInsumoTab('ETIQUETAS')}
+          >
+            <Tag color={activeInsumoTab === 'ETIQUETAS' ? '#fff' : '#64748b'} size={16} />
+            <Text style={[styles.tabText, activeInsumoTab === 'ETIQUETAS' && styles.tabTextActive]}>
+              ETIQUETAS ({insumoCounts.etiquetas})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
             style={[styles.tabBtn, activeInsumoTab === 'BIDONES' && styles.tabActive]}
             onPress={() => setActiveInsumoTab('BIDONES')}
           >
             <Droplet color={activeInsumoTab === 'BIDONES' ? '#fff' : '#64748b'} size={16} />
-            <Text style={[styles.tabText, activeInsumoTab === 'BIDONES' && styles.tabTextActive]}>BIDONES</Text>
+            <Text style={[styles.tabText, activeInsumoTab === 'BIDONES' && styles.tabTextActive]}>
+              BIDONES ({insumoCounts.bidones})
+            </Text>
           </TouchableOpacity>
           
           <TouchableOpacity 
@@ -525,23 +564,9 @@ export default function StockView({ route, navigation }) {
             onPress={() => setActiveInsumoTab('CAJAS')}
           >
             <Box color={activeInsumoTab === 'CAJAS' ? '#fff' : '#64748b'} size={16} />
-            <Text style={[styles.tabText, activeInsumoTab === 'CAJAS' && styles.tabTextActive]}>CAJAS</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.tabBtn, activeInsumoTab === 'ETIQUETAS' && styles.tabActive]}
-            onPress={() => setActiveInsumoTab('ETIQUETAS')}
-          >
-            <Tag color={activeInsumoTab === 'ETIQUETAS' ? '#fff' : '#64748b'} size={16} />
-            <Text style={[styles.tabText, activeInsumoTab === 'ETIQUETAS' && styles.tabTextActive]}>ETIQUETAS</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={[styles.tabBtn, activeInsumoTab === 'TODOS' && styles.tabActive]}
-            onPress={() => setActiveInsumoTab('TODOS')}
-          >
-            <Boxes color={activeInsumoTab === 'TODOS' ? '#fff' : '#64748b'} size={16} />
-            <Text style={[styles.tabText, activeInsumoTab === 'TODOS' && styles.tabTextActive]}>TODOS</Text>
+            <Text style={[styles.tabText, activeInsumoTab === 'CAJAS' && styles.tabTextActive]}>
+              CAJAS ({insumoCounts.cajas})
+            </Text>
           </TouchableOpacity>
         </View>
       )}
