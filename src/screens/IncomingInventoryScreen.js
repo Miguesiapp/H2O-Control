@@ -16,7 +16,7 @@ import { Modal } from 'react-native';
 import { 
   RAW_MATERIALS_LIST, PROVIDERS_LIST, 
   ETIQUETA_CAPACITIES, BIDON_CAPACITIES, CAJA_FORMATS, PRODUCTS_FINAL_LIST, generateBatchId,
-  BIDON_BRANDS, CAJA_BRANDS, getBaseLabelName
+  BIDON_BRANDS, CAJA_BRANDS, getBaseLabelName, normalizeEtiquetaName, normalizeCapacity
 } from '../config/constants';
 
 export default function IncomingInventoryScreen({ navigation }) {
@@ -41,6 +41,18 @@ export default function IncomingInventoryScreen({ navigation }) {
     brandCaja: 'H2O CON LOGO',
     brandBidon: 'H2O'
   });
+
+  const handleCategoryChange = (newCat) => {
+    setCategory(newCat);
+    if (newCat === 'Etiquetas') {
+      const currentCap = formData.capacity || '20';
+      const norm = normalizeCapacity(currentCap);
+      setFormData(prev => ({ ...prev, capacity: norm }));
+    } else if (newCat === 'Bidones') {
+      const currentCap = (formData.capacity || '20').replace(/L/gi, '');
+      setFormData(prev => ({ ...prev, capacity: currentCap || '20' }));
+    }
+  };
 
   // Materiales dinámicos
   const [customMaterials, setCustomMaterials] = useState([]);
@@ -121,17 +133,9 @@ export default function IncomingInventoryScreen({ navigation }) {
       let finalUnit = 'Uds';
       
       if (!isMP) {
-        const rawCap = String(formData.capacity || '20').trim();
-        const numCap = rawCap.replace(/[^0-9]/g, '');
-        const brandB = formData.brandBidon || 'H2O';
-        const brandC = formData.brandCaja || 'H2O CON LOGO';
-
-        if (category === 'Bidones') finalItemName = `BIDON ${numCap || '20'}L ${brandB}`;
-        if (category === 'Cajas') finalItemName = `CAJA ${formData.format || 'x5'} ${brandC}`;
-        if (category === 'Etiquetas') {
-          const capFormatted = rawCap.toLowerCase().includes('cc') ? rawCap : `${numCap || '20'}L`;
-          finalItemName = `ETIQUETA ${capFormatted} ${formData.itemName.trim().toUpperCase()}`;
-        }
+        if (category === 'Bidones') finalItemName = `BIDON ${formData.capacity}L ${formData.brandBidon}`;
+        if (category === 'Cajas') finalItemName = `CAJA ${formData.format} ${formData.brandCaja}`;
+        if (category === 'Etiquetas') finalItemName = normalizeEtiquetaName(formData.capacity, formData.itemName);
       } else {
         finalUnit = unitType === 'Kilos' ? 'Kg' : 'Lts';
       }
@@ -198,7 +202,16 @@ export default function IncomingInventoryScreen({ navigation }) {
   };
 
   const INSUMOS_CATEGORIES = ['Bidones', 'Cajas', 'Etiquetas'];
-  const UNIQUE_LABELS_LIST = [...new Set([...PRODUCTS_FINAL_LIST.map(getBaseLabelName), 'XTM'])].sort();
+  
+  // Catálogo completo de etiquetas que incluye PT, nombres base de PT, MP que se envasan directo y materiales personalizados
+  const rawMaterialLabels = RAW_MATERIALS_LIST.flatMap(rm => rm.split(' / ').map(p => p.trim()));
+  const UNIQUE_LABELS_LIST = [...new Set([
+    ...PRODUCTS_FINAL_LIST,
+    ...PRODUCTS_FINAL_LIST.map(getBaseLabelName),
+    ...rawMaterialLabels,
+    ...customMaterials,
+    'XTM'
+  ])].filter(Boolean).sort();
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -244,7 +257,7 @@ export default function IncomingInventoryScreen({ navigation }) {
                   key={cat} 
                   activeOpacity={0.7}
                   style={[styles.catButton, category === cat && styles.catButtonActive]}
-                  onPress={() => setCategory(cat)}
+                  onPress={() => handleCategoryChange(cat)}
                 >
                   <Text style={[styles.catText, category === cat && styles.catTextActive]}>
                     {cat === 'Bidones' ? 'Bidones (Q1-B)' : cat === 'Cajas' ? 'Cajas (Q1-C)' : cat}
@@ -284,15 +297,15 @@ export default function IncomingInventoryScreen({ navigation }) {
               <Text style={styles.label}>Capacidad de la Etiqueta</Text>
               <View style={styles.chipRow}>
                 {ETIQUETA_CAPACITIES.map(cap => {
-                  const isActive = formData.capacity === cap || (cap.endsWith('L') && formData.capacity === cap.replace('L', ''));
+                  const isSelected = formData.capacity === cap || normalizeCapacity(formData.capacity) === cap;
                   return (
                     <TouchableOpacity 
                       key={cap} 
-                      style={[styles.chip, isActive && styles.chipActive]}
+                      style={[styles.chip, isSelected && styles.chipActive]}
                       onPress={() => setFormData({...formData, capacity: cap})}
                     >
-                      <Droplet color={isActive ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
-                      <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{cap}</Text>
+                      <Droplet color={isSelected ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
+                      <Text style={[styles.chipText, isSelected && styles.chipTextActive]}>{cap}</Text>
                     </TouchableOpacity>
                   );
                 })}

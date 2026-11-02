@@ -1,20 +1,27 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, Text, StyleSheet, ScrollView, TextInput, 
+import {
+  View, Text, StyleSheet, ScrollView, TextInput,
   TouchableOpacity, Alert, StatusBar, ActivityIndicator, FlatList, Modal, Platform
 } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
 import { collection, query, where, getDocs, onSnapshot, serverTimestamp } from 'firebase/firestore';
-import { registerMovement, createOrder, updateOrderStatus, checkTotalStock } from '../services/logisticsService'; 
+import { registerMovement, createOrder, updateOrderStatus, checkTotalStock } from '../services/logisticsService';
 import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box, Droplet, Building2, Tag, Plus, ClipboardList, Play, CheckSquare, XCircle, ChevronDown, ChevronUp, Printer, Search } from 'lucide-react-native';
 import AutocompleteInput from '../components/AutocompleteInput';
-import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS, RAW_MATERIALS_LIST } from '../config/constants';
+import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS, RAW_MATERIALS_LIST, getCapacityKeywords, getLabelKeywords } from '../config/constants';
 import { canCreateOrders } from '../config/permissions';
 import { printOrder } from '../services/printService';
 
 const BIDON_CAPACITIES = ['20', '10', '5', '1'];
+
+const OED_SEARCH_LIST = [
+  ...new Set([
+    ...PRODUCTS_FINAL_LIST,
+    ...RAW_MATERIALS_LIST
+  ])
+].sort();
 
 export default function DirectPackagingOrderScreen({ route, navigation }) {
   const { companyName } = route.params;
@@ -41,7 +48,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
       const companyOrders = data.filter(o => o.data?.company === companyName);
       setOrders(companyOrders);
       setLoadingOrders(false);
-      
+
       if (selectedOrder) {
         const updated = companyOrders.find(o => o.id === selectedOrder.id);
         if (updated) setSelectedOrder(updated);
@@ -64,16 +71,16 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
   const [selectedRawMaterial, setSelectedRawMaterial] = useState('');
   const [commercialName, setCommercialName] = useState('');
   const [expandedGroups, setExpandedGroups] = useState([]);
-  
+
   const toggleGroup = (itemName) => {
     setExpandedGroups(prev => prev.includes(itemName) ? prev.filter(name => name !== itemName) : [...prev, itemName]);
   };
-  
+
   const [formData, setFormData] = useState({
-    presentation: '20', 
-    unitsProduced: '',  
+    presentation: '20',
+    unitsProduced: '',
     brandBidon: 'H2O',
-    brandCaja: 'H2O CON LOGO', 
+    brandCaja: 'H2O CON LOGO',
   });
 
   const [customMaterials, setCustomMaterials] = useState([]);
@@ -94,24 +101,25 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
   useEffect(() => {
     const fetchApprovedLots = async () => {
       try {
+        const companiesToQuery = (companyName === 'H2O' || companyName === 'H2Ocontrol')
+          ? ['H2O', 'H2Ocontrol']
+          : [companyName];
+
         const qGranel = query(
           collection(db, "Inventory"),
-          where("company", "==", companyName),
+          where("company", "in", companiesToQuery),
           where("stockType", "==", "GRANEL"),
-          where("quantity", ">", 0)       
+          where("quantity", ">", 0)
         );
         const qMP = query(
           collection(db, "Inventory"),
           where("company", "==", "STOCK_CENTRAL_MP"),
           where("stockType", "==", "MP"),
-          where("quantity", ">", 0)       
+          where("quantity", ">", 0)
         );
-        
+
         const [snapGranel, snapMP] = await Promise.all([getDocs(qGranel), getDocs(qMP)]);
-        const BLOCKED_STATUSES = ['PENDIENTE', 'PENDIENTE_LABORATORIO', 'RECHAZADO'];
-        const lots = [...snapGranel.docs, ...snapMP.docs]
-          .map(doc => ({ id: doc.id, ...doc.data() }))
-          .filter(item => (item.quantity || 0) > 0 && !BLOCKED_STATUSES.includes(item.status));
+        const lots = [...snapGranel.docs, ...snapMP.docs].map(doc => ({ id: doc.id, ...doc.data() }));
         setApprovedLots(lots);
       } catch (error) {
         console.error(error);
@@ -127,31 +135,63 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
 
   useEffect(() => {
     if (selectedLot) {
-      setCommercialName(selectedLot.itemName);
+      // Si el usuario ya había buscado un PT específico (ej: OXOFERT + o DRY CONTROL), respetarlo
+      const userSelectedPT = (selectedRawMaterial || '').trim().toUpperCase();
+      if (PRODUCTS_FINAL_LIST.includes(userSelectedPT)) {
+        setCommercialName(userSelectedPT);
+        return;
+      }
+
+      const madre = (selectedLot.itemName || "").trim().toUpperCase();
+      const madreParts = madre.split("/").map(p => p.trim());
+
+      // Buscar si la MP tiene un PT asignado en EQUIVALENCIES_MAP (ej: Clorito de Sodio -> DRY CONTROL, Ácido Clorhídrico -> OXOFERT + / PH CONTROL)
+      let matchingCommercial = null;
+      for (const [key, equivValue] of Object.entries(EQUIVALENCIES_MAP)) {
+        const equiv = equivValue.toUpperCase();
+        const equivParts = equiv.split("/").map(p => p.trim());
+        if (
+          madreParts.some(mp => equivParts.includes(mp)) ||
+          equivParts.some(ep => madreParts.includes(ep)) ||
+          madre === equiv
+        ) {
+          matchingCommercial = key;
+          break;
+        }
+      }
+
+      setCommercialName(matchingCommercial || selectedLot.itemName);
     } else {
       setCommercialName('');
     }
-  }, [selectedLot]);
+  }, [selectedLot, selectedRawMaterial]);
 
   const getCommercialNameSuggestions = () => {
     if (!selectedLot) return [];
     const madre = (selectedLot.itemName || "").trim().toUpperCase();
-    const suggestions = [madre];
+    const suggestions = [];
     const madreParts = madre.split("/").map(p => p.trim());
-    
+
+    // Si el usuario buscó un PT específico primero, colocarlo arriba
+    const userSelectedPT = (selectedRawMaterial || '').trim().toUpperCase();
+    if (userSelectedPT && PRODUCTS_FINAL_LIST.includes(userSelectedPT)) {
+      suggestions.push(userSelectedPT);
+    }
+
     Object.keys(EQUIVALENCIES_MAP).forEach(key => {
       const equiv = EQUIVALENCIES_MAP[key].toUpperCase();
       const equivParts = equiv.split("/").map(p => p.trim());
       const matches = madreParts.some(mp => equivParts.includes(mp)) ||
-                      equivParts.some(ep => madreParts.includes(ep)) ||
-                      madre === equiv;
+        equivParts.some(ep => madreParts.includes(ep)) ||
+        madre === equiv;
       if (matches) {
         suggestions.push(key);
       }
     });
-    
+
+    suggestions.push(madre);
     suggestions.push(...PRODUCTS_FINAL_LIST);
-    
+
     return [...new Set(suggestions)];
   };
 
@@ -160,13 +200,13 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
   const litersToConsume = units * presentation;
   const remainingLiters = selectedLot ? (selectedLot.quantity - litersToConsume) : 0;
   const isOverdraft = selectedLot && remainingLiters < 0;
-  
+
   const isContainer = presentation === 1000;
   const canUseBox = !isContainer && (presentation === 5 || presentation === 1);
   const appliesBox = canUseBox && formData.brandCaja !== 'SIN CAJAS';
   let requiredBoxes = 0;
   let boxFormat = '';
-  
+
   if (presentation === 5) {
     requiredBoxes = Math.ceil(units / 4);
     boxFormat = 'x5';
@@ -183,12 +223,12 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
 
     try {
       setIsSubmitting(true);
-      
+
       // Variables de Búsqueda Generalizada (Fuzzy)
-      // BIDONES Y ETIQUETAS usan litros (ej: 5L, 5 L, 5 LTS) pero NO X5
-      const capacityKeywords = [`${presentation}L`, `${presentation} L`, `${presentation} LTS`, `${presentation}LTS`, `${presentation}-L`];
+      // BIDONES Y ETIQUETAS usan litros o cc con variantes
+      const capacityKeywords = getCapacityKeywords(presentation);
       const fuzzyBidon = ['BIDON', capacityKeywords, formData.brandBidon];
-      
+
       // CAJAS usan formato multiplicador y litros como fallback
       const boxKeywords = presentation === 5
         ? ['x5', 'X5', 'X 5', 'x4', 'X4', 'X 4', '5L', '5 L']
@@ -196,7 +236,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
       const fuzzyCaja = appliesBox ? ['CAJA', boxKeywords, formData.brandCaja] : null;
 
       const baseLabelName = getBaseLabelName(commercialName);
-      const labelKeywords = [baseLabelName, commercialName];
+      const labelKeywords = getLabelKeywords(commercialName);
       const fuzzyEtiqueta = ['ETIQUETA', capacityKeywords, labelKeywords];
 
       if (isContainer) {
@@ -211,7 +251,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
         const etiquetaStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyEtiqueta);
 
         const maxUnitsGranel = Math.floor(selectedLot.quantity / presentation);
-        
+
         let maxUnitsCaja = Infinity;
         if (presentation === 5) maxUnitsCaja = cajaStock * 4;
         else if (presentation === 1) maxUnitsCaja = cajaStock * 12;
@@ -220,23 +260,23 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
 
         if (units > maxPossibleUnits) {
           setIsSubmitting(false);
-          
+
           let limitReason = 'la Materia Prima disponible';
           if (maxPossibleUnits === bidonStock) limitReason = `los Bidones disponibles (${bidonStock})`;
           else if (maxPossibleUnits === maxUnitsCaja) limitReason = `las Cajas disponibles (${cajaStock})`;
           else if (maxPossibleUnits === etiquetaStock) limitReason = `las Etiquetas disponibles (${etiquetaStock})`;
-          
+
           if (maxPossibleUnits > 0) {
             if (Platform.OS === 'web') {
               const confirm = window.confirm(`Stock Insuficiente (limitado por ${limitReason}). Puedes envasar máximo ${maxPossibleUnits} unidades.\n\n¿Deseas ajustar la orden a esta cantidad?`);
-              if (confirm) setFormData({...formData, unitsProduced: String(maxPossibleUnits)});
+              if (confirm) setFormData({ ...formData, unitsProduced: String(maxPossibleUnits) });
             } else {
               Alert.alert(
                 'Stock Insuficiente',
                 `Limitado por ${limitReason}.\nPuedes envasar como máximo ${maxPossibleUnits} unidades.\n\n¿Deseas ajustar la orden?`,
                 [
                   { text: 'Cancelar', style: 'cancel' },
-                  { text: `Ajustar a ${maxPossibleUnits}`, onPress: () => setFormData({...formData, unitsProduced: String(maxPossibleUnits)}) }
+                  { text: `Ajustar a ${maxPossibleUnits}`, onPress: () => setFormData({ ...formData, unitsProduced: String(maxPossibleUnits) }) }
                 ]
               );
             }
@@ -246,54 +286,54 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
             if (bidonStock <= 0) missing.push(`Bidones`);
             if (appliesBox && cajaStock <= 0) missing.push(`Cajas`);
             if (etiquetaStock <= 0) missing.push(`Etiquetas (${baseLabelName})`);
-            
+
             Toast.show({ type: 'error', text1: 'Stock Insuficiente (0 Unidades)', text2: `Falta stock de: ${missing.join(', ')}` });
           }
           return;
         }
       }
-      const batchId = selectedLot.batchInternal; 
+      const batchId = selectedLot.batchInternal;
       const itemName = selectedLot.itemName?.toUpperCase();
       const currentUser = auth.currentUser?.email || 'Sistema';
 
       // 1. DEDUCCIÓN AUTOMÁTICA DEL LÍQUIDO A GRANEL
       await registerMovement(currentUser, 'CONSUMO_ENVASADO_DIRECTO', selectedLot.company || companyName, {
-          docId: selectedLot.id,
-          itemName: itemName,
-          quantity: -Math.abs(litersToConsume), 
-          stockType: selectedLot.stockType || 'MP',
-          batchInternal: batchId,
-          unit: selectedLot.unit || 'Kg'
+        docId: selectedLot.id,
+        itemName: itemName,
+        quantity: -Math.abs(litersToConsume),
+        stockType: selectedLot.stockType || 'MP',
+        batchInternal: batchId,
+        unit: selectedLot.unit || 'Kg'
       });
 
       if (!isContainer) {
         // 2. DEDUCCIÓN DE INSUMOS CENTRALES (BIDONES)
         await registerMovement(currentUser, 'CONSUMO_INSUMO', 'STOCK_CENTRAL_INSUMOS', {
-            itemName: fuzzyBidon,
-            quantity: -Math.abs(units),
-            stockType: 'INSUMOS',
-            batchInternal: batchId,
-            unit: 'Uds'
+          itemName: fuzzyBidon,
+          quantity: -Math.abs(units),
+          stockType: 'INSUMOS',
+          batchInternal: batchId,
+          unit: 'Uds'
         });
 
         // 3. DEDUCCIÓN DE INSUMOS CENTRALES (CAJAS) SI APLICA
         if (appliesBox && requiredBoxes > 0) {
           await registerMovement(currentUser, 'CONSUMO_INSUMO', 'STOCK_CENTRAL_INSUMOS', {
-              itemName: fuzzyCaja,
-              quantity: -Math.abs(requiredBoxes),
-              stockType: 'INSUMOS',
-              batchInternal: batchId,
-              unit: 'Uds'
+            itemName: fuzzyCaja,
+            quantity: -Math.abs(requiredBoxes),
+            stockType: 'INSUMOS',
+            batchInternal: batchId,
+            unit: 'Uds'
           });
         }
 
         // 4. DEDUCCIÓN DE INSUMOS CENTRALES (ETIQUETAS)
         await registerMovement(currentUser, 'CONSUMO_INSUMO', 'STOCK_CENTRAL_INSUMOS', {
-            itemName: fuzzyEtiqueta,
-            quantity: -Math.abs(units),
-            stockType: 'INSUMOS',
-            batchInternal: batchId,
-            unit: 'Uds'
+          itemName: fuzzyEtiqueta,
+          quantity: -Math.abs(units),
+          stockType: 'INSUMOS',
+          batchInternal: batchId,
+          unit: 'Uds'
         });
       } // fin isContainer
 
@@ -304,10 +344,6 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
       // 4. CREA LA ORDEN EN MÁQUINA DE ESTADOS (Ticket ENVIADO)
       const orderData = {
         itemName: packagedItemName,
-        rawMaterialName: selectedLot.itemName,
-        commercialName: commercialName.trim().toUpperCase(),
-        sourceCompany: selectedLot.company || 'STOCK_CENTRAL_MP',
-        sourceStockType: selectedLot.stockType || 'MP',
         quantity: units,
         litersConsumed: litersToConsume,
         presentation: isContainer ? 1000 : presentation,
@@ -324,19 +360,21 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
       await createOrder('OEM', orderData, currentUser);
 
       Alert.alert(
-        "Orden Emitida", 
+        "Orden Emitida",
         `Se ha enviado a la cola de Envasado.\n\nSe reservaron:\n- ${litersToConsume} Lts de Granel\n- ${units} Bidones (${formData.brandBidon})\n${appliesBox ? `- ${requiredBoxes} Cajas (${formData.brandCaja})` : ''}`,
-        [{ text: "Entendido", onPress: () => {
-          setViewMode('LIST');
-          setSelectedLot(null);
-          setCommercialName('');
-          setFormData({
-            presentation: '20', 
-            unitsProduced: '',  
-            brandBidon: 'H2O',
-            brandCaja: 'H2O CON LOGO', 
-          });
-        }}]
+        [{
+          text: "Entendido", onPress: () => {
+            setViewMode('LIST');
+            setSelectedLot(null);
+            setCommercialName('');
+            setFormData({
+              presentation: '20',
+              unitsProduced: '',
+              brandBidon: 'H2O',
+              brandCaja: 'H2O CON LOGO',
+            });
+          }
+        }]
       );
     } catch (error) {
       console.error(error);
@@ -368,21 +406,21 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
     try {
       setProcessingOrder(true);
       const currentUser = auth.currentUser?.email || 'Sistema';
-      
+
       // 1. Finalizar Ticket
       await updateOrderStatus(selectedOrder.id, 'FINALIZADO', currentUser);
 
       // 2. Inyectar Producto Terminado (FINAL)
       const orderData = selectedOrder.data;
       await registerMovement(currentUser, 'INGRESO_OE', orderData.company, {
-          itemName: orderData.itemName,
-          quantity: orderData.quantity,
-          stockType: 'FINAL',
-          batchInternal: orderData.batchInternal,
-          unit: orderData.unit,
-          status: 'APTO', 
-          batchProvider: orderData.batchProvider,
-          expiryDate: orderData.expiryDate 
+        itemName: orderData.itemName,
+        quantity: orderData.quantity,
+        stockType: 'FINAL',
+        batchInternal: orderData.batchInternal,
+        unit: orderData.unit,
+        status: 'APTO',
+        batchProvider: orderData.batchProvider,
+        expiryDate: orderData.expiryDate
       });
 
       Alert.alert("Orden Finalizada", "El producto terminado ha sido ingresado al stock.");
@@ -507,16 +545,16 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar barStyle="dark-content" />
-      
+
       <View style={styles.header}>
-        <TouchableOpacity 
-          onPress={() => viewMode === 'CREATE' ? setViewMode('LIST') : (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))} 
+        <TouchableOpacity
+          onPress={() => viewMode === 'CREATE' ? setViewMode('LIST') : (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))}
           style={styles.backBtn}
         >
           <ChevronLeft color="#0f172a" size={28} />
         </TouchableOpacity>
-        <View style={{alignItems: 'center'}}>
-          <Text style={styles.headerTitle}>Órdenes de Envasado</Text>
+        <View style={{ alignItems: 'center' }}>
+          <Text style={styles.headerTitle}>Envasado Directo (OED)</Text>
           <Text style={styles.headerSub}>{companyName}</Text>
         </View>
         <View style={{ width: 28 }} />
@@ -527,12 +565,12 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
           {canCreateOrders(auth.currentUser?.email) && (
             <TouchableOpacity style={styles.newOrderBtn} onPress={() => setViewMode('CREATE')}>
               <Plus color="#fff" size={20} />
-              <Text style={styles.newOrderBtnText}>NUEVA OE</Text>
+              <Text style={styles.newOrderBtnText}>NUEVA OED</Text>
             </TouchableOpacity>
           )}
-          
+
           <Text style={styles.sectionTitle}>Órdenes Recientes</Text>
-          
+
           {loadingOrders ? (
             <ActivityIndicator color="#3b82f6" style={{ marginTop: 40 }} />
           ) : orders.length === 0 ? (
@@ -541,12 +579,12 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
               <Text style={styles.emptyText}>No hay órdenes de envasado registradas.</Text>
             </View>
           ) : (
-            <FlatList maximumZoomScale={1} 
+            <FlatList maximumZoomScale={1}
               data={orders}
               keyExtractor={item => item.id}
               showsVerticalScrollIndicator={false}
-              renderItem={({item}) => (
-                <TouchableOpacity 
+              renderItem={({ item }) => (
+                <TouchableOpacity
                   style={styles.orderCard}
                   onPress={() => {
                     setSelectedOrder(item);
@@ -560,7 +598,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
                     </View>
                   </View>
                   <Text style={styles.orderCardSub}>Lote: {item.data.batchInternal}</Text>
-                  <Text style={styles.orderCardSub}>Cantidad: <Text style={{fontWeight: '700', color: '#0f172a'}}>{item.data.quantity} Bidones ({item.data.presentation}L)</Text></Text>
+                  <Text style={styles.orderCardSub}>Cantidad: <Text style={{ fontWeight: '700', color: '#0f172a' }}>{item.data.quantity} Bidones ({item.data.presentation}L)</Text></Text>
                 </TouchableOpacity>
               )}
             />
@@ -568,7 +606,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
         </View>
       ) : (
         <ScrollView maximumZoomScale={1} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          
+
           <View style={styles.infoBanner}>
             <View style={styles.iconBox}>
               <Container color="#3b82f6" size={24} />
@@ -579,18 +617,18 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
             </View>
           </View>
 
-          {/* 1. SELECCIÓN DE LOTE GRANEL */}
+          {/* 1. SELECCIÓN DE LOTE GRANEL O MATERIA PRIMA */}
           <Text style={styles.sectionTitle}>1. Selección de Materia Prima y Lote</Text>
           <View style={[styles.card, { zIndex: 2000 }]}>
-            <Text style={styles.label}>Buscar Materia Prima</Text>
-            <AutocompleteInput 
-              data={mergedMaterialsList}
+            <Text style={styles.label}>Buscar Materia Prima o Producto Final (PT)</Text>
+            <AutocompleteInput
+              data={RAW_MATERIALS_LIST}
               value={selectedRawMaterial}
               onChangeText={(val) => {
                 setSelectedRawMaterial(val);
-                setSelectedLot(null); 
+                setSelectedLot(null);
               }}
-              placeholder="Ej: ATMP"
+              placeholder="Ej: DRY CONTROL, OXOFERT +, ATMP"
               icon={<Search color="#94a3b8" size={20} />}
               allowCustom={false}
               containerStyle={{ marginBottom: 20 }}
@@ -600,67 +638,67 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
               <ActivityIndicator color="#3b82f6" size="large" style={{ marginVertical: 20 }} />
             ) : !selectedRawMaterial ? (
               <View style={styles.emptyBox}>
-                <Search color="#94a3b8" size={32} style={{marginBottom: 10}}/>
-                <Text style={styles.emptyText}>Selecciona una Materia Prima para ver sus lotes disponibles.</Text>
+                <Search color="#94a3b8" size={32} style={{ marginBottom: 10 }} />
+                <Text style={styles.emptyText}>Selecciona una Materia Prima o PT para ver sus lotes disponibles.</Text>
               </View>
             ) : (() => {
-                const searchParts = selectedRawMaterial.split('/').map(p => p.trim().toUpperCase());
-                const filteredLots = approvedLots.filter(lot => {
-                  if (!lot.itemName) return false;
-                  const lotParts = lot.itemName.split('/').map(p => p.trim().toUpperCase());
-                  return searchParts.some(sp => lotParts.some(lp => lp.includes(sp) || sp.includes(lp)));
-                });
-                
-                if (filteredLots.length === 0) {
-                  return (
-                    <View style={styles.emptyBox}>
-                      <AlertCircle color="#94a3b8" size={32} style={{marginBottom: 10}}/>
-                      <Text style={styles.emptyText}>No hay stock disponible para esta Materia Prima.</Text>
-                    </View>
-                  );
-                }
+              const selectedPrimary = selectedRawMaterial.split(' / ')[0].trim().toUpperCase();
+              const filteredLots = approvedLots.filter(lot => {
+                if (!lot.itemName) return false;
+                const lotPrimary = lot.itemName.split(' / ')[0].trim().toUpperCase();
+                return lotPrimary.includes(selectedPrimary) || selectedPrimary.includes(lotPrimary);
+              });
 
-                const totalQuantity = filteredLots.reduce((sum, lot) => sum + lot.quantity, 0);
-
+              if (filteredLots.length === 0) {
                 return (
-                  <View style={styles.groupContainer}>
-                    <View style={styles.groupHeader}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.groupTitle}>Lotes Disponibles</Text>
-                        <Text style={styles.groupSub}>Stock Total: {totalQuantity.toFixed(2)} Kg/Lts ({filteredLots.length} Lote/s)</Text>
-                      </View>
-                    </View>
-                    
-                    <View style={styles.groupContent}>
-                      {filteredLots.map((lot) => (
-                        <TouchableOpacity
-                          key={lot.id}
-                          style={[styles.lotCard, selectedLot?.id === lot.id && styles.lotCardSelected]}
-                          onPress={() => setSelectedLot(lot)}
-                        >
-                          <View style={styles.lotHeader}>
-                            <Text style={[styles.lotName, selectedLot?.id === lot.id && styles.lotNameSelected]}>
-                              {lot.itemName.split(' / ')[0]}
-                            </Text>
-                            {selectedLot?.id === lot.id && <CheckCircle2 color="#3b82f6" size={20} />}
-                          </View>
-                          <Text style={styles.lotText}>Lote Interno: {lot.batchInternal}</Text>
-                          <Text style={styles.lotText}>Disponible: {lot.quantity.toFixed(2)} Kg/Lts</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
+                  <View style={styles.emptyBox}>
+                    <AlertCircle color="#94a3b8" size={32} style={{ marginBottom: 10 }} />
+                    <Text style={styles.emptyText}>No hay stock disponible para esta Materia Prima.</Text>
                   </View>
                 );
-              })()}
+              }
+
+              const totalQuantity = filteredLots.reduce((sum, lot) => sum + lot.quantity, 0);
+
+              return (
+                <View style={styles.groupContainer}>
+                  <View style={styles.groupHeader}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.groupTitle}>Lotes Disponibles</Text>
+                      <Text style={styles.groupSub}>Stock Total: {totalQuantity.toFixed(2)} Kg/Lts ({filteredLots.length} Lote/s)</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.groupContent}>
+                    {filteredLots.map((lot) => (
+                      <TouchableOpacity
+                        key={lot.id}
+                        style={[styles.lotCard, selectedLot?.id === lot.id && styles.lotCardSelected]}
+                        onPress={() => setSelectedLot(lot)}
+                      >
+                        <View style={styles.lotHeader}>
+                          <Text style={[styles.lotName, selectedLot?.id === lot.id && styles.lotNameSelected]}>
+                            {lot.itemName.split(' / ')[0]}
+                          </Text>
+                          {selectedLot?.id === lot.id && <CheckCircle2 color="#3b82f6" size={20} />}
+                        </View>
+                        <Text style={styles.lotText}>Lote Interno: {lot.batchInternal}</Text>
+                        <Text style={styles.lotText}>Disponible: {lot.quantity.toFixed(2)} Kg/Lts</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              );
+            })()}
           </View>
           {/* 2. PARÁMETROS DE ENVASADO E INSUMOS */}
           {selectedLot && (
             <>
               <Text style={styles.sectionTitle}>2. Insumos Utilizados</Text>
               <View style={styles.card}>
-                
+
                 <Text style={styles.label}>Nombre Comercial del Producto Final</Text>
-                <AutocompleteInput 
+                <AutocompleteInput
                   data={getCommercialNameSuggestions()}
                   value={commercialName}
                   onChangeText={setCommercialName}
@@ -672,12 +710,12 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
                 <Text style={styles.label}>Capacidad del Bidón</Text>
                 <View style={styles.chipRow}>
                   {BIDON_CAPACITIES.map(cap => (
-                    <TouchableOpacity 
-                      key={cap} 
+                    <TouchableOpacity
+                      key={cap}
                       style={[styles.chip, formData.presentation === cap && styles.chipActive]}
-                      onPress={() => setFormData({...formData, presentation: cap})}
+                      onPress={() => setFormData({ ...formData, presentation: cap })}
                     >
-                      <Droplet color={formData.presentation === cap ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
+                      <Droplet color={formData.presentation === cap ? '#fff' : '#64748b'} size={14} style={{ marginRight: 4 }} />
                       <Text style={[styles.chipText, formData.presentation === cap && styles.chipTextActive]}>{cap}L</Text>
                     </TouchableOpacity>
                   ))}
@@ -686,12 +724,12 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
                 <Text style={styles.label}>Marca del Bidón</Text>
                 <View style={styles.chipRow}>
                   {BIDON_BRANDS.map(brand => (
-                    <TouchableOpacity 
-                      key={brand} 
+                    <TouchableOpacity
+                      key={brand}
                       style={[styles.chip, formData.brandBidon === brand && styles.chipActive]}
-                      onPress={() => setFormData({...formData, brandBidon: brand})}
+                      onPress={() => setFormData({ ...formData, brandBidon: brand })}
                     >
-                      <Building2 color={formData.brandBidon === brand ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
+                      <Building2 color={formData.brandBidon === brand ? '#fff' : '#64748b'} size={14} style={{ marginRight: 4 }} />
                       <Text style={[styles.chipText, formData.brandBidon === brand && styles.chipTextActive]}>{brand}</Text>
                     </TouchableOpacity>
                   ))}
@@ -701,12 +739,12 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
                   <Text style={styles.label}>Unidades (Bidones) a Envasar</Text>
                   <View style={styles.inputWrapper}>
                     <Container color="#94a3b8" size={20} style={styles.inputIcon} />
-                    <TextInput 
-                      style={styles.input} 
-                      placeholder="Ej: 160" 
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Ej: 160"
                       keyboardType="numeric"
                       value={formData.unitsProduced}
-                      onChangeText={(txt) => setFormData({...formData, unitsProduced: txt})}
+                      onChangeText={(txt) => setFormData({ ...formData, unitsProduced: txt })}
                     />
                   </View>
                 </View>
@@ -717,12 +755,12 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
                     <Text style={styles.label}>Marca de las Cajas ({boxFormat})</Text>
                     <View style={styles.chipRow}>
                       {CAJA_BRANDS.map(brand => (
-                        <TouchableOpacity 
-                          key={brand} 
+                        <TouchableOpacity
+                          key={brand}
                           style={[styles.chip, formData.brandCaja === brand && styles.chipActive]}
-                          onPress={() => setFormData({...formData, brandCaja: brand})}
+                          onPress={() => setFormData({ ...formData, brandCaja: brand })}
                         >
-                          <Box color={formData.brandCaja === brand ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
+                          <Box color={formData.brandCaja === brand ? '#fff' : '#64748b'} size={14} style={{ marginRight: 4 }} />
                           <Text style={[styles.chipText, formData.brandCaja === brand && styles.chipTextActive]}>{brand}</Text>
                         </TouchableOpacity>
                       ))}
@@ -746,28 +784,28 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
               <View style={styles.impactCard}>
                 <View style={styles.impactRow}>
                   <Text style={styles.impactLabel}>Granel a Consumir:</Text>
-                  <Text style={[styles.impactValue, isOverdraft && {color: '#ef4444'}]}>
+                  <Text style={[styles.impactValue, isOverdraft && { color: '#ef4444' }]}>
                     -{litersToConsume} Lts
                   </Text>
                 </View>
                 <View style={styles.impactRow}>
                   <Text style={styles.impactLabel}>Saldo Final en Lote:</Text>
-                  <Text style={[styles.impactValue, isOverdraft && {color: '#ef4444'}]}>
+                  <Text style={[styles.impactValue, isOverdraft && { color: '#ef4444' }]}>
                     {remainingLiters.toFixed(2)} Lts
                   </Text>
                 </View>
-                
+
                 <View style={[styles.divider, { backgroundColor: '#e2e8f0' }]} />
-                
+
                 <View style={styles.impactRow}>
                   <Text style={styles.impactLabel}>Prod. Terminado a Generar:</Text>
-                  <Text style={[styles.impactValue, {color: '#10b981'}]}>
+                  <Text style={[styles.impactValue, { color: '#10b981' }]}>
                     +{units} Bidones de {commercialName.toUpperCase() || '...'} {presentation}L
                   </Text>
                 </View>
               </View>
 
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.submitBtn, (isSubmitting || isOverdraft || units <= 0) && { opacity: 0.5 }]}
                 disabled={isSubmitting || isOverdraft || units <= 0}
                 onPress={handleCreateOrder}
@@ -781,18 +819,18 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
               </TouchableOpacity>
             </>
           )}
-          <View style={{height: 50}} />
+          <View style={{ height: 50 }} />
         </ScrollView>
       )}
 
       {/* MODAL DETALLES DE ORDEN */}
       <Modal visible={orderModalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setOrderModalVisible(false)}>
-        <SafeAreaView style={{flex: 1, backgroundColor: '#f8fafc'}}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#f8fafc' }}>
           <View style={styles.header}>
             <TouchableOpacity onPress={() => setOrderModalVisible(false)} style={styles.backBtn}>
               <ChevronLeft color="#0f172a" size={28} />
             </TouchableOpacity>
-            <View style={{alignItems: 'center'}}>
+            <View style={{ alignItems: 'center' }}>
               <Text style={styles.headerTitle}>Detalle de OE</Text>
               <Text style={styles.headerSub}>{selectedOrder?.data?.batchInternal}</Text>
             </View>
@@ -800,31 +838,31 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
               <Printer color="#fff" size={20} />
             </TouchableOpacity>
           </View>
-          <ScrollView maximumZoomScale={1} style={{flex: 1, padding: 20}}>
+          <ScrollView maximumZoomScale={1} style={{ flex: 1, padding: 20 }}>
             <View style={styles.card}>
-              <Text style={{fontSize: 20, fontWeight: '900', color: '#0f172a', marginBottom: 5}}>{selectedOrder?.data?.itemName}</Text>
+              <Text style={{ fontSize: 20, fontWeight: '900', color: '#0f172a', marginBottom: 5 }}>{selectedOrder?.data?.itemName}</Text>
               <View style={[styles.statusBadge, { alignSelf: 'flex-start', backgroundColor: getStatusColor(selectedOrder?.status), marginBottom: 15 }]}>
-                 <Text style={styles.statusText}>{selectedOrder?.status}</Text>
+                <Text style={styles.statusText}>{selectedOrder?.status}</Text>
               </View>
-              <Text style={{fontSize: 14, color: '#475569', marginBottom: 5}}>Cantidad: <Text style={{fontWeight: '800', color: '#0f172a'}}>{selectedOrder?.data?.quantity} Bidones ({selectedOrder?.data?.presentation}L)</Text></Text>
-              <Text style={{fontSize: 14, color: '#475569', marginBottom: 5}}>Granel Consumido: <Text style={{fontWeight: '800', color: '#0f172a'}}>{selectedOrder?.data?.litersConsumed} Lts</Text></Text>
-              <Text style={{fontSize: 14, color: '#475569', marginBottom: 15}}>Lote de Origen: <Text style={{fontWeight: '800', color: '#0f172a'}}>{selectedOrder?.data?.batchInternal}</Text></Text>
-              
-              <Text style={{fontSize: 14, fontWeight: '800', color: '#334155', marginBottom: 10, textTransform: 'uppercase'}}>Insumos Reservados</Text>
-              <View style={{backgroundColor: '#f1f5f9', padding: 10, borderRadius: 8, marginBottom: 8}}>
-                <Text style={{fontSize: 13, fontWeight: '800', color: '#1e293b'}}>BIDON {selectedOrder?.data?.presentation}L {selectedOrder?.data?.brandBidon}</Text>
-                <Text style={{fontSize: 12, color: '#64748b'}}>Consumo: {selectedOrder?.data?.quantity} Uds</Text>
+              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 5 }}>Cantidad: <Text style={{ fontWeight: '800', color: '#0f172a' }}>{selectedOrder?.data?.quantity} Bidones ({selectedOrder?.data?.presentation}L)</Text></Text>
+              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 5 }}>Granel Consumido: <Text style={{ fontWeight: '800', color: '#0f172a' }}>{selectedOrder?.data?.litersConsumed} Lts</Text></Text>
+              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 15 }}>Lote de Origen: <Text style={{ fontWeight: '800', color: '#0f172a' }}>{selectedOrder?.data?.batchInternal}</Text></Text>
+
+              <Text style={{ fontSize: 14, fontWeight: '800', color: '#334155', marginBottom: 10, textTransform: 'uppercase' }}>Insumos Reservados</Text>
+              <View style={{ backgroundColor: '#f1f5f9', padding: 10, borderRadius: 8, marginBottom: 8 }}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#1e293b' }}>BIDON {selectedOrder?.data?.presentation}L {selectedOrder?.data?.brandBidon}</Text>
+                <Text style={{ fontSize: 12, color: '#64748b' }}>Consumo: {selectedOrder?.data?.quantity} Uds</Text>
               </View>
               {selectedOrder?.data?.requiredBoxes > 0 && (
-                <View style={{backgroundColor: '#f1f5f9', padding: 10, borderRadius: 8, marginBottom: 8}}>
-                  <Text style={{fontSize: 13, fontWeight: '800', color: '#1e293b'}}>CAJA {selectedOrder?.data?.brandCaja}</Text>
-                  <Text style={{fontSize: 12, color: '#64748b'}}>Consumo: {selectedOrder?.data?.requiredBoxes} Uds</Text>
+                <View style={{ backgroundColor: '#f1f5f9', padding: 10, borderRadius: 8, marginBottom: 8 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: '#1e293b' }}>CAJA {selectedOrder?.data?.brandCaja}</Text>
+                  <Text style={{ fontSize: 12, color: '#64748b' }}>Consumo: {selectedOrder?.data?.requiredBoxes} Uds</Text>
                 </View>
               )}
             </View>
 
             {selectedOrder?.status === 'ENVIADO' && (
-              <TouchableOpacity style={[styles.mainButton, {backgroundColor: '#f59e0b'}]} onPress={handleAcceptOrder} disabled={processingOrder}>
+              <TouchableOpacity style={[styles.mainButton, { backgroundColor: '#f59e0b' }]} onPress={handleAcceptOrder} disabled={processingOrder}>
                 {processingOrder ? <ActivityIndicator color="#fff" /> : (
                   <>
                     <CheckSquare color="#fff" size={20} />
@@ -835,7 +873,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
             )}
 
             {selectedOrder?.status === 'EN_PROCESO' && (
-              <TouchableOpacity style={[styles.mainButton, {backgroundColor: '#10b981'}]} onPress={handleFinalizeOrder} disabled={processingOrder}>
+              <TouchableOpacity style={[styles.mainButton, { backgroundColor: '#10b981' }]} onPress={handleFinalizeOrder} disabled={processingOrder}>
                 {processingOrder ? <ActivityIndicator color="#fff" /> : (
                   <>
                     <CheckCircle2 color="#fff" size={20} />
@@ -846,9 +884,9 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
             )}
 
             {(selectedOrder?.status === 'ENVIADO' || selectedOrder?.status === 'EN_PROCESO') && (
-              <TouchableOpacity 
-                style={[styles.mainButton, { backgroundColor: '#fee2e2', borderWidth: 1, borderColor: '#ef4444', marginTop: 12 }]} 
-                onPress={handleRejectOrder} 
+              <TouchableOpacity
+                style={[styles.mainButton, { backgroundColor: '#fee2e2', borderWidth: 1, borderColor: '#ef4444', marginTop: 12 }]}
+                onPress={handleRejectOrder}
                 disabled={processingOrder}
               >
                 {processingOrder ? <ActivityIndicator color="#ef4444" /> : (
@@ -860,7 +898,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
               </TouchableOpacity>
             )}
 
-            <View style={{height: 40}}/>
+            <View style={{ height: 40 }} />
           </ScrollView>
         </SafeAreaView>
       </Modal>
@@ -870,18 +908,18 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f8fafc' },
-  header: { 
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 20, paddingVertical: 15, backgroundColor: '#fff',
-    borderBottomWidth: 1, borderBottomColor: '#e2e8f0', elevation: 2 
+    borderBottomWidth: 1, borderBottomColor: '#e2e8f0', elevation: 2
   },
   backBtn: { padding: 5 },
   headerTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a' },
   headerSub: { fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '700' },
-  
+
   container: { padding: 20 },
   sectionTitle: { fontSize: 13, fontWeight: '800', color: '#334155', marginBottom: 12, marginLeft: 5, textTransform: 'uppercase', letterSpacing: 0.5 },
-  
+
   newOrderBtn: { backgroundColor: '#0f172a', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderRadius: 14, marginBottom: 25 },
   newOrderBtnText: { color: '#fff', fontWeight: '800', fontSize: 15, marginLeft: 8, letterSpacing: 0.5 },
 
@@ -896,10 +934,10 @@ const styles = StyleSheet.create({
   iconBox: { backgroundColor: '#fff', padding: 10, borderRadius: 12, marginRight: 15, shadowColor: '#3b82f6', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
   bannerTitle: { fontSize: 15, fontWeight: '800', color: '#1e3a8a', marginBottom: 4 },
   bannerText: { fontSize: 12, color: '#3b82f6', lineHeight: 18, fontWeight: '500' },
-  
+
   card: { backgroundColor: '#fff', padding: 20, borderRadius: 20, marginBottom: 25, borderWidth: 1, borderColor: '#e2e8f0', elevation: 1 },
   label: { fontSize: 11, fontWeight: '800', color: '#64748b', marginBottom: 8, marginTop: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
-  
+
   emptyBox: { alignItems: 'center', padding: 20, paddingVertical: 50 },
   emptyText: { color: '#64748b', textAlign: 'center', fontWeight: '500', marginTop: 15 },
 
@@ -909,13 +947,13 @@ const styles = StyleSheet.create({
   lotName: { fontSize: 15, fontWeight: '800', color: '#334155' },
   lotNameSelected: { color: '#1e3a8a' },
   lotText: { fontSize: 12, color: '#64748b', fontWeight: '600', marginBottom: 2 },
-  
+
   groupContainer: { marginBottom: 12, backgroundColor: '#fff', borderRadius: 16, borderWidth: 1, borderColor: '#e2e8f0', overflow: 'hidden' },
   groupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, backgroundColor: '#f8fafc' },
   groupTitle: { fontSize: 16, fontWeight: '800', color: '#1e293b', marginBottom: 2 },
   groupSub: { fontSize: 12, color: '#64748b', fontWeight: '600' },
   groupContent: { padding: 15, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#f1f5f9' },
-  
+
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 15 },
   chip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f1f5f9', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#e2e8f0' },
   chipActive: { backgroundColor: '#0f172a', borderColor: '#0f172a' },
@@ -926,7 +964,7 @@ const styles = StyleSheet.create({
   inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 15 },
   inputIcon: { marginRight: 10 },
   input: { flex: 1, paddingVertical: 14, color: '#0f172a', fontSize: 16, fontWeight: '600' },
-  
+
   divider: { height: 1, backgroundColor: '#f1f5f9', marginVertical: 15 },
   calcHelper: { fontSize: 12, color: '#10b981', fontWeight: '700', fontStyle: 'italic' },
 

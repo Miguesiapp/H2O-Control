@@ -51,9 +51,9 @@ export const RAW_MATERIALS_LIST = [
   'ACIDO FOSFORICO',
   'ACIDO NITRICO',
   'ACIDO ACETICO',
-  'ACIDO CLORHIDRICO / HCL / PH CONTROL',
+  'ACIDO CLORHIDRICO / HCL / PH CONTROL / OXOFERT + / OXOFERT PLUS',
   'ACIDO PERACETICO / PERCYDE',
-  'CLORITO DE SODIO / SERCLOR',
+  'CLORITO DE SODIO / SERCLOR / DRY CONTROL',
   'ACIDO TRICLOROISOCIANURICO / CLORO GRANULADO / SLOW / CLORO 90%',
   'ACIDO TRICLOROISOCIANURICO PASTILLAS / TRIPLE ACCION / CLORO 87%',
   'DICLOROISOCIANURATO DE SODIO / SHOCK / CLORO 60% / CLORO INSTANTANEO',
@@ -213,13 +213,23 @@ export const PRODUCTS_MADRE_LIST = [
   'GRANEL BASEL / (BBS-FM00) / BASEL',
   'GRANEL SYNER / SYNERGYCIDE',
   'GRANEL AMINO / AQUANUTRIL AMINO FOIL / AQUANUTRIL AMINO RAIZ / AMINO FOIL / AMINO RAIZ',
-  'GRANEL OX / OXOCAT',
+  'GRANEL OX / OXOCAT / OXOFERT',
   'GRANEL MIXER / MIX',
   'GRANEL DRY / DRY',
   'GRANEL BIOCONTROL / BIOCONTROL',
   'GRANEL CLEAR / CLEAR',
   'GRANEL BERN FM01 / BERN SEED',
   'GRANEL FM 02 / FM 02',
+  'GRANEL RESTART / RESTART',
+  'GRANEL RESTART D / RESTART D',
+  'GRANEL RESTART PRE A / RESTART PRE A',
+  'GRANEL RESTART PRE B / RESTART PRE B',
+  'GRANEL RESTART M1 / RESTART M1',
+  'GRANEL RESTART M2 / RESTART M2',
+  'GRANEL RESTART M3 / RESTART M3',
+  'GRANEL RESTART M4 / RESTART M4',
+  'GRANEL RESTART M5 / RESTART M5',
+  'GRANEL RESTART M6 / RESTART M6',
 ];
 
 export const PRODUCTS_FINAL_LIST = [
@@ -234,7 +244,10 @@ export const PRODUCTS_FINAL_LIST = [
   'POWER FOIL',
   'POWER FOIL PLUS',
   'OXOCAT',
+  'OXOFERT',
+  'OXOFERT +',
   'DRY',
+  'DRY CONTROL',
   'MIX',
   'PERCYDE',
   'MOMENTUM NF',
@@ -317,7 +330,14 @@ export const EQUIVALENCIES_MAP = {
   'ULTRA': 'GRANEL MICROEMULSION / MARISCAL / XTM / ULTRA / UNITY',
   'PH CONTROL': 'ACIDO CLORHIDRICO',
   'PH CONTROL / ACIDO CLORHIDRICO / HCL 19%': 'ACIDO CLORHIDRICO / HCL',
+  'OXOFERT +': 'ACIDO CLORHIDRICO',
+  'OXOFERT + / ACIDO CLORHIDRICO': 'ACIDO CLORHIDRICO',
+  'OXOFERT PLUS': 'ACIDO CLORHIDRICO',
   'PERCYDE': 'ACIDO PERACETICO',
+  'DRY CONTROL': 'CLORITO DE SODIO / SERCLOR',
+  'DRY CONTROL / CLORITO DE SODIO': 'CLORITO DE SODIO / SERCLOR',
+  'CLORITO DE SODIO': 'CLORITO DE SODIO / SERCLOR',
+  'SERCLOR': 'CLORITO DE SODIO / SERCLOR',
   'SYNERGYCIDE AB': 'GLICERINA',
   'BASEL': 'GRANEL BASEL / (BBS-FM00) / BASEL',
   'SYNERGYCIDE': 'GRANEL SYNER / SYNERGYCIDE',
@@ -347,8 +367,9 @@ export const EQUIVALENCIES_MAP = {
   'MIX': 'GRANEL MIXER / MIX',
   'GRANEL DRY / DRY': 'GRANEL DRY / DRY',
   'DRY': 'GRANEL DRY / DRY',
-  'GRANEL OX': 'GRANEL OX / OXOCAT',
-  'OXOCAT': 'GRANEL OX / OXOCAT',
+  'GRANEL OX': 'GRANEL OX / OXOCAT / OXOFERT',
+  'OXOCAT': 'GRANEL OX / OXOCAT / OXOFERT',
+  'OXOFERT': 'GRANEL OX / OXOCAT / OXOFERT',
   'GRANEL BF-5000': 'GRANEL BF-5000 / BF-5000',
   'BF-5000': 'GRANEL BF-5000 / BF-5000',
   'GRANEL BERN FM01': 'GRANEL BERN FM01 / BERN SEED',
@@ -359,6 +380,27 @@ export const EQUIVALENCIES_MAP = {
   'GRANEL CLEAR': 'GRANEL CLEAR / CLEAR',
   'CLEAR': 'GRANEL CLEAR / CLEAR',
   'DISPERSACALE 82': 'CUBLEN K60 / HEDP / DISPERSACALE 82',
+  'RESTART D': 'GRANEL RESTART D / RESTART D / GRANEL RESTART / RESTART',
+  'GRANEL RESTART D': 'GRANEL RESTART D / RESTART D / GRANEL RESTART / RESTART',
+  'GRANEL RESTART D / RESTART D': 'GRANEL RESTART D / RESTART D / GRANEL RESTART / RESTART',
+  'RESTART': 'GRANEL RESTART / RESTART / GRANEL RESTART D / RESTART D',
+  'GRANEL RESTART': 'GRANEL RESTART / RESTART / GRANEL RESTART D / RESTART D',
+  'RESTART PRE A': 'GRANEL RESTART PRE A / RESTART PRE A / GRANEL RESTART / RESTART',
+  'GRANEL RESTART PRE A': 'GRANEL RESTART PRE A / RESTART PRE A / GRANEL RESTART / RESTART',
+  'RESTART PRE B': 'GRANEL RESTART PRE B / RESTART PRE B / GRANEL RESTART / RESTART',
+  'GRANEL RESTART PRE B': 'GRANEL RESTART PRE B / RESTART PRE B / GRANEL RESTART / RESTART',
+  'RESTART M1': 'GRANEL RESTART M1 / RESTART M1 / GRANEL RESTART / RESTART',
+  'GRANEL RESTART M1': 'GRANEL RESTART M1 / RESTART M1 / GRANEL RESTART / RESTART',
+  'RESTART M2': 'GRANEL RESTART M2 / RESTART M2 / GRANEL RESTART / RESTART',
+  'GRANEL RESTART M2': 'GRANEL RESTART M2 / RESTART M2 / GRANEL RESTART / RESTART',
+  'RESTART M3': 'GRANEL RESTART M3 / RESTART M3 / GRANEL RESTART / RESTART',
+  'GRANEL RESTART M3': 'GRANEL RESTART M3 / RESTART M3 / GRANEL RESTART / RESTART',
+  'RESTART M4': 'GRANEL RESTART M4 / RESTART M4 / GRANEL RESTART / RESTART',
+  'GRANEL RESTART M4': 'GRANEL RESTART M4 / RESTART M4 / GRANEL RESTART / RESTART',
+  'RESTART M5': 'GRANEL RESTART M5 / RESTART M5 / GRANEL RESTART / RESTART',
+  'GRANEL RESTART M5': 'GRANEL RESTART M5 / RESTART M5 / GRANEL RESTART / RESTART',
+  'RESTART M6': 'GRANEL RESTART M6 / RESTART M6 / GRANEL RESTART / RESTART',
+  'GRANEL RESTART M6': 'GRANEL RESTART M6 / RESTART M6 / GRANEL RESTART / RESTART',
 };
 
 // Helper para obtener la lista exacta de nombres comerciales dado un granel seleccionado
@@ -396,7 +438,7 @@ export const getBaseLabelName = (commercialName) => {
 };
 
 // Formatos de Insumos Centralizados
-export const ETIQUETA_CAPACITIES = ['20L', '10L', '5L', '1L', '500cc', '250cc', '50cc'];
+export const ETIQUETA_CAPACITIES = ['20L', '10L', '5L', '1L'];
 export const BIDON_CAPACITIES = ['20', '10', '5', '1'];
 export const CAJA_FORMATS = ['x5', 'x4', 'x12', 'x1'];
 
@@ -417,3 +459,98 @@ export const formatDisplayName = (str) => {
   if (!str) return '';
   return str.split(' / ')[0].trim();
 };
+
+// Normalizar capacidad de etiqueta (solo 20L, 10L, 5L, 1L)
+export const normalizeCapacity = (cap) => {
+  if (!cap) return '20L';
+  const c = String(cap).trim().toUpperCase();
+  if (c === '20' || c === '20L' || c === '20 L' || c === '20 LTS' || c === '20LTS') return '20L';
+  if (c === '10' || c === '10L' || c === '10 L' || c === '10 LTS' || c === '10LTS') return '10L';
+  if (c === '5' || c === '5L' || c === '5 L' || c === '5 LTS' || c === '5LTS') return '5L';
+  if (c === '1' || c === '1L' || c === '1 L' || c === '1 LTS' || c === '1LTS') return '1L';
+  return c.endsWith('L') ? c : `${c}L`;
+};
+
+// Helper universal para formatear y estandarizar el nombre de una etiqueta al guardarla o buscarla
+export const normalizeEtiquetaName = (capacity, rawItemName) => {
+  const normCap = normalizeCapacity(capacity);
+  let cleanName = String(rawItemName || '').trim().toUpperCase();
+  // Quitar prefijo "ETIQUETA" o "ETIQUETAS"
+  cleanName = cleanName.replace(/^ETIQUETAS?\s*/i, '');
+  // Quitar capacidad repetida si el usuario ya la había escrito al inicio
+  cleanName = cleanName.replace(new RegExp(`^${normCap}\\s*`, 'i'), '');
+  cleanName = cleanName.replace(new RegExp(`^${normCap.replace('L', '')}\\s*`, 'i'), '');
+  cleanName = cleanName.trim();
+  return `ETIQUETA ${normCap} ${cleanName}`.trim();
+};
+
+// Generador de palabras clave de capacidad para búsqueda difusa (Fuzzy)
+export const getCapacityKeywords = (presentation) => {
+  const p = Number(presentation);
+  const keywords = [
+    `${presentation}L`,
+    `${presentation} L`,
+    `${presentation} LTS`,
+    `${presentation}LTS`,
+    `${presentation}-L`
+  ];
+
+  if (Number.isInteger(p)) {
+    keywords.push(` ${p} `, ` ${p}L `, ` ${p}L`, `${p} `);
+  }
+
+  if (p === 1 || presentation === '1' || presentation === '1L') {
+    keywords.push('1L', '1 L', ' 1 ');
+  } else if (p === 20 || presentation === '20' || presentation === '20L') {
+    keywords.push('20L', '20 L', '20 LTS', ' 20 ');
+  } else if (p === 10 || presentation === '10' || presentation === '10L') {
+    keywords.push('10L', '10 L', '10 LTS', ' 10 ');
+  } else if (p === 5 || presentation === '5' || presentation === '5L') {
+    keywords.push('5L', '5 L', '5 LTS', ' 5 ');
+  }
+
+  return [...new Set(keywords)];
+};
+
+// Generador de palabras clave de nombre para búsqueda difusa de etiquetas considerando sinónimos y equivalencias
+export const getLabelKeywords = (commercialName) => {
+  if (!commercialName) return [];
+  const upper = commercialName.trim().toUpperCase();
+  const baseLabel = getBaseLabelName(upper);
+  const keywords = new Set([upper, baseLabel]);
+
+  // Raíz sin marcas / sufijos de distribuidor (ej: "MOMENTUM INDRASA" -> "MOMENTUM")
+  const words = upper.split(/\s+/);
+  if (words.length > 1) {
+    keywords.add(words[0]);
+  }
+
+  // Equivalencias registradas en el mapa técnico
+  const checkEquiv = (key) => {
+    if (EQUIVALENCIES_MAP[key]) {
+      const parts = EQUIVALENCIES_MAP[key].split('/').map(p => p.replace(/GRANEL/gi, '').trim().toUpperCase()).filter(Boolean);
+      parts.forEach(part => keywords.add(part));
+    }
+  };
+
+  checkEquiv(upper);
+  checkEquiv(baseLabel);
+  if (words.length > 1) checkEquiv(words[0]);
+
+  // Casos específicos conocidos
+  if (upper.includes('DRY CONTROL') || upper.includes('SERCLOR') || upper.includes('CLORITO')) {
+    keywords.add('DRY CONTROL');
+    keywords.add('CLORITO DE SODIO');
+    keywords.add('SERCLOR');
+  }
+  if (upper.includes('OXOFERT') || upper.includes('PH CONTROL') || upper.includes('ACIDO CLORHIDRICO') || upper.includes('HCL')) {
+    keywords.add('OXOFERT +');
+    keywords.add('OXOFERT PLUS');
+    keywords.add('OXOFERT');
+    keywords.add('PH CONTROL');
+    keywords.add('ACIDO CLORHIDRICO');
+  }
+
+  return [...keywords].filter(k => k.length > 0);
+};
+

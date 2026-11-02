@@ -63,9 +63,34 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
     const numericQty = Number(data.quantity);
     const inventoryRef = collection(db, "Inventory");
     const itemNameUpper = isFuzzyItem ? data.itemName : data.itemName?.toUpperCase();
+    const itemNameStr = isFuzzyItem 
+      ? data.itemName.map(i => Array.isArray(i) ? i.join('|') : i).join(' + ') 
+      : (data.itemName || '').toUpperCase();
 
-    // INTERCEPCIÓN CENTRALIZADA: Si es Materia Prima, va al stock global unificado
-    const effectiveCompany = (data.stockType === 'MP') ? 'STOCK_CENTRAL_MP' : company;
+    // INTERCEPCIÓN CENTRALIZADA: Clasificación de Insumos vs MP vs PT
+    const isItemInsumo = 
+      data.stockType === 'INSUMOS' || 
+      data.stockType === 'ENVASES' ||
+      data.category === 'Etiquetas' || 
+      data.category === 'Bidones' || 
+      data.category === 'Cajas' ||
+      itemNameStr.startsWith('ETIQUETA') || 
+      itemNameStr.startsWith('BIDON') || 
+      itemNameStr.startsWith('CAJA');
+
+    let effectiveCompany = company;
+    let effectiveStockType = data.stockType || 'MP';
+    let effectiveStatus = data.status;
+
+    if (isItemInsumo) {
+      effectiveCompany = 'STOCK_CENTRAL_INSUMOS';
+      effectiveStockType = 'INSUMOS';
+      // Insumos nunca quedan en cuarentena ni pendientes de laboratorio
+      effectiveStatus = 'APTO';
+    } else if (data.stockType === 'MP') {
+      effectiveCompany = 'STOCK_CENTRAL_MP';
+      effectiveStatus = data.status || 'PENDIENTE';
+    }
 
     // 2. LÓGICA DE INVENTARIO: ¿Suma o Resta?
     if (numericQty > 0) {
@@ -107,8 +132,8 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
           itemName: itemNameUpper,
           company: effectiveCompany,
           quantity: numericQty,
-          stockType: data.stockType || 'MP', 
-          status: data.status || 'PENDIENTE', // Vital para que Laboratorio lo vea o lo libere
+          stockType: effectiveStockType, 
+          status: effectiveStatus || 'APTO',
           createdAt: serverTimestamp(),
           lastUpdated: serverTimestamp()
         });
@@ -234,9 +259,14 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
       .map(doc => ({ id: doc.id, ...doc.data() }))
       .filter(doc => {
         if ((doc.quantity || 0) <= 0) return false;
-        // CUARENTENA: No consumir lotes que aún no fueron aprobados por Calidad
+        if (doc.status === 'RECHAZADO') return false;
+        const isDocInsumo = doc.stockType === 'INSUMOS' || doc.stockType === 'ENVASES' ||
+          (doc.itemName || '').toUpperCase().startsWith('ETIQUETA') ||
+          (doc.itemName || '').toUpperCase().startsWith('BIDON') ||
+          (doc.itemName || '').toUpperCase().startsWith('CAJA');
+        // CUARENTENA: Solo para MP y Granel, nunca para insumos
         const pendingStatuses = ['PENDIENTE', 'PENDIENTE_LABORATORIO'];
-        if (pendingStatuses.includes(doc.status)) return false;
+        if (!isDocInsumo && pendingStatuses.includes(doc.status)) return false;
         if (isFuzzy) {
           const name = (doc.itemName || '').toUpperCase();
           return itemName.filter(Boolean).every(kw => {
@@ -251,11 +281,15 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
         return true;
       });
 
-    // Salvaguarda multi-empresa: si no se encontró en la empresa actual y no es STOCK_CENTRAL_MP ni H2O,
-    // buscar en STOCK_CENTRAL_MP o H2O (donde reside el stock unificado de planta)
-    if (docs.length === 0 && company !== 'STOCK_CENTRAL_MP' && company !== 'H2O') {
-      const fallbackCompanies = ['STOCK_CENTRAL_MP', 'H2O'];
+    // Salvaguarda multi-empresa: si no se encontró en la empresa actual
+    if (docs.length === 0) {
+      const isItemInsumoFuzzy = isFuzzy && itemName.some(kw => typeof kw === 'string' && (kw.toUpperCase() === 'ETIQUETA' || kw.toUpperCase() === 'BIDON' || kw.toUpperCase() === 'CAJA'));
+      const fallbackCompanies = isItemInsumoFuzzy
+        ? ['STOCK_CENTRAL_INSUMOS', 'H2O', 'H2Ocontrol', 'STOCK_CENTRAL_MP']
+        : (company !== 'STOCK_CENTRAL_MP' && company !== 'H2O' ? ['STOCK_CENTRAL_MP', 'H2O'] : []);
+
       for (const altCompany of fallbackCompanies) {
+        if (altCompany === company) continue;
         const altQ = isFuzzy
           ? query(inventoryRef, where("company", "==", altCompany))
           : query(inventoryRef, where("company", "==", altCompany), where("itemName", "==", itemName));
@@ -264,8 +298,13 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
           .map(doc => ({ id: doc.id, ...doc.data() }))
           .filter(doc => {
             if ((doc.quantity || 0) <= 0) return false;
+            if (doc.status === 'RECHAZADO') return false;
+            const isDocInsumo = doc.stockType === 'INSUMOS' || doc.stockType === 'ENVASES' ||
+              (doc.itemName || '').toUpperCase().startsWith('ETIQUETA') ||
+              (doc.itemName || '').toUpperCase().startsWith('BIDON') ||
+              (doc.itemName || '').toUpperCase().startsWith('CAJA');
             const pendingStatuses = ['PENDIENTE', 'PENDIENTE_LABORATORIO'];
-            if (pendingStatuses.includes(doc.status)) return false;
+            if (!isDocInsumo && pendingStatuses.includes(doc.status)) return false;
             if (isFuzzy) {
               const name = (doc.itemName || '').toUpperCase();
               return itemName.filter(Boolean).every(kw => {
@@ -332,22 +371,35 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
 export const checkTotalStock = async (company, itemName) => {
   try {
     const inventoryRef = collection(db, "Inventory");
-    let q;
     const isFuzzy = Array.isArray(itemName);
+    const isEtiquetaOrInsumo = isFuzzy 
+      ? itemName.some(kw => typeof kw === 'string' && (kw.toUpperCase() === 'ETIQUETA' || kw.toUpperCase() === 'BIDON' || kw.toUpperCase() === 'CAJA'))
+      : typeof itemName === 'string' && (itemName.toUpperCase().includes('ETIQUETA') || itemName.toUpperCase().includes('BIDON') || itemName.toUpperCase().includes('CAJA'));
 
+    const targetCompany = isEtiquetaOrInsumo ? 'STOCK_CENTRAL_INSUMOS' : company;
+    let q;
     if (isFuzzy) {
-      q = query(inventoryRef, where("company", "==", company));
+      q = query(inventoryRef, where("company", "==", targetCompany));
     } else {
-      q = query(inventoryRef, where("company", "==", company), where("itemName", "==", itemName));
+      q = query(inventoryRef, where("company", "==", targetCompany), where("itemName", "==", itemName));
     }
-    const snap = await getDocs(q);
-    let total = 0;
-    snap.forEach(doc => {
-      const data = doc.data();
-      // CUARENTENA: No contar stock que aún no fue aprobado por BBS Calidad
-      const pendingStatuses = ['PENDIENTE', 'PENDIENTE_LABORATORIO'];
-      if (pendingStatuses.includes(data.status)) return;
-      if (data.quantity > 0) {
+
+    const checkSnapshot = (snap) => {
+      let subTotal = 0;
+      snap.forEach(doc => {
+        const data = doc.data();
+        if ((data.quantity || 0) <= 0) return;
+        if (data.status === 'RECHAZADO') return;
+
+        const isDocInsumo = data.stockType === 'INSUMOS' || data.stockType === 'ENVASES' ||
+          (data.itemName || '').toUpperCase().includes('ETIQUETA') ||
+          (data.itemName || '').toUpperCase().includes('BIDON') ||
+          (data.itemName || '').toUpperCase().includes('CAJA');
+
+        // CUARENTENA: No contar stock de MP o Granel que no fue aprobado, pero insumos siempre son válidos
+        const pendingStatuses = ['PENDIENTE', 'PENDIENTE_LABORATORIO'];
+        if (!isDocInsumo && pendingStatuses.includes(data.status)) return;
+
         if (isFuzzy) {
           const name = (data.itemName || '').toUpperCase();
           if (itemName.filter(Boolean).every(kw => {
@@ -358,13 +410,38 @@ export const checkTotalStock = async (company, itemName) => {
             }
             return name.includes(String(kw).toUpperCase());
           })) {
-            total += Number(data.quantity);
+            subTotal += Number(data.quantity);
           }
         } else {
-          total += Number(data.quantity);
+          subTotal += Number(data.quantity);
+        }
+      });
+      return subTotal;
+    };
+
+    let snap = await getDocs(q);
+    let total = checkSnapshot(snap);
+
+    // Salvaguarda multi-empresa si no se encontró en la empresa destino
+    if (total === 0) {
+      const fallbackList = isEtiquetaOrInsumo 
+        ? ['H2O', 'H2Ocontrol', 'STOCK_CENTRAL_MP']
+        : (company !== 'STOCK_CENTRAL_MP' && company !== 'H2O' ? ['STOCK_CENTRAL_MP', 'H2O'] : []);
+
+      for (const altComp of fallbackList) {
+        if (altComp === targetCompany) continue;
+        const altQ = isFuzzy
+          ? query(inventoryRef, where("company", "==", altComp))
+          : query(inventoryRef, where("company", "==", altComp), where("itemName", "==", itemName));
+        const altSnap = await getDocs(altQ);
+        const altTotal = checkSnapshot(altSnap);
+        if (altTotal > 0) {
+          total = altTotal;
+          break;
         }
       }
-    });
+    }
+
     return total;
   } catch (error) {
     console.error("Error al consultar stock total:", error);

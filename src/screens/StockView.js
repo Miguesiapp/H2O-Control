@@ -203,12 +203,22 @@ export default function StockView({ route, navigation }) {
     }
   };
 
+  const isCentralInsumos = stockType === 'INSUMOS' || stockType === 'ENVASES' || companyName === 'STOCK_CENTRAL_INSUMOS';
+
   useEffect(() => {
-    const q = query(
-      collection(db, "Inventory"),
-      where("company", "==", companyName),
-      where("stockType", "==", stockType)
-    );
+    let q;
+    if (isCentralInsumos) {
+      q = query(
+        collection(db, "Inventory"),
+        where("company", "in", ["STOCK_CENTRAL_INSUMOS", "H2O", "H2Ocontrol"])
+      );
+    } else {
+      q = query(
+        collection(db, "Inventory"),
+        where("company", "==", companyName),
+        where("stockType", "==", stockType)
+      );
+    }
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const stockData = [];
@@ -217,17 +227,37 @@ export default function StockView({ route, navigation }) {
 
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        // CUARENTENA: Excluir lotes pendientes de aprobación BBS Calidad del stock disponible
+        const itemName = (data.itemName || data.productName || '').toUpperCase();
+        const cat = (data.category || '').toUpperCase();
+        const isDocInsumo = 
+          data.stockType === 'INSUMOS' || 
+          data.stockType === 'ENVASES' || 
+          cat.includes('ETIQUET') || 
+          cat.includes('BIDON') || 
+          cat.includes('CAJA') ||
+          itemName.startsWith('ETIQUETA') || 
+          itemName.startsWith('BIDON') || 
+          itemName.startsWith('CAJA');
+
+        if (isCentralInsumos) {
+          if (!isDocInsumo) return;
+        } else {
+          if (data.company !== companyName) return;
+          if (data.stockType !== stockType) return;
+        }
+
+        // CUARENTENA: Solo para MP y Granel, nunca para Insumos (etiquetas, bidones, cajas)
         const pendingStatuses = ['PENDIENTE', 'PENDIENTE_LABORATORIO'];
-        if (pendingStatuses.includes(data.status)) {
+        if (!isDocInsumo && pendingStatuses.includes(data.status)) {
           pendingCount += 1;
           return;
         }
-        // Solo incluir documentos con cantidad positiva (evitar negativos por condiciones de carrera)
+        if (data.status === 'RECHAZADO') return;
+
+        // Solo incluir documentos con cantidad positiva
         if ((data.quantity || 0) > 0) {
           stockData.push({ ...data, id: doc.id });
         } else {
-          // Marcar para limpieza silenciosa
           toCleanup.push(doc.id);
         }
       });
@@ -251,7 +281,7 @@ export default function StockView({ route, navigation }) {
     });
 
     return () => unsubscribe();
-  }, [companyName, stockType]);
+  }, [companyName, stockType, isCentralInsumos]);
 
   const getStockLevel = (quantity, minStock = 100) => {
     if (quantity <= 0) return { label: 'QUIEBRE DE STOCK', color: '#ef4444', bg: '#fef2f2', icon: AlertTriangle };
@@ -284,17 +314,28 @@ export default function StockView({ route, navigation }) {
            normalizeString(item.providerName).includes(searchNormalized);
   });
 
-  // Lógica específica para INSUMOS (Agrupar)
-  const isCentralInsumos = stockType === 'INSUMOS';
-  
   let displayedItems = filteredItems;
   if (isCentralInsumos) {
     if (activeInsumoTab === 'BIDONES') {
-      displayedItems = filteredItems.filter(item => (item.itemName || '').toUpperCase().includes('BIDON'));
+      displayedItems = filteredItems.filter(item => {
+        const name = (item.itemName || item.productName || '').toUpperCase();
+        const cat = (item.category || '').toUpperCase();
+        return name.includes('BIDON') || cat.includes('BIDON');
+      });
     } else if (activeInsumoTab === 'CAJAS') {
-      displayedItems = filteredItems.filter(item => (item.itemName || '').toUpperCase().includes('CAJA'));
+      displayedItems = filteredItems.filter(item => {
+        const name = (item.itemName || item.productName || '').toUpperCase();
+        const cat = (item.category || '').toUpperCase();
+        return name.includes('CAJA') || cat.includes('CAJA');
+      });
     } else if (activeInsumoTab === 'ETIQUETAS') {
-      displayedItems = filteredItems.filter(item => (item.itemName || '').toUpperCase().includes('ETIQUETA'));
+      displayedItems = filteredItems.filter(item => {
+        const name = (item.itemName || item.productName || '').toUpperCase();
+        const cat = (item.category || '').toUpperCase();
+        return name.includes('ETIQUET') || name.includes('ETIQ') || name.includes('STICKER') || cat.includes('ETIQUET');
+      });
+    } else if (activeInsumoTab === 'TODOS') {
+      displayedItems = filteredItems;
     }
   }
 

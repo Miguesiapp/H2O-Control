@@ -100,6 +100,18 @@ export default function SmartAICargoScreen({ navigation }) {
       const actionName = opMode.includes('INGRESO') ? `INGRESO_MASIVO_IA` : opMode;
 
       for (const item of processedData.items) {
+        let rawItemName = item.name?.toUpperCase() || 'DESCONOCIDO';
+        const isItemInsumo = 
+          targetStock === 'INSUMOS' ||
+          rawItemName.startsWith('ETIQUETA') || 
+          rawItemName.startsWith('BIDON') || 
+          rawItemName.startsWith('CAJA');
+
+        let itemStockType = isItemInsumo ? 'INSUMOS' : targetStock;
+        let itemCompanyDest = isItemInsumo ? 'STOCK_CENTRAL_INSUMOS' : companyDest;
+        let itemStatus = isItemInsumo ? 'APTO' : ((itemStockType === 'MP') ? 'PENDIENTE' : ((itemStockType === 'GRANEL') ? 'PENDIENTE_LABORATORIO' : 'APTO'));
+        let itemUnit = item.unit || ((itemStockType === 'FINAL' || itemStockType === 'INSUMOS') ? 'Uds' : 'Kg/Lts');
+
         let qtyNormalized = parseFloat(String(item.qty || 0).replace(',', '.'));
         if (opMode === 'RETIRO_CASUAL') {
           qtyNormalized = -Math.abs(qtyNormalized);
@@ -107,15 +119,15 @@ export default function SmartAICargoScreen({ navigation }) {
           qtyNormalized = Math.abs(qtyNormalized);
         }
 
-        await registerMovement(currentUser, actionName, companyDest, {
-          itemName: item.name?.toUpperCase() || 'DESCONOCIDO',
+        await registerMovement(currentUser, actionName, itemCompanyDest, {
+          itemName: rawItemName,
           quantity: qtyNormalized,
-          stockType: targetStock, 
+          stockType: itemStockType, 
           batchInternal: batchInternal,
           loteProveedor: item.lote || 'N/A',
           vencimiento: item.vencimiento || 'N/A',
-          unit: item.unit || ((targetStock === 'FINAL' || targetStock === 'INSUMOS') ? 'Uds' : 'Kg/Lts'),
-          status: (targetStock === 'MP') ? 'PENDIENTE' : ((targetStock === 'GRANEL') ? 'PENDIENTE_LABORATORIO' : 'APTO'),
+          unit: itemUnit,
+          status: itemStatus,
           evidenceUrl: processedData.evidenceUrl || null
         });
       }

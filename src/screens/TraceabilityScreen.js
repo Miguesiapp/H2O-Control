@@ -71,9 +71,9 @@ export default function TraceabilityScreen({ navigation }) {
       if (mainOrder.type === 'OP' && mainOrder.data.ingredients) {
         ingredientsRaw = mainOrder.data.ingredients;
       } else if (mainOrder.type === 'OEM') {
-        // En OEM (Envasado Directo) el ingrediente principal es el Granel seleccionado
+        // En OEM (Envasado Directo) el ingrediente principal es el Granel / Materia Prima seleccionado
         ingredientsRaw = [{
-          name: mainOrder.data.itemName?.split(' - ')[0] || 'GRANEL',
+          name: mainOrder.data.rawMaterialName || mainOrder.data.itemName?.split(' - ')[0] || 'GRANEL',
           batchesToConsume: [{
             batchInternal: mainOrder.data.batchInternal,
             batchProvider: mainOrder.data.batchProvider,

@@ -9,7 +9,7 @@ import { collection, query, where, getDocs, onSnapshot, serverTimestamp, doc, up
 import { registerMovement, createOrder, updateOrderStatus, checkTotalStock } from '../services/logisticsService'; 
 import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box, Droplet, Building2, Tag, Plus, ClipboardList, Play, CheckSquare, XCircle, ChevronDown, ChevronUp, Printer, ShieldAlert, FileText, X } from 'lucide-react-native';
 import AutocompleteInput from '../components/AutocompleteInput';
-import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS, getCommercialNamesForGranel } from '../config/constants';
+import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS, getCommercialNamesForGranel, getCapacityKeywords, getLabelKeywords } from '../config/constants';
 import { canCreateOrders, canChangeStatus } from '../config/permissions';
 import { printOrder } from '../services/printService';
 import Toast from 'react-native-toast-message';
@@ -98,16 +98,26 @@ export default function PackagingOrderScreen({ route, navigation }) {
   useEffect(() => {
     const fetchApprovedLots = async () => {
       try {
+        const companiesToQuery = (companyName === 'H2O' || companyName === 'H2Ocontrol')
+          ? ['H2O', 'H2Ocontrol']
+          : [companyName];
+
         const q = query(
           collection(db, "Inventory"),
-          where("company", "==", companyName),
-          where("stockType", "==", "GRANEL"),
-          where("status", "==", "APTO")
+          where("company", "in", companiesToQuery),
+          where("stockType", "==", "GRANEL")
         );
         const querySnapshot = await getDocs(q);
+        const pendingStatuses = ['PENDIENTE', 'PENDIENTE_LABORATORIO', 'RECHAZADO'];
         const lots = querySnapshot.docs
           .map(doc => ({ id: doc.id, ...doc.data() }))
-          .filter(doc => (doc.quantity || 0) > 0);
+          .filter(doc => {
+            const qty = Number(doc.quantity) || 0;
+            if (qty <= 0) return false;
+            const st = (doc.status || '').toUpperCase().trim();
+            if (pendingStatuses.includes(st)) return false;
+            return true;
+          });
         setApprovedLots(lots);
       } catch (error) {
         console.error(error);
@@ -128,7 +138,14 @@ export default function PackagingOrderScreen({ route, navigation }) {
 
   const mappedGranelStr = commercialName ? (EQUIVALENCIES_MAP[commercialName.trim().toUpperCase()] || commercialName.trim().toUpperCase()) : '';
   const synonyms = mappedGranelStr.split('/').map(s => s.trim().toUpperCase());
-  const normalizePart = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+  const normalizePart = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase().replace(/\s+/g, ' ');
+  const cleanStr = (s) => (s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/^GRANEL\s+/i, '')
+    .replace(/[^A-Z0-9]/g, '');
+
   const synParts = synonyms.map(s => normalizePart(s).replace(/^GRANEL\s+/i, ''));
 
   // Filtrado robusto por coincidencia exacta de parte o nombre completo, evitando falsos positivos por subcadenas
@@ -136,11 +153,17 @@ export default function PackagingOrderScreen({ route, navigation }) {
     if (!l.itemName) return false;
     const lotNameNorm = normalizePart(l.itemName);
     const lotParts = l.itemName.split('/').map(p => normalizePart(p).replace(/^GRANEL\s+/i, ''));
+    const lotCleanParts = l.itemName.split('/').map(p => cleanStr(p));
+    const lotCleanFull = cleanStr(l.itemName);
+
     return synParts.some(syn => {
+      const synClean = cleanStr(syn);
       return lotNameNorm === syn || 
              lotNameNorm.replace(/^GRANEL\s+/i, '') === syn || 
              lotParts.includes(syn) || 
-             synonyms.includes(l.itemName.trim().toUpperCase());
+             synonyms.includes(l.itemName.trim().toUpperCase()) ||
+             (synClean && lotCleanFull === synClean) ||
+             (synClean && lotCleanParts.includes(synClean));
     });
   }) : [];
 
@@ -179,8 +202,8 @@ export default function PackagingOrderScreen({ route, navigation }) {
       const itemName = selectedLot.itemName?.toUpperCase();
 
       // Variables de Búsqueda Generalizada (Fuzzy) para usarse después en la deducción
-      // BIDONES Y ETIQUETAS usan litros (ej: 5L, 5 L, 5 LTS) pero NO X5
-      const capacityKeywords = [`${presentation}L`, `${presentation} L`, `${presentation} LTS`, `${presentation}LTS`, `${presentation}-L`];
+      // BIDONES Y ETIQUETAS usan litros o cc con variantes
+      const capacityKeywords = getCapacityKeywords(presentation);
       const fuzzyBidon = ['BIDON', capacityKeywords, formData.brandBidon];
       
       // CAJAS usan formato multiplicador y litros como fallback
@@ -191,7 +214,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
       const fuzzyCaja = actuallyUsesBox ? ['CAJA', boxKeywords, formData.brandCaja] : null;
 
       const baseLabelName = getBaseLabelName(commercialName);
-      const labelKeywords = [baseLabelName, commercialName];
+      const labelKeywords = getLabelKeywords(commercialName);
       const fuzzyEtiqueta = ['ETIQUETA', capacityKeywords, labelKeywords];
 
       if (isContainer) {
