@@ -261,8 +261,9 @@ export default function StockView({ route, navigation }) {
         }
         if (data.status === 'RECHAZADO') return;
 
-        // Solo incluir documentos con cantidad positiva
-        if ((data.quantity || 0) > 0) {
+        // Solo incluir documentos con cantidad positiva real (> 0.001 para depurar residuos infinitesimales)
+        const itemQty = Number(data.quantity) || 0;
+        if (itemQty > 0.001) {
           stockData.push({ ...data, id: doc.id });
         } else {
           toCleanup.push(doc.id);

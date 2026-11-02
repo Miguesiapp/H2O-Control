@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
-import { collection, getDocs, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, query, where, addDoc, serverTimestamp, doc, deleteDoc } from 'firebase/firestore';
 import { ChevronLeft, Calculator, AlertCircle, CheckCircle2, ShoppingCart, Target, Beaker, Factory, ChevronDown, X, ClipboardList, Download, Plus, Trash2, Printer } from 'lucide-react-native';
 
 import { EQUIVALENCIES } from '../services/formulaService';
@@ -97,7 +97,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
       // CARGAMOS TODO EL STOCK MP Y GRANEL
       const qAllMP = query(inventoryRef, where("stockType", "in", ["MP", "GRANEL"]));
       const snapAllMP = await getDocs(qAllMP);
-      const allMPStock = snapAllMP.docs.map(doc => doc.data());
+      const allMPStock = snapAllMP.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
       // MAPA DE DENSIDADES PARA CONVERSIÓN DE GRANELES (Kg a Lts)
       const densityMap = {};
@@ -162,6 +162,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
 
           if (existingKey) {
             mpRequirements[existingKey].needed += amountNeeded;
+            if (isGranel) mpRequirements[existingKey].isGranel = true;
             mpRequirements[existingKey].usedIn.push({
               formulaName: target.selectedFormula.productName,
               amount: amountNeeded
@@ -170,6 +171,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
             existingKey = ingNameUpper;
             mpRequirements[existingKey] = {
               name: ingNameUpper,
+              isGranel: Boolean(isGranel),
               searchNamesNorm: searchNamesNorm,
               needed: amountNeeded,
               usedIn: [{
@@ -195,16 +197,37 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
         const BLOCKED_STATUSES = ['PENDIENTE', 'PENDIENTE_LABORATORIO'];
         allMPStock.forEach(item => {
            if (BLOCKED_STATUSES.includes(item.status)) return; // Respetar cuarentena de BBS Calidad
+           
+           const rawQty = Number(item.quantity) || 0;
+           // Limpieza y descarte de residuos infinitesimales (< 1 gramo / 0.001)
+           if (rawQty <= 0.001) {
+             if (item.id) deleteDoc(doc(db, "Inventory", item.id)).catch(() => {});
+             return;
+           }
+
+           // El granel reside exclusivamente en los tanques de planta H2O.
+           // Si un documento de GRANEL tiene asignada empresa STOCK_CENTRAL_MP, es un registro huérfano/duplicado
+           // de migraciones antiguas (el lote físico real ya existe bajo H2O).
+           if (item.stockType === 'GRANEL' && item.company === 'STOCK_CENTRAL_MP') {
+             if (item.id) deleteDoc(doc(db, "Inventory", item.id)).catch(() => {});
+             return;
+           }
+
+           // Si el insumo requerido es un Granel madre, solo computar graneles reales de planta H2O
+           if (mp.isGranel && item.stockType !== 'GRANEL') return;
+           if (!mp.isGranel && item.stockType === 'GRANEL') return;
+           if (mp.isGranel && item.company && item.company !== 'H2O' && item.company !== 'H2Ocontrol') return;
+
            const itemNameNorm = normalizeString(item.itemName || '');
            const isMatch = mp.searchNamesNorm.some(pn => 
              pn === itemNameNorm || itemNameNorm.includes(pn) || pn.includes(itemNameNorm)
            );
-           if (isMatch && Number(item.quantity) > 0) {
-             totalInStock += Number(item.quantity);
+           if (isMatch) {
+             totalInStock += rawQty;
            }
         });
-        mp.stock = totalInStock;
-        mp.balance = totalInStock - mp.needed;
+        mp.stock = Number(totalInStock.toFixed(2));
+        mp.balance = Number((totalInStock - mp.needed).toFixed(2));
 
         // Buscar fórmulas compartidas que NO estén en esta proyección
         const sharedFormulas = [];
