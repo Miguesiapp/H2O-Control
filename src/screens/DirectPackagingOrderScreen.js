@@ -18,11 +18,21 @@ const BIDON_CAPACITIES = ['20', '10', '5', '1'];
 
 const OED_SEARCH_LIST = [
   ...new Set([
+    'CLORO 60%',
+    'SHOCK',
+    'CLORO INSTANTANEO',
+    'CLORO 90%',
+    'SLOW',
+    'CLORO GRANULADO',
+    'CLORO 87%',
+    'TRIPLE ACCION',
+    'CLORO PASTILLAS',
     'DRY CONTROL',
     'OXOFERT +',
     'OXOFERT',
     'PH CONTROL',
     'PERCYDE',
+    'SYNERGYCIDE AB',
     ...PRODUCTS_FINAL_LIST,
     ...RAW_MATERIALS_LIST.flatMap(rm => {
       const parts = rm.split(' / ').map(p => p.trim());
@@ -31,58 +41,94 @@ const OED_SEARCH_LIST = [
   ])
 ].filter(Boolean).sort();
 
+const normalizePart = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+
 const doesLotMatchSelection = (lotItemName, searchInput) => {
   if (!lotItemName || !searchInput) return false;
-  const lotUpper = String(lotItemName).toUpperCase().trim();
-  const searchUpper = String(searchInput).toUpperCase().trim();
+  const lotFullNorm = normalizePart(lotItemName);
+  const searchNorm = normalizePart(searchInput);
 
   // Coincidencia exacta o directa
-  if (lotUpper === searchUpper) return true;
-
-  // Casos específicos conocidos de envasado directo (PT <-> MP)
-  if (searchUpper.includes('DRY CONTROL') || searchUpper === 'DRY') {
-    if (lotUpper.includes('CLORITO') || lotUpper.includes('SERCLOR') || lotUpper.includes('DRY')) return true;
-  }
-  if (searchUpper.includes('OXOFERT +') || searchUpper.includes('OXOFERT PLUS')) {
-    if (lotUpper.includes('CLORHIDRICO') || lotUpper.includes('HCL') || lotUpper.includes('OXOFERT +')) return true;
-  }
-  if (searchUpper === 'OXOFERT') {
-    if (lotUpper.includes('OX') || lotUpper.includes('OXOCAT') || lotUpper.includes('OXOFERT')) return true;
-  }
-  if (searchUpper.includes('PH CONTROL')) {
-    if (lotUpper.includes('CLORHIDRICO') || lotUpper.includes('HCL') || lotUpper.includes('PH CONTROL')) return true;
-  }
-  if (searchUpper.includes('PERCYDE')) {
-    if (lotUpper.includes('PERACETICO') || lotUpper.includes('PERCYDE')) return true;
-  }
+  if (lotFullNorm === searchNorm) return true;
 
   // Partes separadas por '/'
-  const lotParts = lotUpper.split('/').map(p => p.trim());
-  const searchParts = searchUpper.split('/').map(p => p.trim());
+  const lotParts = lotItemName.split('/').map(p => normalizePart(p)).filter(p => p.length > 0);
+  const searchParts = searchInput.split('/').map(p => normalizePart(p)).filter(p => p.length > 0);
 
-  if (lotParts.some(lp => searchParts.some(sp => lp.includes(sp) || sp.includes(lp)))) {
+  // 1. Casos específicos conocidos de envasado directo (PT <-> MP)
+  // CLORO 60% / SHOCK
+  const isCloro60 = searchParts.some(p => ['CLORO 60%', 'CLORO 60', 'SHOCK', 'CLORO INSTANTANEO', 'DICLOROISOCIANURATO DE SODIO', 'DICLOROISOCIANURATO'].includes(p));
+  if (isCloro60) {
+    return lotParts.some(p => ['DICLOROISOCIANURATO DE SODIO', 'DICLOROISOCIANURATO', 'SHOCK', 'CLORO 60%', 'CLORO 60', 'CLORO INSTANTANEO'].includes(p));
+  }
+
+  // CLORO 90% / SLOW
+  const isCloro90 = searchParts.some(p => ['CLORO 90%', 'CLORO 90', 'SLOW', 'CLORO GRANULADO', 'ACIDO TRICLOROISOCIANURICO', 'TRICLOROISOCIANURICO'].includes(p));
+  if (isCloro90) {
+    return lotParts.some(p => ['ACIDO TRICLOROISOCIANURICO', 'TRICLOROISOCIANURICO', 'CLORO GRANULADO', 'SLOW', 'CLORO 90%', 'CLORO 90'].includes(p));
+  }
+
+  // CLORO 87% / TRIPLE ACCION
+  const isCloro87 = searchParts.some(p => ['CLORO 87%', 'CLORO 87', 'TRIPLE ACCION', 'CLORO PASTILLAS', 'ACIDO TRICLOROISOCIANURICO PASTILLAS'].includes(p));
+  if (isCloro87) {
+    return lotParts.some(p => ['ACIDO TRICLOROISOCIANURICO PASTILLAS', 'TRIPLE ACCION', 'CLORO 87%', 'CLORO 87', 'CLORO PASTILLAS'].includes(p));
+  }
+
+  // DRY CONTROL / CLORITO DE SODIO
+  const isDryControl = searchParts.some(p => ['DRY CONTROL', 'DRY', 'CLORITO DE SODIO', 'CLORITO', 'SERCLOR'].includes(p));
+  if (isDryControl) {
+    return lotParts.some(p => ['CLORITO DE SODIO', 'CLORITO', 'SERCLOR', 'DRY CONTROL', 'DRY'].includes(p));
+  }
+
+  // OXOFERT + / PH CONTROL / ACIDO CLORHIDRICO
+  const isHCl = searchParts.some(p => ['OXOFERT +', 'OXOFERT PLUS', 'PH CONTROL', 'ACIDO CLORHIDRICO', 'HCL', 'HCL 19%'].includes(p));
+  if (isHCl) {
+    return lotParts.some(p => ['ACIDO CLORHIDRICO', 'HCL', 'HCL 19%', 'PH CONTROL', 'OXOFERT +', 'OXOFERT PLUS'].includes(p));
+  }
+
+  // PERCYDE / ACIDO PERACETICO
+  const isPercyde = searchParts.some(p => ['PERCYDE', 'ACIDO PERACETICO', 'PERACETICO'].includes(p));
+  if (isPercyde) {
+    return lotParts.some(p => ['ACIDO PERACETICO', 'PERACETICO', 'PERCYDE'].includes(p));
+  }
+
+  // OXOFERT / OXOCAT
+  const isOxofert = searchParts.some(p => ['OXOFERT', 'OXOCAT', 'GRANEL OX'].includes(p));
+  if (isOxofert) {
+    return lotParts.some(p => ['OXOFERT', 'OXOCAT', 'GRANEL OX', 'OX'].includes(p));
+  }
+
+  // SYNERGYCIDE AB / GLICERINA
+  const isGlicerina = searchParts.some(p => ['SYNERGYCIDE AB', 'GLICERINA', 'GLICEROL'].includes(p));
+  if (isGlicerina) {
+    return lotParts.some(p => ['GLICERINA', 'GLICEROL', 'SYNERGYCIDE AB'].includes(p));
+  }
+
+  // 2. Coincidencia exacta término a término entre partes del lote y partes de búsqueda
+  if (lotParts.some(lp => searchParts.includes(lp))) {
     return true;
   }
 
-  // Búsqueda en EQUIVALENCIES_MAP
+  // 3. Mapeo por EQUIVALENCIES_MAP (coincidencia exacta entre sinónimos oficiales)
   for (const [commercialKey, equivRaw] of Object.entries(EQUIVALENCIES_MAP)) {
-    const commUpper = commercialKey.toUpperCase().trim();
-    if (searchUpper === commUpper || searchUpper.includes(commUpper) || commUpper.includes(searchUpper)) {
-      const equivParts = equivRaw.toUpperCase().split('/').map(p => p.trim());
-      if (lotParts.some(lp => equivParts.some(ep => lp.includes(ep) || ep.includes(lp)))) {
+    const commNorm = normalizePart(commercialKey);
+    const equivParts = equivRaw.split('/').map(p => normalizePart(p)).filter(p => p.length > 0);
+    if (searchParts.includes(commNorm) || equivParts.some(ep => searchParts.includes(ep))) {
+      if (lotParts.includes(commNorm) || lotParts.some(lp => equivParts.includes(lp))) {
         return true;
       }
     }
   }
 
-  // Búsqueda en RAW_MATERIALS_LIST
+  // 4. Mapeo por RAW_MATERIALS_LIST (coincidencia exacta entre partes de la misma definición)
   for (const rawLine of RAW_MATERIALS_LIST) {
-    const rawUpper = rawLine.toUpperCase();
-    const rawParts = rawUpper.split('/').map(p => p.trim());
-    const lotMatchesLine = lotParts.some(lp => rawParts.some(rp => lp.includes(rp) || rp.includes(lp)));
-    const searchMatchesLine = searchParts.some(sp => rawParts.some(rp => sp.includes(rp) || rp.includes(sp)));
-    if (lotMatchesLine && searchMatchesLine) {
-      return true;
+    const rawParts = rawLine.split('/').map(p => normalizePart(p)).filter(p => p.length > 0);
+    const searchMatchesLine = searchParts.some(sp => rawParts.includes(sp));
+    if (searchMatchesLine) {
+      const lotMatchesLine = lotParts.some(lp => rawParts.includes(lp));
+      if (lotMatchesLine) {
+        return true;
+      }
     }
   }
 
@@ -228,6 +274,18 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
       const madre = (selectedLot.itemName || "").trim().toUpperCase();
 
       // Asignación inteligente por defecto según el lote
+      if (madre.includes('DICLOROISOCIANURATO') || madre.includes('CLORO 60%') || madre.includes('SHOCK')) {
+        setCommercialName(userSelectedPT === 'SHOCK' ? 'SHOCK' : 'CLORO 60%');
+        return;
+      }
+      if (madre.includes('CLORO GRANULADO') || madre.includes('CLORO 90%') || madre.includes('SLOW')) {
+        setCommercialName(userSelectedPT === 'SLOW' ? 'SLOW' : 'CLORO 90%');
+        return;
+      }
+      if (madre.includes('TRIPLE ACCION') || madre.includes('CLORO 87%') || madre.includes('PASTILLAS')) {
+        setCommercialName(userSelectedPT === 'TRIPLE ACCION' ? 'TRIPLE ACCION' : 'CLORO 87%');
+        return;
+      }
       if (madre.includes('CLORITO') || madre.includes('SERCLOR')) {
         setCommercialName('DRY CONTROL');
         return;
@@ -737,9 +795,9 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
                 setSelectedRawMaterial(val);
                 setSelectedLot(null);
               }}
-              placeholder="Ej: DRY CONTROL, OXOFERT +, CLORITO DE SODIO"
+              placeholder="Ej: CLORO 60%, SHOCK, DRY CONTROL, OXOFERT +"
               icon={<Search color="#94a3b8" size={20} />}
-              allowCustom={false}
+              allowCustom={true}
               containerStyle={{ marginBottom: 20 }}
             />
 
@@ -784,9 +842,16 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
                         onPress={() => setSelectedLot(lot)}
                       >
                         <View style={styles.lotHeader}>
-                          <Text style={[styles.lotName, selectedLot?.id === lot.id && styles.lotNameSelected]}>
-                            {lot.itemName.split(' / ')[0]}
-                          </Text>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.lotName, selectedLot?.id === lot.id && styles.lotNameSelected]}>
+                              {lot.itemName.split(' / ')[0]}
+                            </Text>
+                            {lot.itemName.includes(' / ') && (
+                              <Text style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                                {lot.itemName.split(' / ').slice(1).join(' / ')}
+                              </Text>
+                            )}
+                          </View>
                           {selectedLot?.id === lot.id && <CheckCircle2 color="#3b82f6" size={20} />}
                         </View>
                         <Text style={styles.lotText}>Lote Interno: {lot.batchInternal}</Text>

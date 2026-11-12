@@ -9,6 +9,7 @@ import { collection, query, where, onSnapshot, writeBatch, doc, deleteDoc, updat
 import { registerMovement } from '../services/logisticsService';
 import { ChevronLeft, Search, PackageOpen, AlertTriangle, ShieldCheck, X, FlaskConical, Droplet, Box, Tag, Printer, ChevronDown, ChevronUp, Edit2, Trash2, Boxes } from 'lucide-react-native';
 import { RAW_MATERIALS_LIST, PRODUCTS_MADRE_LIST, formatDisplayName } from '../config/constants';
+import { printStockReport } from '../services/printService';
 
 const normalizeString = (str) => {
   if (!str) return '';
@@ -37,9 +38,30 @@ export default function StockView({ route, navigation }) {
 
   // Estado para los acordeones
   const [expandedItems, setExpandedItems] = useState([]);
+  const [isPrintingReport, setIsPrintingReport] = useState(false);
 
   const toggleExpand = (id) => {
     setExpandedItems(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
+
+  const handlePrintStockReport = async () => {
+    if (isPrintingReport) return;
+    try {
+      setIsPrintingReport(true);
+      await printStockReport({
+        title: title || 'ESTADO GENERAL DE STOCK',
+        companyName: isCentralInsumos ? 'STOCK CENTRAL INSUMOS' : companyName,
+        stockType: isCentralInsumos ? 'INSUMOS' : stockType,
+        items: groupedItems,
+        filterQuery: searchQuery.trim() || null,
+        activeTab: isCentralInsumos ? activeInsumoTab : null
+      });
+    } catch (error) {
+      console.error("Error al imprimir reporte de stock:", error);
+      Alert.alert("Error", "No se pudo generar el reporte de impresión de stock.");
+    } finally {
+      setIsPrintingReport(false);
+    }
   };
 
   const [minStockModalVisible, setMinStockModalVisible] = useState(false);
@@ -529,9 +551,23 @@ export default function StockView({ route, navigation }) {
               <Text style={styles.headerTitle}>{title}</Text>
               <Text style={styles.headerSub}>{companyName} • Categ: {stockType}</Text>
             </View>
-            <TouchableOpacity style={styles.searchBtn} onPress={() => setIsSearching(true)}>
-              <Search color="#0f172a" size={24} />
-            </TouchableOpacity>
+            <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+              <TouchableOpacity style={styles.searchBtn} onPress={() => setIsSearching(true)} activeOpacity={0.7}>
+                <Search color="#0f172a" size={20} />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.printHeaderBtn} 
+                onPress={handlePrintStockReport}
+                disabled={isPrintingReport}
+                activeOpacity={0.7}
+              >
+                {isPrintingReport ? (
+                  <ActivityIndicator color="#2563eb" size="small" />
+                ) : (
+                  <Printer color="#2563eb" size={20} />
+                )}
+              </TouchableOpacity>
+            </View>
           </>
         )}
       </View>
@@ -760,6 +796,7 @@ const styles = StyleSheet.create({
   },
   backBtn: { padding: 5 },
   searchBtn: { padding: 10, backgroundColor: '#f1f5f9', borderRadius: 12 },
+  printHeaderBtn: { padding: 10, backgroundColor: '#eff6ff', borderRadius: 12, borderWidth: 1, borderColor: '#bfdbfe' },
   headerTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a' },
   headerSub: { fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '700', marginTop: 2 },
   

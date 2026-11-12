@@ -549,3 +549,273 @@ export const printTraceabilityReport = async (logs, query) => {
     }
   }
 };
+
+export const generateStockHTML = ({ title, companyName, stockType, items, filterQuery, activeTab }) => {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const timeStr = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+
+  // Ordenar alfabéticamente de A a Z
+  const sortedItems = [...(items || [])].sort((a, b) => {
+    const nameA = (a.itemName || '').trim().toUpperCase();
+    const nameB = (b.itemName || '').trim().toUpperCase();
+    return nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
+  });
+
+  const totalProducts = sortedItems.length;
+  let totalBatches = 0;
+  let optimalCount = 0;
+  let lowCount = 0;
+  let breakCount = 0;
+
+  sortedItems.forEach(item => {
+    totalBatches += (item.lotes ? item.lotes.length : 1);
+    const qty = Number(item.quantity) || 0;
+    const min = Number(item.minStock) || 100;
+    if (qty <= 0) breakCount++;
+    else if (qty <= min) lowCount++;
+    else optimalCount++;
+  });
+
+  const tableRows = sortedItems.map((item, index) => {
+    const qty = Number(item.quantity) || 0;
+    const min = Number(item.minStock) || 100;
+    let badgeBg = '#ecfdf5';
+    let badgeColor = '#059669';
+    let statusText = 'ÓPTIMO';
+    if (qty <= 0) {
+      badgeBg = '#fef2f2';
+      badgeColor = '#dc2626';
+      statusText = 'QUIEBRE';
+    } else if (qty <= min) {
+      badgeBg = '#fffbeb';
+      badgeColor = '#d97706';
+      statusText = 'P. PEDIDO';
+    }
+
+    // Lotes formateados
+    const lotesSummary = (item.lotes && item.lotes.length > 0)
+      ? item.lotes.map(l => {
+          const lNum = l.batchInternal || 'S/D';
+          const lQty = Number(l.quantity) || 0;
+          return `<span class="lot-pill"><strong>${lNum}</strong>: ${lQty.toFixed(2)} ${l.unit || item.unit || ''}</span>`;
+        }).join(' ')
+      : '<span style="color: #94a3b8; font-style: italic;">Sin detalle de lotes</span>';
+
+    return `
+      <tr>
+        <td style="text-align: center; color: #64748b; font-weight: 700; width: 35px;">${index + 1}</td>
+        <td>
+          <span style="font-weight: 800; color: #0f172a; font-size: 13px;">${item.itemName || 'S/N'}</span>
+        </td>
+        <td>
+          <div class="lots-container">${lotesSummary}</div>
+        </td>
+        <td style="text-align: right; color: #64748b; font-weight: 600;">
+          ${min} ${item.unit || ''}
+        </td>
+        <td style="text-align: center;">
+          <span class="status-badge" style="background-color: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeColor}33;">
+            ${statusText}
+          </span>
+        </td>
+        <td style="text-align: right; font-weight: 900; color: #0f172a; font-size: 13px;">
+          ${qty.toFixed(2)} <span style="font-size: 10px; color: #64748b;">${item.unit || ''}</span>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>H2O Control - Reporte de Stock</title>
+        <style>
+          @page { size: A4 portrait; margin: 12mm 15mm; }
+          body { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Arial, sans-serif; color: #1e293b; line-height: 1.4; margin: 0; padding: 0; }
+          
+          /* Header estilo OP */
+          .header-container { border-bottom: 2px solid #2563eb; padding-bottom: 12px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
+          .header-left { display: flex; align-items: center; gap: 15px; }
+          .h2o-logo-box { width: 55px; height: 55px; border: 3px solid #2563eb; border-radius: 12px; text-align: center; vertical-align: middle; padding-top: 6px; box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .h2o-logo-big { display: block; font-size: 16px; font-weight: 900; color: #2563eb; line-height: 1.1; }
+          .h2o-logo-small { display: block; font-size: 7px; font-weight: 800; color: #2563eb; letter-spacing: 2px; }
+          
+          .header-text { }
+          .header-title { margin: 0; font-size: 18px; color: #0f172a; text-transform: uppercase; letter-spacing: 1px; font-weight: 900; }
+          .header-sub { margin: 2px 0 0 0; font-size: 12px; color: #64748b; font-weight: 600; }
+          
+          .header-right { text-align: right; }
+          .badge-type { background-color: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 6px; text-transform: uppercase; display: inline-block; }
+          .date-text { font-size: 10px; color: #64748b; margin-top: 4px; font-weight: 600; }
+
+          /* Tarjeta de Resumen */
+          .meta-card { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 15px; margin-bottom: 18px; display: flex; justify-content: space-between; gap: 15px; }
+          .meta-item { text-align: center; flex: 1; }
+          .meta-label { font-size: 9px; color: #64748b; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; margin-bottom: 2px; }
+          .meta-value { font-size: 15px; color: #0f172a; font-weight: 900; }
+
+          /* Tablas */
+          table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11px; }
+          th, td { padding: 7px 8px; border-bottom: 1px solid #e2e8f0; vertical-align: middle; }
+          th { background-color: #f1f5f9; font-weight: 800; color: #334155; text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; }
+          tr:nth-child(even) { background-color: #fafbfc; }
+          
+          .status-badge { display: inline-block; font-size: 9px; font-weight: 800; padding: 2px 6px; border-radius: 4px; letter-spacing: 0.5px; }
+          .lots-container { display: flex; flex-wrap: wrap; gap: 4px; }
+          .lot-pill { background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 4px; padding: 2px 5px; font-size: 9.5px; color: #334155; display: inline-block; }
+
+          /* Observaciones y Firmas */
+          .observaciones { background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 10px; min-height: 45px; margin-bottom: 25px; }
+          .obs-title { font-weight: 800; font-size: 10px; color: #64748b; text-transform: uppercase; margin-bottom: 4px; }
+
+          .signatures { display: flex; justify-content: space-between; margin-top: 25px; gap: 20px; }
+          .signature-box { flex: 1; text-align: center; border-top: 1px solid #94a3b8; padding-top: 6px; }
+          .signature-box p { margin: 0; font-size: 10.5px; color: #0f172a; font-weight: 800; }
+          .signature-box span { font-size: 9px; color: #64748b; }
+
+          .footer { margin-top: 20px; text-align: center; font-size: 9px; color: #94a3b8; border-top: 1px solid #f1f5f9; padding-top: 10px; }
+        </style>
+      </head>
+      <body>
+        <div class="header-container">
+          <div class="header-left">
+            <div class="h2o-logo-box">
+              <span class="h2o-logo-big">H2O</span>
+              <span class="h2o-logo-small">CONTROL</span>
+            </div>
+            <div class="header-text">
+              <h1 class="header-title">${title || 'ESTADO GENERAL DE STOCK'}</h1>
+              <p class="header-sub">Empresa: <strong>${companyName}</strong> ${activeTab ? `• Categoría: <strong>${activeTab}</strong>` : ''}</p>
+            </div>
+          </div>
+          <div class="header-right">
+            <span class="badge-type">TIPO: ${stockType}</span>
+            <div class="date-text">Emisión: ${dateStr} - ${timeStr} hs</div>
+          </div>
+        </div>
+
+        <div class="meta-card">
+          <div class="meta-item">
+            <div class="meta-label">Total Artículos</div>
+            <div class="meta-value">${totalProducts}</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">Lotes Totales</div>
+            <div class="meta-value">${totalBatches}</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">Stock Óptimo</div>
+            <div class="meta-value" style="color: #059669;">${optimalCount}</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">Puntos de Pedido</div>
+            <div class="meta-value" style="color: #d97706;">${lowCount}</div>
+          </div>
+          <div class="meta-item">
+            <div class="meta-label">Quiebres (Sin Stock)</div>
+            <div class="meta-value" style="color: #dc2626;">${breakCount}</div>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 35px; text-align: center;">#</th>
+              <th>Artículo / Producto (Orden Alfabético)</th>
+              <th>Desglose Lotes Activos (Lote: Cant.)</th>
+              <th style="text-align: right; width: 90px;">Mínimo Req.</th>
+              <th style="text-align: center; width: 85px;">Estado</th>
+              <th style="text-align: right; width: 95px;">Stock Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRows || '<tr><td colspan="6" style="text-align: center; padding: 20px;">No hay registros en inventario.</td></tr>'}
+          </tbody>
+        </table>
+
+        <div class="observaciones">
+          <div class="obs-title">Observaciones de Auditoría de Planta</div>
+          ${filterQuery ? `<p style="margin: 0; font-size: 10px; color: #475569;">Filtro de búsqueda aplicado: <em>"${filterQuery}"</em>.</p>` : ''}
+        </div>
+
+        <div class="signatures">
+          <div class="signature-box">
+            <p>Responsable de Inventario / Stock</p>
+            <span>Firma y Aclaración</span>
+          </div>
+          <div class="signature-box">
+            <p>Control de Calidad (Laboratorio)</p>
+            <span>Firma y Sello</span>
+          </div>
+          <div class="signature-box">
+            <p>Supervisión de Planta / Logística</p>
+            <span>Firma y Aclaración</span>
+          </div>
+        </div>
+
+        <div class="footer">
+          Documento emitido mediante H2O Control · Sistema Integral de Gestión de Planta y Trazabilidad Químico-Industrial.
+        </div>
+      </body>
+    </html>
+  `;
+};
+
+export const printStockReport = async (options) => {
+  try {
+    const html = generateStockHTML(options);
+
+    if (Platform.OS === 'web') {
+      const oldIframe = document.getElementById('h2o-stock-print-iframe');
+      if (oldIframe) {
+        oldIframe.remove();
+      }
+
+      const iframe = document.createElement('iframe');
+      iframe.id = 'h2o-stock-print-iframe';
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = 'none';
+      document.body.appendChild(iframe);
+
+      const iframeDoc = iframe.contentWindow?.document;
+      if (iframeDoc) {
+        iframeDoc.open();
+        iframeDoc.write(html);
+        iframeDoc.close();
+        setTimeout(() => {
+          try {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+          } catch (e) {
+            console.warn('iframe print error', e);
+          } finally {
+            setTimeout(() => {
+              if (document.body.contains(iframe)) {
+                document.body.removeChild(iframe);
+              }
+            }, 1000);
+          }
+        }, 500);
+      } else {
+        document.body.removeChild(iframe);
+        Alert.alert("Error", "No se pudo generar el documento de impresión.");
+      }
+    } else {
+      await Print.printAsync({ html });
+    }
+  } catch (error) {
+    console.error('Error printing stock report:', error);
+    if (Platform.OS === 'web') {
+      console.warn('Error: No se pudo generar la impresión de stock en Web.');
+    } else {
+      Alert.alert('Error', 'No se pudo generar el reporte de stock.');
+    }
+  }
+};

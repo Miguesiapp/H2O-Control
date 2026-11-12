@@ -93,7 +93,12 @@ export default function AutocompleteInput({
             if (allowCustom) {
                onChangeText(txt);
             } else {
-               const exactMatch = (data || []).find(d => getDisplayName(d).toUpperCase() === txt.trim().toUpperCase());
+               const txtNorm = txt.trim().toUpperCase();
+               const exactMatch = (data || []).find(d => {
+                 const dUpper = (d || "").toUpperCase();
+                 const parts = dUpper.split('/').map(p => p.trim());
+                 return parts.includes(txtNorm) || getDisplayName(d).toUpperCase() === txtNorm || dUpper === txtNorm;
+               });
                if (exactMatch) {
                  onChangeText(exactMatch);
                } else if (value !== "") {
@@ -130,7 +135,14 @@ export default function AutocompleteInput({
                style={styles.suggestionItem}
                onPress={() => handleSelect(item)}
              >
-               <Text style={styles.suggestionText}>{getDisplayName(item)}</Text>
+               <View style={{ flex: 1 }}>
+                 <Text style={styles.suggestionText}>{getDisplayName(item)}</Text>
+                 {typeof item === 'string' && item.includes(' / ') && (
+                   <Text style={styles.suggestionSubText} numberOfLines={1}>
+                     {item.split(' / ').slice(1).join(' / ')}
+                   </Text>
+                 )}
+               </View>
              </TouchableOpacity>
           ))}
         </ScrollView>
@@ -199,5 +211,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#334155",
     fontWeight: "600",
+  },
+  suggestionSubText: {
+    fontSize: 12,
+    color: "#64748b",
+    marginTop: 2,
+    fontWeight: "400",
   }
 });
