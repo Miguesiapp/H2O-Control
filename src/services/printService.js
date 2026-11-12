@@ -1,4 +1,5 @@
 import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import { Alert, Platform } from 'react-native';
 
 const generateHTML = (order) => {
@@ -279,66 +280,222 @@ const generateHTML = (order) => {
   `;
 };
 
-export const printOrder = async (order) => {
+export const executePrint = async (html, documentTitle = 'H2O Control - Documento') => {
   try {
-    const html = generateHTML(order);
-
     if (Platform.OS === 'web') {
-      // Limpiar iframe previo si quedó atascado
-      const oldIframe = document.getElementById('h2o-print-iframe');
-      if (oldIframe) {
-        oldIframe.remove();
+      const toolbarHtml = `
+        <div class="h2o-web-toolbar">
+          <div class="h2o-toolbar-info">
+            <span class="h2o-toolbar-badge">H2O CONTROL</span>
+            <span class="h2o-toolbar-title">${documentTitle}</span>
+          </div>
+          <div class="h2o-toolbar-hint">
+            💡 Para enviar por WhatsApp o guardar: pulsa <strong>Imprimir / Guardar PDF</strong> y selecciona <em>"Guardar como PDF"</em> en Destino.
+          </div>
+          <div class="h2o-toolbar-actions">
+            <button onclick="window.print()" class="h2o-btn-print" title="Abrir cuadro de impresión o guardar como PDF">
+              🖨️ Imprimir / Guardar PDF
+            </button>
+            <button onclick="window.close()" class="h2o-btn-close" title="Cerrar esta vista">
+              ✕ Cerrar
+            </button>
+          </div>
+        </div>
+      `;
+
+      const toolbarStyles = `
+        <style>
+          @media print {
+            .h2o-web-toolbar {
+              display: none !important;
+            }
+          }
+          .h2o-web-toolbar {
+            position: sticky;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: #0f172a;
+            color: #f8fafc;
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+            z-index: 999999;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            border-bottom: 2px solid #2563eb;
+            gap: 16px;
+          }
+          .h2o-toolbar-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+          }
+          .h2o-toolbar-badge {
+            background-color: #2563eb;
+            color: #ffffff;
+            font-size: 11px;
+            font-weight: 800;
+            padding: 3px 8px;
+            border-radius: 4px;
+            letter-spacing: 0.5px;
+          }
+          .h2o-toolbar-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #e2e8f0;
+          }
+          .h2o-toolbar-hint {
+            font-size: 12px;
+            color: #94a3b8;
+            background-color: rgba(255,255,255,0.06);
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.1);
+          }
+          .h2o-toolbar-hint strong {
+            color: #60a5fa;
+          }
+          .h2o-toolbar-hint em {
+            color: #fde047;
+            font-style: normal;
+            font-weight: 600;
+          }
+          .h2o-toolbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+          }
+          .h2o-btn-print {
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            color: #ffffff;
+            border: none;
+            padding: 8px 18px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 2px 6px rgba(37,99,235,0.4);
+            transition: all 0.2s;
+          }
+          .h2o-btn-print:hover {
+            background: #1d4ed8;
+            transform: translateY(-1px);
+          }
+          .h2o-btn-close {
+            background-color: #334155;
+            color: #cbd5e1;
+            border: 1px solid #475569;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+          }
+          .h2o-btn-close:hover {
+            background-color: #475569;
+            color: #ffffff;
+          }
+          @media (max-width: 768px) {
+            .h2o-web-toolbar {
+              flex-direction: column;
+              align-items: stretch;
+              gap: 10px;
+              padding: 10px 14px;
+            }
+            .h2o-toolbar-hint {
+              font-size: 11px;
+            }
+            .h2o-toolbar-actions {
+              justify-content: flex-end;
+            }
+          }
+        </style>
+      `;
+
+      let finalHtml = html;
+      if (finalHtml.includes('</head>')) {
+        finalHtml = finalHtml.replace('</head>', `${toolbarStyles}</head>`);
+      } else {
+        finalHtml = toolbarStyles + finalHtml;
       }
 
-      // Usamos un iframe oculto para no abrir ni dejar tabs adicionales
-      const iframe = document.createElement('iframe');
-      iframe.id = 'h2o-print-iframe';
-      iframe.style.position = 'fixed';
-      iframe.style.right = '0';
-      iframe.style.bottom = '0';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
-      iframe.style.border = 'none';
-      document.body.appendChild(iframe);
-
-      const iframeDoc = iframe.contentWindow?.document;
-      if (iframeDoc) {
-        iframeDoc.open();
-        iframeDoc.write(html);
-        iframeDoc.close();
-        // Usar setTimeout en lugar de onload porque document.write no dispara onload de manera confiable
-        setTimeout(() => {
-          try {
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-          } catch (e) {
-            console.warn('iframe print error', e);
-          } finally {
-            // Remover el iframe después de imprimir (con un pequeño delay)
-            setTimeout(() => {
-              if (document.body.contains(iframe)) {
-                document.body.removeChild(iframe);
-              }
-            }, 1000);
-          }
-        }, 500);
+      if (finalHtml.includes('<body')) {
+        finalHtml = finalHtml.replace(/<body[^>]*>/, `$&${toolbarHtml}`);
       } else {
-        document.body.removeChild(iframe);
-        Alert.alert("Error", "No se pudo generar el documento de impresión.");
+        finalHtml = toolbarHtml + finalHtml;
+      }
+
+      if (documentTitle) {
+        if (finalHtml.includes('<title>')) {
+          finalHtml = finalHtml.replace(/<title>.*?<\/title>/i, `<title>${documentTitle}</title>`);
+        } else if (finalHtml.includes('<head>')) {
+          finalHtml = finalHtml.replace('<head>', `<head><title>${documentTitle}</title>`);
+        }
+      }
+
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.open();
+        printWindow.document.write(finalHtml);
+        printWindow.document.close();
+        if (documentTitle) {
+          printWindow.document.title = documentTitle;
+        }
+
+        const triggerPrint = () => {
+          try {
+            printWindow.focus();
+            printWindow.print();
+          } catch (e) {
+            console.warn('Trigger print error in window:', e);
+          }
+        };
+
+        if (printWindow.document.readyState === 'complete') {
+          setTimeout(triggerPrint, 350);
+        } else {
+          printWindow.onload = () => setTimeout(triggerPrint, 350);
+          setTimeout(triggerPrint, 700);
+        }
+      } else {
+        window.print();
       }
     } else {
-      await Print.printAsync({
-        html,
-      });
+      const { uri } = await Print.printToFileAsync({ html });
+      const isAvailable = await Sharing.isAvailableAsync();
+      if (isAvailable) {
+        await Sharing.shareAsync(uri, {
+          UTI: '.pdf',
+          mimeType: 'application/pdf',
+          dialogTitle: documentTitle || 'Enviar o Imprimir Documento',
+        });
+      } else {
+        await Print.printAsync({ html });
+      }
     }
   } catch (error) {
-    console.error('Error printing:', error);
+    console.error('Error al ejecutar impresión:', error);
     if (Platform.OS === 'web') {
-      console.warn('Error: No se pudo generar la impresión en Web.');
+      console.warn('Error en impresión Web:', error);
     } else {
-      Alert.alert('Error', 'No se pudo generar la impresión.');
+      Alert.alert('Error', 'No se pudo generar el documento.');
     }
   }
+};
+
+export const printOrder = async (order) => {
+  const html = generateHTML(order);
+  const type = order?.type || 'ORDEN';
+  const data = order?.data || {};
+  const batch = data?.batch || data?.batchInternal || data?.dispatchId || order?.id || '';
+  const documentTitle = `H2O_${type}_${batch || 'Doc'}`;
+  await executePrint(html, documentTitle);
 };
 
 export const generateTraceabilityHTML = (logs, query) => {
@@ -495,59 +652,9 @@ export const generateTraceabilityHTML = (logs, query) => {
 };
 
 export const printTraceabilityReport = async (logs, query) => {
-  try {
-    const html = generateTraceabilityHTML(logs, query);
-
-    if (Platform.OS === 'web') {
-      const oldIframe = document.getElementById('h2o-trace-iframe');
-      if (oldIframe) {
-        oldIframe.remove();
-      }
-
-      const iframe = document.createElement('iframe');
-      iframe.id = 'h2o-trace-iframe';
-      iframe.style.position = 'fixed';
-      iframe.style.right = '0';
-      iframe.style.bottom = '0';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
-      iframe.style.border = 'none';
-      document.body.appendChild(iframe);
-
-      const iframeDoc = iframe.contentWindow?.document;
-      if (iframeDoc) {
-        iframeDoc.open();
-        iframeDoc.write(html);
-        iframeDoc.close();
-        setTimeout(() => {
-          try {
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-          } catch (e) {
-            console.warn('iframe print error', e);
-          } finally {
-            setTimeout(() => {
-              if (document.body.contains(iframe)) {
-                document.body.removeChild(iframe);
-              }
-            }, 1000);
-          }
-        }, 500);
-      } else {
-        document.body.removeChild(iframe);
-        Alert.alert("Error", "No se pudo generar el documento de impresión.");
-      }
-    } else {
-      await Print.printAsync({ html });
-    }
-  } catch (error) {
-    console.error('Error printing report:', error);
-    if (Platform.OS === 'web') {
-      console.warn('Error: No se pudo generar la impresión en Web.');
-    } else {
-      Alert.alert('Error', 'No se pudo generar el reporte.');
-    }
-  }
+  const html = generateTraceabilityHTML(logs, query);
+  const documentTitle = query ? `H2O_Trazabilidad_${String(query).trim().replace(/\s+/g, '_')}` : 'H2O_Trazabilidad_Reporte';
+  await executePrint(html, documentTitle);
 };
 
 export const generateStockHTML = ({ title, companyName, stockType, items, filterQuery, activeTab }) => {
@@ -765,57 +872,9 @@ export const generateStockHTML = ({ title, companyName, stockType, items, filter
 };
 
 export const printStockReport = async (options) => {
-  try {
-    const html = generateStockHTML(options);
-
-    if (Platform.OS === 'web') {
-      const oldIframe = document.getElementById('h2o-stock-print-iframe');
-      if (oldIframe) {
-        oldIframe.remove();
-      }
-
-      const iframe = document.createElement('iframe');
-      iframe.id = 'h2o-stock-print-iframe';
-      iframe.style.position = 'fixed';
-      iframe.style.right = '0';
-      iframe.style.bottom = '0';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
-      iframe.style.border = 'none';
-      document.body.appendChild(iframe);
-
-      const iframeDoc = iframe.contentWindow?.document;
-      if (iframeDoc) {
-        iframeDoc.open();
-        iframeDoc.write(html);
-        iframeDoc.close();
-        setTimeout(() => {
-          try {
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-          } catch (e) {
-            console.warn('iframe print error', e);
-          } finally {
-            setTimeout(() => {
-              if (document.body.contains(iframe)) {
-                document.body.removeChild(iframe);
-              }
-            }, 1000);
-          }
-        }, 500);
-      } else {
-        document.body.removeChild(iframe);
-        Alert.alert("Error", "No se pudo generar el documento de impresión.");
-      }
-    } else {
-      await Print.printAsync({ html });
-    }
-  } catch (error) {
-    console.error('Error printing stock report:', error);
-    if (Platform.OS === 'web') {
-      console.warn('Error: No se pudo generar la impresión de stock en Web.');
-    } else {
-      Alert.alert('Error', 'No se pudo generar el reporte de stock.');
-    }
-  }
+  const html = generateStockHTML(options);
+  const sType = options?.stockType || 'General';
+  const cName = options?.companyName ? `_${String(options.companyName).trim().replace(/\s+/g, '_')}` : '';
+  const documentTitle = `H2O_Stock_${sType}${cName}`;
+  await executePrint(html, documentTitle);
 };
