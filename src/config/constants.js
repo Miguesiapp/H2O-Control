@@ -189,6 +189,7 @@ export const PROVIDERS_LIST = [
   'ZSCHIMMER-SCHWARZ',
   'CIA.QUIMICA Y AGROQUIMICA ARGENTINA S.A',
   'HENRY HIRSCHEN',
+  'SERVICIOS BIOAGUAS SRL',
   'H2O CONTROL SRL',
 ];
 
@@ -273,6 +274,11 @@ export const PRODUCTS_FINAL_LIST = [
   'SHOCK',
   'TRIPLE ACCION',
   'SLOW',
+  'CLORO 60%',
+  'CLORO 90%',
+  'CLORO 87%',
+  'CLORO INSTANTANEO',
+  'CLORO PASTILLAS',
   'BIOCONTROL',
   'CLEAR',
   'PH CONTROL',
@@ -338,6 +344,15 @@ export const EQUIVALENCIES_MAP = {
   'DRY CONTROL / CLORITO DE SODIO': 'CLORITO DE SODIO / SERCLOR',
   'CLORITO DE SODIO': 'CLORITO DE SODIO / SERCLOR',
   'SERCLOR': 'CLORITO DE SODIO / SERCLOR',
+  'CLORO 60%': 'DICLOROISOCIANURATO DE SODIO / SHOCK / CLORO 60% / CLORO INSTANTANEO',
+  'SHOCK': 'DICLOROISOCIANURATO DE SODIO / SHOCK / CLORO 60% / CLORO INSTANTANEO',
+  'CLORO INSTANTANEO': 'DICLOROISOCIANURATO DE SODIO / SHOCK / CLORO 60% / CLORO INSTANTANEO',
+  'CLORO 90%': 'ACIDO TRICLOROISOCIANURICO / CLORO GRANULADO / SLOW / CLORO 90%',
+  'SLOW': 'ACIDO TRICLOROISOCIANURICO / CLORO GRANULADO / SLOW / CLORO 90%',
+  'CLORO GRANULADO': 'ACIDO TRICLOROISOCIANURICO / CLORO GRANULADO / SLOW / CLORO 90%',
+  'CLORO 87%': 'ACIDO TRICLOROISOCIANURICO PASTILLAS / TRIPLE ACCION / CLORO 87%',
+  'TRIPLE ACCION': 'ACIDO TRICLOROISOCIANURICO PASTILLAS / TRIPLE ACCION / CLORO 87%',
+  'CLORO PASTILLAS': 'ACIDO TRICLOROISOCIANURICO PASTILLAS / TRIPLE ACCION / CLORO 87%',
   'SYNERGYCIDE AB': 'GLICERINA',
   'BASEL': 'GRANEL BASEL / (BBS-FM00) / BASEL',
   'SYNERGYCIDE': 'GRANEL SYNER / SYNERGYCIDE',
@@ -440,11 +455,13 @@ export const getBaseLabelName = (commercialName) => {
 };
 
 // Formatos de Insumos Centralizados
-export const ETIQUETA_CAPACITIES = ['20L', '10L', '5L', '1L'];
+export const ETIQUETA_CAPACITIES = ['20L', '10L', '5L', '5KG', '1L'];
 export const BIDON_CAPACITIES = ['20', '10', '5', '1'];
+export const POTE_CAPACITIES = ['5KG', '1KG'];
 export const CAJA_FORMATS = ['x5', 'x4', 'x12', 'x1'];
 
 export const BIDON_BRANDS = ['H2O', 'AGROCUBE', 'ALIANZA', 'AGROFONTEZUELA', 'AZUL', 'NEUTRO'];
+export const POTE_BRANDS = ['H2O', 'GENERICO', 'NEUTRO', 'BLANCO', 'AGROCUBE', 'ALIANZA'];
 export const CAJA_BRANDS = ['H2O CON LOGO', 'H2O SIN LOGO', 'AGROCUBE', 'AGROFONTEZUELA', 'GENERICAS', 'BIOACKER', 'NEUTRO', 'SIN CAJAS'];
 
 export const generateBatchId = () => {
@@ -462,15 +479,17 @@ export const formatDisplayName = (str) => {
   return str.split(' / ')[0].trim();
 };
 
-// Normalizar capacidad de etiqueta (solo 20L, 10L, 5L, 1L)
+// Normalizar capacidad de etiqueta (20L, 10L, 5L, 5KG, 1L)
 export const normalizeCapacity = (cap) => {
   if (!cap) return '20L';
   const c = String(cap).trim().toUpperCase();
   if (c === '20' || c === '20L' || c === '20 L' || c === '20 LTS' || c === '20LTS') return '20L';
   if (c === '10' || c === '10L' || c === '10 L' || c === '10 LTS' || c === '10LTS') return '10L';
+  if (c === '5KG' || c === '5 KG' || c === '5KGS' || c === '5 KGS') return '5KG';
   if (c === '5' || c === '5L' || c === '5 L' || c === '5 LTS' || c === '5LTS') return '5L';
+  if (c === '1KG' || c === '1 KG') return '1KG';
   if (c === '1' || c === '1L' || c === '1 L' || c === '1 LTS' || c === '1LTS') return '1L';
-  return c.endsWith('L') ? c : `${c}L`;
+  return (c.endsWith('L') || c.endsWith('KG')) ? c : `${c}L`;
 };
 
 // Helper universal para formatear y estandarizar el nombre de una etiqueta al guardarla o buscarla
@@ -481,34 +500,38 @@ export const normalizeEtiquetaName = (capacity, rawItemName) => {
   cleanName = cleanName.replace(/^ETIQUETAS?\s*/i, '');
   // Quitar capacidad repetida si el usuario ya la había escrito al inicio
   cleanName = cleanName.replace(new RegExp(`^${normCap}\\s*`, 'i'), '');
-  cleanName = cleanName.replace(new RegExp(`^${normCap.replace('L', '')}\\s*`, 'i'), '');
+  cleanName = cleanName.replace(new RegExp(`^${normCap.replace(/[L|KG]/g, '')}\\s*`, 'i'), '');
   cleanName = cleanName.trim();
   return `ETIQUETA ${normCap} ${cleanName}`.trim();
 };
 
 // Generador de palabras clave de capacidad para búsqueda difusa (Fuzzy)
 export const getCapacityKeywords = (presentation) => {
-  const p = Number(presentation);
+  const numOnly = String(presentation).replace(/[^0-9]/g, '');
+  const p = Number(numOnly);
   const keywords = [
     `${presentation}L`,
     `${presentation} L`,
     `${presentation} LTS`,
     `${presentation}LTS`,
-    `${presentation}-L`
+    `${presentation}-L`,
+    `${presentation}KG`,
+    `${presentation} KG`,
+    `${presentation} KGS`
   ];
 
   if (Number.isInteger(p)) {
-    keywords.push(` ${p} `, ` ${p}L `, ` ${p}L`, `${p} `);
+    keywords.push(` ${p} `, ` ${p}L `, ` ${p}L`, `${p} `, ` ${p}KG `, ` ${p}KG`);
   }
 
-  if (p === 1 || presentation === '1' || presentation === '1L') {
-    keywords.push('1L', '1 L', ' 1 ');
-  } else if (p === 20 || presentation === '20' || presentation === '20L') {
+  if (p === 1 || String(presentation).includes('1')) {
+    keywords.push('1L', '1 L', '1KG', '1 KG', ' 1 ');
+  } else if (p === 20 || String(presentation).includes('20')) {
     keywords.push('20L', '20 L', '20 LTS', ' 20 ');
-  } else if (p === 10 || presentation === '10' || presentation === '10L') {
+  } else if (p === 10 || String(presentation).includes('10')) {
     keywords.push('10L', '10 L', '10 LTS', ' 10 ');
-  } else if (p === 5 || presentation === '5' || presentation === '5L') {
-    keywords.push('5L', '5 L', '5 LTS', ' 5 ');
+  } else if (p === 5 || String(presentation).includes('5')) {
+    keywords.push('5L', '5 L', '5 LTS', '5KG', '5 KG', '5KGS', ' 5 ');
   }
 
   return [...new Set(keywords)];

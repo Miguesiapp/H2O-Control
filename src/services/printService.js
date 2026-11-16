@@ -29,7 +29,9 @@ const generateHTML = (order) => {
       ? rawItemName.split(' - ').slice(0, -1).join(' - ')  // quitar solo la parte final " - XL"
       : (data?.productName || data?.commercialName || rawItemName || 'Envasado');
     batchInfo = data?.batchInternal || data?.targetBatch || 'S/D';
-    quantity = `${data?.quantity || 0} x ${data?.presentation || ''}L`;
+    const isPote = data?.containerType === 'POTE' || rawItemName.includes('POTE');
+    const unitSuffix = isPote ? 'Kg (Pote)' : 'L';
+    quantity = `${data?.quantity || 0} x ${data?.presentation || ''}${unitSuffix}`;
   } else if (type === 'OD') {
     title = 'ORDEN DE DESPACHO';
     productName = data?.productName || 'Despacho';
@@ -146,14 +148,14 @@ const generateHTML = (order) => {
         </thead>
         <tbody>
           <tr class="highlight-row">
-            <td>${productName} (Granel)</td>
-            <td>${data?.litersConsumed || data?.quantity || 0} Lts</td>
+            <td>${productName} (${(data?.containerType === 'POTE' || (data?.itemName || '').includes('POTE')) ? 'Materia Prima' : 'Granel / MP'})</td>
+            <td>${data?.litersConsumed || data?.quantity || 0} ${(data?.containerType === 'POTE' || (data?.itemName || '').includes('POTE')) ? 'Kg' : 'Lts'}</td>
             <td><span style="background:#e0f2fe; padding:2px 6px; border-radius:4px; font-size:10px; color:#0369a1;">${batchInfo}</span></td>
             <td></td>
             <td></td>
           </tr>
           <tr>
-            <td style="font-weight:700">Envase: ${data?.presentation}</td>
+            <td style="font-weight:700">Envase: ${(data?.containerType === 'POTE' || (data?.itemName || '').includes('POTE')) ? `POTE ${data?.presentation || 5}KG` : `BIDON ${data?.presentation || 20}L`} (${data?.brandPote || data?.brandBidon || 'H2O'})</td>
             <td>${data?.quantity || 0} Unidades</td>
             <td></td>
             <td></td>

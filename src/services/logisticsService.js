@@ -352,7 +352,7 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
 
     // Salvaguarda multi-empresa: si no se encontró en la empresa actual
     if (docs.length === 0) {
-      const isItemInsumoFuzzy = isFuzzy && itemName.some(kw => typeof kw === 'string' && (kw.toUpperCase() === 'ETIQUETA' || kw.toUpperCase() === 'BIDON' || kw.toUpperCase() === 'CAJA'));
+      const isItemInsumoFuzzy = isFuzzy && itemName.some(kw => typeof kw === 'string' && (kw.toUpperCase() === 'ETIQUETA' || kw.toUpperCase() === 'BIDON' || kw.toUpperCase() === 'CAJA' || kw.toUpperCase() === 'POTE'));
       const fallbackCompanies = isItemInsumoFuzzy
         ? ['STOCK_CENTRAL_INSUMOS', 'H2O', 'H2Ocontrol', 'STOCK_CENTRAL_MP']
         : (company !== 'STOCK_CENTRAL_MP' && company !== 'H2O' ? ['STOCK_CENTRAL_MP', 'H2O'] : []);
@@ -371,6 +371,7 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
             const isDocInsumo = doc.stockType === 'INSUMOS' || doc.stockType === 'ENVASES' ||
               (doc.itemName || '').toUpperCase().startsWith('ETIQUETA') ||
               (doc.itemName || '').toUpperCase().startsWith('BIDON') ||
+              (doc.itemName || '').toUpperCase().startsWith('POTE') ||
               (doc.itemName || '').toUpperCase().startsWith('CAJA');
             const pendingStatuses = ['PENDIENTE', 'PENDIENTE_LABORATORIO'];
             if (!isDocInsumo && pendingStatuses.includes(doc.status)) return false;
@@ -434,8 +435,8 @@ export const checkTotalStock = async (company, itemName) => {
     const inventoryRef = collection(db, "Inventory");
     const isFuzzy = Array.isArray(itemName);
     const isEtiquetaOrInsumo = isFuzzy 
-      ? itemName.some(kw => typeof kw === 'string' && (kw.toUpperCase() === 'ETIQUETA' || kw.toUpperCase() === 'BIDON' || kw.toUpperCase() === 'CAJA'))
-      : typeof itemName === 'string' && (itemName.toUpperCase().includes('ETIQUETA') || itemName.toUpperCase().includes('BIDON') || itemName.toUpperCase().includes('CAJA'));
+      ? itemName.some(kw => typeof kw === 'string' && (kw.toUpperCase() === 'ETIQUETA' || kw.toUpperCase() === 'BIDON' || kw.toUpperCase() === 'CAJA' || kw.toUpperCase() === 'POTE'))
+      : typeof itemName === 'string' && (itemName.toUpperCase().includes('ETIQUETA') || itemName.toUpperCase().includes('BIDON') || itemName.toUpperCase().includes('CAJA') || itemName.toUpperCase().includes('POTE'));
 
     const targetCompany = isEtiquetaOrInsumo ? 'STOCK_CENTRAL_INSUMOS' : company;
     let q;
@@ -455,6 +456,7 @@ export const checkTotalStock = async (company, itemName) => {
         const isDocInsumo = data.stockType === 'INSUMOS' || data.stockType === 'ENVASES' ||
           (data.itemName || '').toUpperCase().includes('ETIQUETA') ||
           (data.itemName || '').toUpperCase().includes('BIDON') ||
+          (data.itemName || '').toUpperCase().includes('POTE') ||
           (data.itemName || '').toUpperCase().includes('CAJA');
 
         // CUARENTENA: No contar stock de MP o Granel que no fue aprobado, pero insumos siempre son válidos

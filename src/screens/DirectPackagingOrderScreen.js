@@ -8,9 +8,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
 import { collection, query, where, getDocs, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { registerMovement, createOrder, updateOrderStatus, checkTotalStock } from '../services/logisticsService';
-import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box, Droplet, Building2, Tag, Plus, ClipboardList, Play, CheckSquare, XCircle, ChevronDown, ChevronUp, Printer, Search } from 'lucide-react-native';
+import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box, Droplet, Building2, Tag, Plus, ClipboardList, Play, CheckSquare, XCircle, ChevronDown, ChevronUp, Printer, Search, PackageOpen } from 'lucide-react-native';
 import AutocompleteInput from '../components/AutocompleteInput';
-import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS, RAW_MATERIALS_LIST, getCapacityKeywords, getLabelKeywords } from '../config/constants';
+import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS, POTE_BRANDS, POTE_CAPACITIES, RAW_MATERIALS_LIST, getCapacityKeywords, getLabelKeywords } from '../config/constants';
 import { canCreateOrders } from '../config/permissions';
 import { printOrder } from '../services/printService';
 
@@ -189,9 +189,11 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
   };
 
   const [formData, setFormData] = useState({
+    containerType: 'BIDON', // 'BIDON' | 'POTE'
     presentation: '20',
     unitsProduced: '',
     brandBidon: 'H2O',
+    brandPote: 'H2O',
     brandCaja: 'H2O CON LOGO',
   });
 
@@ -276,14 +278,17 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
       // Asignación inteligente por defecto según el lote
       if (madre.includes('DICLOROISOCIANURATO') || madre.includes('CLORO 60%') || madre.includes('SHOCK')) {
         setCommercialName(userSelectedPT === 'SHOCK' ? 'SHOCK' : 'CLORO 60%');
+        setFormData(prev => ({ ...prev, containerType: 'POTE', presentation: '5', brandPote: prev.brandPote || 'H2O' }));
         return;
       }
       if (madre.includes('CLORO GRANULADO') || madre.includes('CLORO 90%') || madre.includes('SLOW')) {
         setCommercialName(userSelectedPT === 'SLOW' ? 'SLOW' : 'CLORO 90%');
+        setFormData(prev => ({ ...prev, containerType: 'POTE', presentation: '5', brandPote: prev.brandPote || 'H2O' }));
         return;
       }
       if (madre.includes('TRIPLE ACCION') || madre.includes('CLORO 87%') || madre.includes('PASTILLAS')) {
         setCommercialName(userSelectedPT === 'TRIPLE ACCION' ? 'TRIPLE ACCION' : 'CLORO 87%');
+        setFormData(prev => ({ ...prev, containerType: 'POTE', presentation: '5', brandPote: prev.brandPote || 'H2O' }));
         return;
       }
       if (madre.includes('CLORITO') || madre.includes('SERCLOR')) {
@@ -362,13 +367,14 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
     return [...new Set(suggestions)].filter(Boolean);
   };
 
+  const isPote = formData.containerType === 'POTE';
   const units = Number(formData.unitsProduced) || 0;
-  const presentation = Number(formData.presentation);
+  const presentation = Number(formData.presentation) || (isPote ? 5 : 20);
   const litersToConsume = units * presentation;
   const remainingLiters = selectedLot ? (selectedLot.quantity - litersToConsume) : 0;
   const isOverdraft = selectedLot && remainingLiters < 0;
 
-  const isContainer = presentation === 1000;
+  const isContainer = !isPote && presentation === 1000;
   const canUseBox = !isContainer && (presentation === 5 || presentation === 1);
   const appliesBox = canUseBox && formData.brandCaja !== 'SIN CAJAS';
   let requiredBoxes = 0;
@@ -392,19 +398,32 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
       setIsSubmitting(true);
 
       // Variables de Búsqueda Generalizada (Fuzzy)
-      // BIDONES Y ETIQUETAS usan litros o cc con variantes
-      const capacityKeywords = getCapacityKeywords(presentation);
-      const fuzzyBidon = ['BIDON', capacityKeywords, formData.brandBidon];
+      let envaseStock = 0;
+      let fuzzyEnvase = null;
+      let envaseNameLabel = '';
 
-      // CAJAS usan formato multiplicador y litros como fallback
+      if (isPote) {
+        const poteKeywords = [`${presentation}KG`, `${presentation} KG`, `${presentation}`, `${presentation}K`];
+        fuzzyEnvase = ['POTE', poteKeywords, formData.brandPote || 'H2O'];
+        envaseNameLabel = `Potes ${presentation}Kg`;
+        envaseStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyEnvase);
+      } else {
+        const capacityKeywords = getCapacityKeywords(presentation);
+        fuzzyEnvase = ['BIDON', capacityKeywords, formData.brandBidon];
+        envaseNameLabel = `Bidones ${presentation}L`;
+        envaseStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyEnvase);
+      }
+
+      // CAJAS usan formato multiplicador y litros/kg como fallback
       const boxKeywords = presentation === 5
-        ? ['x5', 'X5', 'X 5', 'x4', 'X4', 'X 4', '5L', '5 L']
-        : ['x1', 'X1', 'X 1', 'x12', 'X12', 'X 12', '1L', '1 L'];
+        ? ['x5', 'X5', 'X 5', 'x4', 'X4', 'X 4', '5L', '5 L', '5KG', '5 KG']
+        : ['x1', 'X1', 'X 1', 'x12', 'X12', 'X 12', '1L', '1 L', '1KG', '1 KG'];
       const fuzzyCaja = appliesBox ? ['CAJA', boxKeywords, formData.brandCaja] : null;
 
       const baseLabelName = getBaseLabelName(commercialName);
       const labelKeywords = getLabelKeywords(commercialName);
-      const fuzzyEtiqueta = ['ETIQUETA', capacityKeywords, labelKeywords];
+      const capacityKeywordsForLabel = getCapacityKeywords(presentation);
+      const fuzzyEtiqueta = ['ETIQUETA', capacityKeywordsForLabel, labelKeywords];
 
       if (isContainer) {
         if (units > selectedLot.quantity) {
@@ -413,7 +432,6 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
           return;
         }
       } else {
-        const bidonStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyBidon);
         const cajaStock = appliesBox ? await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyCaja) : Infinity;
         const etiquetaStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyEtiqueta);
 
@@ -423,13 +441,13 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
         if (presentation === 5) maxUnitsCaja = cajaStock * 4;
         else if (presentation === 1) maxUnitsCaja = cajaStock * 12;
 
-        const maxPossibleUnits = Math.floor(Math.min(maxUnitsGranel, bidonStock, maxUnitsCaja, etiquetaStock));
+        const maxPossibleUnits = Math.floor(Math.min(maxUnitsGranel, envaseStock, maxUnitsCaja, etiquetaStock));
 
         if (units > maxPossibleUnits) {
           setIsSubmitting(false);
 
           let limitReason = 'la Materia Prima disponible';
-          if (maxPossibleUnits === bidonStock) limitReason = `los Bidones disponibles (${bidonStock})`;
+          if (maxPossibleUnits === envaseStock) limitReason = `los ${envaseNameLabel} disponibles (${envaseStock})`;
           else if (maxPossibleUnits === maxUnitsCaja) limitReason = `las Cajas disponibles (${cajaStock})`;
           else if (maxPossibleUnits === etiquetaStock) limitReason = `las Etiquetas disponibles (${etiquetaStock})`;
 
@@ -450,7 +468,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
           } else {
             let missing = [];
             if (maxUnitsGranel <= 0) missing.push('Materia Prima');
-            if (bidonStock <= 0) missing.push(`Bidones`);
+            if (envaseStock <= 0) missing.push(envaseNameLabel);
             if (appliesBox && cajaStock <= 0) missing.push(`Cajas`);
             if (etiquetaStock <= 0) missing.push(`Etiquetas (${baseLabelName})`);
 
@@ -463,20 +481,20 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
       const itemName = selectedLot.itemName?.toUpperCase();
       const currentUser = auth.currentUser?.email || 'Sistema';
 
-      // 1. DEDUCCIÓN AUTOMÁTICA DEL LÍQUIDO A GRANEL
+      // 1. DEDUCCIÓN AUTOMÁTICA DE LA MATERIA PRIMA
       await registerMovement(currentUser, 'CONSUMO_ENVASADO_DIRECTO', selectedLot.company || companyName, {
         docId: selectedLot.id,
         itemName: itemName,
         quantity: -Math.abs(litersToConsume),
         stockType: selectedLot.stockType || 'MP',
         batchInternal: batchId,
-        unit: selectedLot.unit || 'Kg'
+        unit: selectedLot.unit || (isPote ? 'Kg' : 'Lts')
       });
 
       if (!isContainer) {
-        // 2. DEDUCCIÓN DE INSUMOS CENTRALES (BIDONES)
+        // 2. DEDUCCIÓN DE ENVASE (BIDONES O POTES)
         await registerMovement(currentUser, 'CONSUMO_INSUMO', 'STOCK_CENTRAL_INSUMOS', {
-          itemName: fuzzyBidon,
+          itemName: fuzzyEnvase,
           quantity: -Math.abs(units),
           stockType: 'INSUMOS',
           batchInternal: batchId,
@@ -506,7 +524,9 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
 
       const packagedItemName = isContainer
         ? `${commercialName.trim().toUpperCase()} - CONTENEDOR 1000L`
-        : `${commercialName.trim().toUpperCase()} - ${presentation}L`;
+        : isPote
+          ? `${commercialName.trim().toUpperCase()} - POTE ${presentation}KG`
+          : `${commercialName.trim().toUpperCase()} - ${presentation}L`;
 
       // 4. CREA LA ORDEN EN MÁQUINA DE ESTADOS (Ticket ENVIADO)
       const orderData = {
@@ -514,13 +534,15 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
         quantity: units,
         litersConsumed: litersToConsume,
         presentation: isContainer ? 1000 : presentation,
-        brandBidon: isContainer ? 'CONTENEDOR' : formData.brandBidon,
+        containerType: isPote ? 'POTE' : 'BIDON',
+        brandBidon: isPote ? (formData.brandPote || 'H2O') : formData.brandBidon,
+        brandPote: isPote ? (formData.brandPote || 'H2O') : null,
         brandCaja: appliesBox ? formData.brandCaja : null,
         requiredBoxes: appliesBox ? requiredBoxes : 0,
         batchInternal: batchId,
         batchProvider: selectedLot.loteProveedor || selectedLot.batchProvider || 'S/D',
         expiryDate: selectedLot.expiryDate || 'S/V',
-        unit: isContainer ? 'Lts' : 'Uds',
+        unit: 'Uds',
         company: companyName,
       };
 
@@ -528,16 +550,18 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
 
       Alert.alert(
         "Orden Emitida",
-        `Se ha enviado a la cola de Envasado.\n\nSe reservaron:\n- ${litersToConsume} Lts de Granel\n- ${units} Bidones (${formData.brandBidon})\n${appliesBox ? `- ${requiredBoxes} Cajas (${formData.brandCaja})` : ''}`,
+        `Se ha enviado a la cola de Envasado Directo.\n\nSe reservaron:\n- ${litersToConsume} ${selectedLot.unit || (isPote ? 'Kg' : 'Lts')} de MP\n- ${units} ${isPote ? `Potes (${formData.brandPote || 'H2O'})` : `Bidones (${formData.brandBidon})`}\n${appliesBox ? `- ${requiredBoxes} Cajas (${formData.brandCaja})\n` : ''}- ${units} Etiquetas (${baseLabelName})`,
         [{
           text: "Entendido", onPress: () => {
             setViewMode('LIST');
             setSelectedLot(null);
             setCommercialName('');
             setFormData({
+              containerType: 'BIDON',
               presentation: '20',
               unitsProduced: '',
               brandBidon: 'H2O',
+              brandPote: 'H2O',
               brandCaja: 'H2O CON LOGO',
             });
           }
@@ -621,28 +645,42 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
         });
 
         if (!isContainer) {
-          const presentation = orderData.presentation || 20;
-          const capacityKeywords = [`${presentation}L`, `${presentation} L`, `${presentation} LTS`, `${presentation}LTS`, `${presentation}-L`];
-          const fuzzyBidon = ['BIDON', capacityKeywords, orderData.brandBidon];
+          const presentation = orderData.presentation || (orderData.containerType === 'POTE' ? 5 : 20);
+          const isPoteOrder = orderData.containerType === 'POTE' || orderData.itemName?.includes('POTE');
+
+          if (isPoteOrder) {
+            const poteKeywords = [`${presentation}KG`, `${presentation} KG`, `${presentation}`, `${presentation}K`];
+            const fuzzyPote = ['POTE', poteKeywords, orderData.brandPote || orderData.brandBidon || 'H2O'];
+            await registerMovement(currentUser, 'DEVOLUCION_RECHAZO_OEM', 'STOCK_CENTRAL_INSUMOS', {
+              itemName: fuzzyPote,
+              quantity: Math.abs(orderData.quantity),
+              stockType: 'INSUMOS',
+              batchInternal: batchId,
+              unit: 'Uds',
+              details: 'OEM Rechazada - Devolución Potes'
+            });
+          } else {
+            const capacityKeywords = [`${presentation}L`, `${presentation} L`, `${presentation} LTS`, `${presentation}LTS`, `${presentation}-L`];
+            const fuzzyBidon = ['BIDON', capacityKeywords, orderData.brandBidon || 'H2O'];
+            await registerMovement(currentUser, 'DEVOLUCION_RECHAZO_OEM', 'STOCK_CENTRAL_INSUMOS', {
+              itemName: fuzzyBidon,
+              quantity: Math.abs(orderData.quantity),
+              stockType: 'INSUMOS',
+              batchInternal: batchId,
+              unit: 'Uds',
+              details: 'OEM Rechazada - Devolución Bidones'
+            });
+          }
 
           const boxKeywords = presentation === 5
-            ? ['x5', 'X5', 'X 5', 'x4', 'X4', 'X 4', '5L', '5 L']
-            : ['x1', 'X1', 'X 1', 'x12', 'X12', 'X 12', '1L', '1 L'];
+            ? ['x5', 'X5', 'X 5', 'x4', 'X4', 'X 4', '5L', '5 L', '5KG', '5 KG']
+            : ['x1', 'X1', 'X 1', 'x12', 'X12', 'X 12', '1L', '1 L', '1KG', '1 KG'];
           const fuzzyCaja = orderData.brandCaja && orderData.brandCaja !== 'SIN CAJAS' ? ['CAJA', boxKeywords, orderData.brandCaja] : null;
 
           const baseLabelName = getBaseLabelName(orderData.commercialName || orderData.itemName.split(' - ')[0]);
           const labelKeywords = [baseLabelName, orderData.commercialName || orderData.itemName.split(' - ')[0]];
-          const fuzzyEtiqueta = ['ETIQUETA', capacityKeywords, labelKeywords];
-
-          // 2. Devolver Bidones
-          await registerMovement(currentUser, 'DEVOLUCION_RECHAZO_OEM', 'STOCK_CENTRAL_INSUMOS', {
-            itemName: fuzzyBidon,
-            quantity: Math.abs(orderData.quantity),
-            stockType: 'INSUMOS',
-            batchInternal: batchId,
-            unit: 'Uds',
-            details: 'OEM Rechazada - Devolución Bidones'
-          });
+          const capacityKeywordsForLabel = getCapacityKeywords(presentation);
+          const fuzzyEtiqueta = ['ETIQUETA', capacityKeywordsForLabel, labelKeywords];
 
           // 3. Devolver Cajas si correspondía
           if (orderData.requiredBoxes > 0 && fuzzyCaja) {
@@ -879,36 +917,93 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
                   allowCustom={true}
                 />
 
-                <Text style={styles.label}>Capacidad del Bidón</Text>
+                <Text style={styles.label}>Tipo de Envase</Text>
                 <View style={styles.chipRow}>
-                  {BIDON_CAPACITIES.map(cap => (
-                    <TouchableOpacity
-                      key={cap}
-                      style={[styles.chip, formData.presentation === cap && styles.chipActive]}
-                      onPress={() => setFormData({ ...formData, presentation: cap })}
-                    >
-                      <Droplet color={formData.presentation === cap ? '#fff' : '#64748b'} size={14} style={{ marginRight: 4 }} />
-                      <Text style={[styles.chipText, formData.presentation === cap && styles.chipTextActive]}>{cap}L</Text>
-                    </TouchableOpacity>
-                  ))}
+                  <TouchableOpacity
+                    style={[styles.chip, (formData.containerType || 'BIDON') === 'BIDON' && styles.chipActive]}
+                    onPress={() => setFormData({ ...formData, containerType: 'BIDON', presentation: '20' })}
+                  >
+                    <Droplet color={(formData.containerType || 'BIDON') === 'BIDON' ? '#fff' : '#64748b'} size={14} style={{ marginRight: 4 }} />
+                    <Text style={[styles.chipText, (formData.containerType || 'BIDON') === 'BIDON' && styles.chipTextActive]}>Bidón</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.chip, formData.containerType === 'POTE' && styles.chipActive]}
+                    onPress={() => setFormData({ ...formData, containerType: 'POTE', presentation: '5' })}
+                  >
+                    <PackageOpen color={formData.containerType === 'POTE' ? '#fff' : '#64748b'} size={14} style={{ marginRight: 4 }} />
+                    <Text style={[styles.chipText, formData.containerType === 'POTE' && styles.chipTextActive]}>Pote (Cloros / Sólidos)</Text>
+                  </TouchableOpacity>
                 </View>
 
-                <Text style={styles.label}>Marca del Bidón</Text>
-                <View style={styles.chipRow}>
-                  {BIDON_BRANDS.map(brand => (
-                    <TouchableOpacity
-                      key={brand}
-                      style={[styles.chip, formData.brandBidon === brand && styles.chipActive]}
-                      onPress={() => setFormData({ ...formData, brandBidon: brand })}
-                    >
-                      <Building2 color={formData.brandBidon === brand ? '#fff' : '#64748b'} size={14} style={{ marginRight: 4 }} />
-                      <Text style={[styles.chipText, formData.brandBidon === brand && styles.chipTextActive]}>{brand}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                {formData.containerType === 'POTE' ? (
+                  <>
+                    <Text style={styles.label}>Capacidad del Pote</Text>
+                    <View style={styles.chipRow}>
+                      {POTE_CAPACITIES.map(cap => {
+                        const cleanPoteCap = cap.replace(/[^0-9]/g, '');
+                        const isCapActive = formData.presentation === cleanPoteCap || formData.presentation === cap;
+                        return (
+                          <TouchableOpacity
+                            key={cap}
+                            style={[styles.chip, isCapActive && styles.chipActive]}
+                            onPress={() => setFormData({ ...formData, presentation: cleanPoteCap })}
+                          >
+                            <PackageOpen color={isCapActive ? '#fff' : '#64748b'} size={14} style={{ marginRight: 4 }} />
+                            <Text style={[styles.chipText, isCapActive && styles.chipTextActive]}>{cap}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    <Text style={styles.label}>Marca / Tipo del Pote</Text>
+                    <View style={styles.chipRow}>
+                      {POTE_BRANDS.map(brand => (
+                        <TouchableOpacity
+                          key={brand}
+                          style={[styles.chip, (formData.brandPote || 'H2O') === brand && styles.chipActive]}
+                          onPress={() => setFormData({ ...formData, brandPote: brand })}
+                        >
+                          <Building2 color={(formData.brandPote || 'H2O') === brand ? '#fff' : '#64748b'} size={14} style={{ marginRight: 4 }} />
+                          <Text style={[styles.chipText, (formData.brandPote || 'H2O') === brand && styles.chipTextActive]}>{brand}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.label}>Capacidad del Bidón</Text>
+                    <View style={styles.chipRow}>
+                      {BIDON_CAPACITIES.map(cap => (
+                        <TouchableOpacity
+                          key={cap}
+                          style={[styles.chip, formData.presentation === cap && styles.chipActive]}
+                          onPress={() => setFormData({ ...formData, presentation: cap })}
+                        >
+                          <Droplet color={formData.presentation === cap ? '#fff' : '#64748b'} size={14} style={{ marginRight: 4 }} />
+                          <Text style={[styles.chipText, formData.presentation === cap && styles.chipTextActive]}>{cap}L</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
+                    <Text style={styles.label}>Marca del Bidón</Text>
+                    <View style={styles.chipRow}>
+                      {BIDON_BRANDS.map(brand => (
+                        <TouchableOpacity
+                          key={brand}
+                          style={[styles.chip, formData.brandBidon === brand && styles.chipActive]}
+                          onPress={() => setFormData({ ...formData, brandBidon: brand })}
+                        >
+                          <Building2 color={formData.brandBidon === brand ? '#fff' : '#64748b'} size={14} style={{ marginRight: 4 }} />
+                          <Text style={[styles.chipText, formData.brandBidon === brand && styles.chipTextActive]}>{brand}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </>
+                )}
 
                 <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Unidades (Bidones) a Envasar</Text>
+                  <Text style={styles.label}>Unidades ({formData.containerType === 'POTE' ? 'Potes' : 'Bidones'}) a Envasar</Text>
                   <View style={styles.inputWrapper}>
                     <Container color="#94a3b8" size={20} style={styles.inputIcon} />
                     <TextInput
@@ -955,15 +1050,15 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
               <Text style={styles.sectionTitle}>3. Impacto de Stock</Text>
               <View style={styles.impactCard}>
                 <View style={styles.impactRow}>
-                  <Text style={styles.impactLabel}>Granel a Consumir:</Text>
+                  <Text style={styles.impactLabel}>{isPote ? 'Materia Prima a Consumir:' : 'Granel / MP a Consumir:'}</Text>
                   <Text style={[styles.impactValue, isOverdraft && { color: '#ef4444' }]}>
-                    -{litersToConsume} Lts
+                    -{litersToConsume} {selectedLot?.unit || (isPote ? 'Kg' : 'Lts')}
                   </Text>
                 </View>
                 <View style={styles.impactRow}>
                   <Text style={styles.impactLabel}>Saldo Final en Lote:</Text>
                   <Text style={[styles.impactValue, isOverdraft && { color: '#ef4444' }]}>
-                    {remainingLiters.toFixed(2)} Lts
+                    {remainingLiters.toFixed(2)} {selectedLot?.unit || (isPote ? 'Kg' : 'Lts')}
                   </Text>
                 </View>
 
@@ -972,7 +1067,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
                 <View style={styles.impactRow}>
                   <Text style={styles.impactLabel}>Prod. Terminado a Generar:</Text>
                   <Text style={[styles.impactValue, { color: '#10b981' }]}>
-                    +{units} Bidones de {commercialName.toUpperCase() || '...'} {presentation}L
+                    +{units} {isPote ? 'Potes' : 'Bidones'} de {commercialName.toUpperCase() || '...'} {presentation}{isPote ? 'Kg' : 'L'}
                   </Text>
                 </View>
               </View>
@@ -1016,13 +1111,27 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
               <View style={[styles.statusBadge, { alignSelf: 'flex-start', backgroundColor: getStatusColor(selectedOrder?.status), marginBottom: 15 }]}>
                 <Text style={styles.statusText}>{selectedOrder?.status}</Text>
               </View>
-              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 5 }}>Cantidad: <Text style={{ fontWeight: '800', color: '#0f172a' }}>{selectedOrder?.data?.quantity} Bidones ({selectedOrder?.data?.presentation}L)</Text></Text>
-              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 5 }}>Granel Consumido: <Text style={{ fontWeight: '800', color: '#0f172a' }}>{selectedOrder?.data?.litersConsumed} Lts</Text></Text>
-              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 15 }}>Lote de Origen: <Text style={{ fontWeight: '800', color: '#0f172a' }}>{selectedOrder?.data?.batchInternal}</Text></Text>
+              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 5 }}>
+                Cantidad: <Text style={{ fontWeight: '800', color: '#0f172a' }}>
+                  {selectedOrder?.data?.quantity} {(selectedOrder?.data?.containerType === 'POTE' || (selectedOrder?.data?.itemName || '').includes('POTE')) ? 'Potes' : 'Bidones'} ({selectedOrder?.data?.presentation}{(selectedOrder?.data?.containerType === 'POTE' || (selectedOrder?.data?.itemName || '').includes('POTE')) ? 'Kg' : 'L'})
+                </Text>
+              </Text>
+              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 5 }}>
+                MP Consumida: <Text style={{ fontWeight: '800', color: '#0f172a' }}>
+                  {selectedOrder?.data?.litersConsumed} {(selectedOrder?.data?.containerType === 'POTE' || (selectedOrder?.data?.itemName || '').includes('POTE')) ? 'Kg' : 'Lts'}
+                </Text>
+              </Text>
+              <Text style={{ fontSize: 14, color: '#475569', marginBottom: 15 }}>
+                Lote de Origen: <Text style={{ fontWeight: '800', color: '#0f172a' }}>{selectedOrder?.data?.batchInternal}</Text>
+              </Text>
 
               <Text style={{ fontSize: 14, fontWeight: '800', color: '#334155', marginBottom: 10, textTransform: 'uppercase' }}>Insumos Reservados</Text>
               <View style={{ backgroundColor: '#f1f5f9', padding: 10, borderRadius: 8, marginBottom: 8 }}>
-                <Text style={{ fontSize: 13, fontWeight: '800', color: '#1e293b' }}>BIDON {selectedOrder?.data?.presentation}L {selectedOrder?.data?.brandBidon}</Text>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#1e293b' }}>
+                  {(selectedOrder?.data?.containerType === 'POTE' || (selectedOrder?.data?.itemName || '').includes('POTE'))
+                    ? `POTE ${selectedOrder?.data?.presentation}KG ${selectedOrder?.data?.brandPote || selectedOrder?.data?.brandBidon || 'H2O'}`
+                    : `BIDON ${selectedOrder?.data?.presentation}L ${selectedOrder?.data?.brandBidon || 'H2O'}`}
+                </Text>
                 <Text style={{ fontSize: 12, color: '#64748b' }}>Consumo: {selectedOrder?.data?.quantity} Uds</Text>
               </View>
               {selectedOrder?.data?.requiredBoxes > 0 && (

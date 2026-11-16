@@ -263,9 +263,11 @@ export default function StockView({ route, navigation }) {
           data.stockType === 'ENVASES' || 
           cat.includes('ETIQUET') || 
           cat.includes('BIDON') || 
+          cat.includes('POTE') || 
           cat.includes('CAJA') ||
           itemName.includes('ETIQUET') || 
           itemName.includes('BIDON') || 
+          itemName.includes('POTE') || 
           itemName.includes('CAJA');
 
         if (isCentralInsumos) {
@@ -346,16 +348,17 @@ export default function StockView({ route, navigation }) {
 
   // Conteo de insumos por categoría para los badges de las pestañas
   const insumoCounts = React.useMemo(() => {
-    if (!isCentralInsumos) return { bidones: 0, cajas: 0, etiquetas: 0, todos: items.length };
-    let bidones = 0, cajas = 0, etiquetas = 0;
+    if (!isCentralInsumos) return { bidones: 0, potes: 0, cajas: 0, etiquetas: 0, todos: items.length };
+    let bidones = 0, potes = 0, cajas = 0, etiquetas = 0;
     items.forEach(item => {
       const name = (item.itemName || item.productName || '').toUpperCase();
       const cat = (item.category || '').toUpperCase();
-      if (name.includes('BIDON') || cat.includes('BIDON')) bidones++;
+      if (name.includes('POTE') || cat.includes('POTE')) potes++;
+      else if (name.includes('BIDON') || cat.includes('BIDON')) bidones++;
       else if (name.includes('CAJA') || cat.includes('CAJA')) cajas++;
       else if (name.includes('ETIQUET') || name.includes('ETIQ') || name.includes('STICKER') || cat.includes('ETIQUET')) etiquetas++;
     });
-    return { bidones, cajas, etiquetas, todos: items.length };
+    return { bidones, potes, cajas, etiquetas, todos: items.length };
   }, [items, isCentralInsumos]);
 
   let displayedItems = filteredItems;
@@ -368,6 +371,12 @@ export default function StockView({ route, navigation }) {
         const name = (item.itemName || item.productName || '').toUpperCase();
         const cat = (item.category || '').toUpperCase();
         return name.includes('BIDON') || cat.includes('BIDON');
+      });
+    } else if (activeInsumoTab === 'POTES') {
+      displayedItems = filteredItems.filter(item => {
+        const name = (item.itemName || item.productName || '').toUpperCase();
+        const cat = (item.category || '').toUpperCase();
+        return name.includes('POTE') || cat.includes('POTE');
       });
     } else if (activeInsumoTab === 'CAJAS') {
       displayedItems = filteredItems.filter(item => {
@@ -602,6 +611,16 @@ export default function StockView({ route, navigation }) {
             <Droplet color={activeInsumoTab === 'BIDONES' ? '#fff' : '#64748b'} size={16} />
             <Text style={[styles.tabText, activeInsumoTab === 'BIDONES' && styles.tabTextActive]}>
               BIDONES ({insumoCounts.bidones})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.tabBtn, activeInsumoTab === 'POTES' && styles.tabActive]}
+            onPress={() => setActiveInsumoTab('POTES')}
+          >
+            <PackageOpen color={activeInsumoTab === 'POTES' ? '#fff' : '#64748b'} size={16} />
+            <Text style={[styles.tabText, activeInsumoTab === 'POTES' && styles.tabTextActive]}>
+              POTES ({insumoCounts.potes})
             </Text>
           </TouchableOpacity>
           
