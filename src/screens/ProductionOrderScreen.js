@@ -26,7 +26,7 @@ const normalizeString = (str) => {
 };
 
 export default function ProductionOrderScreen({ route, navigation }) {
-  const { companyName } = route.params;
+  const companyName = route?.params?.companyName || 'H2O';
   const [viewMode, setViewMode] = useState('LIST'); // 'LIST' | 'CREATE'
   
   // ======================================================================
@@ -51,7 +51,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
       // Ordenar por fecha (más recientes primero)
       data.sort((a, b) => (typeof b.createdAt?.toMillis === 'function' ? b.createdAt.toMillis() : Date.now()) - (typeof a.createdAt?.toMillis === 'function' ? a.createdAt.toMillis() : Date.now()));
       // Filtramos en memoria por companyName para simplificar índices compuestos en Firebase
-      const companyOrders = data.filter(o => o.data?.company === companyName);
+      const companyOrders = data.filter(o => !companyName || (o.data?.company || '').toUpperCase() === companyName.toUpperCase());
       setOrders(companyOrders);
       setLoadingOrders(false);
       
@@ -98,15 +98,29 @@ export default function ProductionOrderScreen({ route, navigation }) {
   // ======================================================================
   // ESTADOS DE LA VISTA CREACIÓN
   // ======================================================================
+  const getDefaultExpiryDate = () => {
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear() + 2;
+    return `${month}/${year}`;
+  };
+
+  const sanitizeData = (obj) => {
+    if (obj === undefined) return null;
+    if (obj === null || typeof obj !== 'object') return obj;
+    return JSON.parse(JSON.stringify(obj, (k, v) => (v === undefined ? null : v)));
+  };
+
   const [productName, setProductName] = useState('');
   const [targetQuantity, setTargetQuantity] = useState('');
-  const [expiryDate, setExpiryDate] = useState('');
+  const [expiryDate, setExpiryDate] = useState(getDefaultExpiryDate());
   
   const [isCalculating, setIsCalculating] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [missingItems, setMissingItems] = useState([]);
   const [isCalendarVisible, setIsCalendarVisible] = useState(false);
+  const [forceModalVisible, setForceModalVisible] = useState(false);
   const [requirements, setRequirements] = useState(null);
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   const [availableFormulas, setAvailableFormulas] = useState([]);
@@ -312,13 +326,13 @@ export default function ProductionOrderScreen({ route, navigation }) {
            if (remainingRequired <= 0) break;
            const consumeQty = Number(Math.min(b.quantity, remainingRequired).toFixed(2));
            batchesToConsume.push({
-              docId: b.docId,
-              batchInternal: b.batchInternal,
-              batchProvider: b.batchProvider,
-              consumed: consumeQty,
-              realItemName: b.realItemName,
-              company: b.company,
-              stockType: b.stockType
+              docId: b.docId ? String(b.docId) : '',
+              batchInternal: b.batchInternal || 'S/D',
+              batchProvider: b.batchProvider || 'S/D',
+              consumed: consumeQty || 0,
+              realItemName: b.realItemName || ingredient.name || '',
+              company: b.company || companyName || 'H2O',
+              stockType: b.stockType || (isGranel ? 'GRANEL' : 'MP')
            });
            remainingRequired = Number((remainingRequired - consumeQty).toFixed(2));
         }
@@ -375,16 +389,16 @@ export default function ProductionOrderScreen({ route, navigation }) {
       }
       // ---------------------------------------------------
 
-      if (!expiryDate.trim()) {
-        Alert.alert("Error", "Debes especificar la fecha de vencimiento del lote a granel.");
-        setIsSubmitting(false);
-        return;
+      let finalExpiryDate = (expiryDate || '').trim();
+      if (!finalExpiryDate) {
+        finalExpiryDate = getDefaultExpiryDate();
+        setExpiryDate(finalExpiryDate);
       }
 
       // === REGLA ESTRICTA DE INVENTARIO ===
       const hasMissingStock = requirements.needs.some(req => req.type !== 'NOTE' && !req.isSufficient);
       if (hasMissingStock && force !== true) {
-        Alert.alert("Stock Insuficiente", "No hay suficiente materia prima para emitir esta orden. Verifica los requerimientos calculados.");
+        setForceModalVisible(true);
         setIsSubmitting(false);
         return;
       }
@@ -397,27 +411,50 @@ export default function ProductionOrderScreen({ route, navigation }) {
         targetKilos: requirements.targetKilos,
         stockType: 'GRANEL', 
         batchInternal: batchId,
-        expiryDate: expiryDate.trim(),
+        expiryDate: finalExpiryDate,
         unit: 'Lts',
-        company: companyName,
-        ingredients: requirements.needs,
+        company: companyName || 'H2O',
+        ingredients: requirements.needs.map(req => ({
+          name: req.name || req.text || 'Sin Nombre',
+          type: req.type || 'MATERIAL',
+          text: req.text || '',
+          required: Number(req.required) || 0,
+          requiredKg: Number(req.requiredKg) || 0,
+          stock: Number(req.stock) || 0,
+          isSufficient: !!req.isSufficient,
+          missing: Number(req.missing) || 0,
+          isGranel: !!req.isGranel,
+          batchesToConsume: (req.batchesToConsume || []).map(b => ({
+            docId: b.docId ? String(b.docId) : '',
+            batchInternal: b.batchInternal || 'S/D',
+            batchProvider: b.batchProvider || 'S/D',
+            consumed: Number(b.consumed) || 0,
+            realItemName: b.realItemName || req.name || '',
+            company: b.company || companyName || 'H2O',
+            stockType: b.stockType || (req.isGranel ? 'GRANEL' : 'MP')
+          }))
+        })),
         mpDeducted: true,
         actualIngredients: null
       };
 
-      await createOrder('OP', orderData, currentUser);
+      const cleanOrderData = sanitizeData(orderData);
+      await createOrder('OP', cleanOrderData, currentUser);
 
       // 2. DESPUÉS: DESCONTAR LAS MP (solo si la orden se creó exitosamente)
       for (const req of requirements.needs) {
         if (req.batchesToConsume && req.batchesToConsume.length > 0) {
           for (const b of req.batchesToConsume) {
-            await registerMovement(currentUser, 'RETIRO_PRODUCCION', b.company || (req.isGranel ? 'H2O' : companyName), {
-              docId: b.docId,
+            const consumedQty = Number(b.consumed) || 0;
+            if (consumedQty <= 0) continue;
+
+            await registerMovement(currentUser, 'RETIRO_PRODUCCION', b.company || (req.isGranel ? 'H2O' : (companyName || 'H2O')), {
+              docId: b.docId ? String(b.docId) : undefined,
               itemName: b.realItemName || req.name,
-              quantity: -Math.abs(b.consumed), 
+              quantity: -Math.abs(consumedQty), 
               stockType: b.stockType || (req.isGranel ? 'GRANEL' : 'MP'),
-              batchInternal: b.batchInternal,
-              loteProveedor: b.batchProvider, 
+              batchInternal: b.batchInternal || 'S/D',
+              loteProveedor: b.batchProvider || 'S/D', 
               unit: 'Kg/Lts',
               details: `OP ${batchId} - Reserva Formula`
             });
@@ -435,12 +472,17 @@ export default function ProductionOrderScreen({ route, navigation }) {
       setRequirements(null);
       setProductName('');
       setTargetQuantity('');
-      setExpiryDate('');
+      setExpiryDate(getDefaultExpiryDate());
     } catch (error) {
       console.error('Error al emitir OP:', error);
       const msg = error?.code === 'permission-denied'
         ? 'Tu usuario no tiene permiso para crear ordenes. Contacta al administrador del sistema.'
         : `No se pudo emitir la orden: ${error?.message || 'Error desconocido'}`;
+      Toast.show({
+        type: 'error',
+        text1: 'Error al emitir OP',
+        text2: msg
+      });
       Alert.alert('Error del Sistema', msg);
     } finally {
       setIsSubmitting(false);
@@ -941,29 +983,38 @@ export default function ProductionOrderScreen({ route, navigation }) {
                 );
               })}
 
-              <View style={styles.workflowAlert}>
-                <AlertCircle color="#f59e0b" size={20} style={{ marginTop: 2 }} />
-                <View style={{ flex: 1, marginLeft: 10 }}>
-                  <Text style={styles.workflowTitle}>Siguiente Paso</Text>
-                  <Text style={styles.workflowText}>
-                    Al confirmar, estas materias primas se descontarán y la OP quedará ENVIADA.
-                  </Text>
+              {requirements.needs.some(req => req.type !== 'NOTE' && !req.isSufficient) ? (
+                <View style={[styles.workflowAlert, { backgroundColor: '#fef2f2', borderColor: '#fca5a5' }]}>
+                  <ShieldAlert color="#ef4444" size={22} style={{ marginTop: 2 }} />
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={[styles.workflowTitle, { color: '#991b1b' }]}>Falta de Stock Detectada</Text>
+                    <Text style={[styles.workflowText, { color: '#b91c1c' }]}>
+                      Existen materias primas en rojo con stock insuficiente. Puedes forzar la emisión de la OP de todos modos para que pase a planta y ajustar las cantidades reales usadas en producción.
+                    </Text>
+                  </View>
                 </View>
-              </View>
+              ) : (
+                <View style={styles.workflowAlert}>
+                  <AlertCircle color="#f59e0b" size={20} style={{ marginTop: 2 }} />
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.workflowTitle}>Siguiente Paso</Text>
+                    <Text style={styles.workflowText}>
+                      Al confirmar, estas materias primas se descontarán y la OP quedará ENVIADA.
+                    </Text>
+                  </View>
+                </View>
+              )}
 
               <TouchableOpacity 
-                style={[styles.mainButton, isSubmitting && { opacity: 0.7 }]} 
+                style={[
+                  styles.mainButton, 
+                  requirements.needs.some(req => req.type !== 'NOTE' && !req.isSufficient) && { backgroundColor: '#d97706' },
+                  isSubmitting && { opacity: 0.7 }
+                ]} 
                 onPress={() => {
                   const hasMissingStock = requirements.needs.some(req => req.type !== 'NOTE' && !req.isSufficient);
                   if (hasMissingStock) {
-                    Alert.alert(
-                      "Falta de Stock", 
-                      "Existen materias primas en rojo. ¿Deseas forzar la OP de todos modos?",
-                      [
-                        { text: "Cancelar", style: "cancel" },
-                        { text: "Forzar OP", style: "destructive", onPress: () => executeProductionOrder(true) }
-                      ]
-                    );
+                    setForceModalVisible(true);
                     return;
                   }
                   executeProductionOrder(false);
@@ -973,7 +1024,11 @@ export default function ProductionOrderScreen({ route, navigation }) {
                 {isSubmitting ? <ActivityIndicator color="#fff" size="small" /> : (
                   <>
                     <Play color="#fff" size={20} fill="#fff" />
-                    <Text style={styles.mainButtonText}>Confirmar y Enviar Orden de Producción</Text>
+                    <Text style={styles.mainButtonText}>
+                      {requirements.needs.some(req => req.type !== 'NOTE' && !req.isSufficient)
+                        ? "Forzar y Enviar OP (Stock Insuficiente)"
+                        : "Confirmar y Enviar Orden de Producción"}
+                    </Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -1018,6 +1073,46 @@ export default function ProductionOrderScreen({ route, navigation }) {
                   <Text style={{fontSize: 16, fontWeight: '700', color: '#334155'}}>{m}</Text>
                 </TouchableOpacity>
               ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL DE CONFIRMACIÓN PARA FORZAR OP CON STOCK INSUFICIENTE */}
+      <Modal visible={forceModalVisible} transparent={true} animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.calendarContainer, { padding: 24, maxWidth: 480, alignSelf: 'center', width: '92%' }]}>
+            <View style={{ alignItems: 'center', marginBottom: 16 }}>
+              <View style={{ backgroundColor: '#fef3c7', padding: 16, borderRadius: 50, marginBottom: 12 }}>
+                <ShieldAlert color="#d97706" size={36} />
+              </View>
+              <Text style={{ fontSize: 18, fontWeight: '900', color: '#0f172a', textAlign: 'center' }}>
+                Stock Insuficiente Detectado
+              </Text>
+            </View>
+
+            <Text style={{ fontSize: 14, color: '#475569', lineHeight: 22, textAlign: 'center', marginBottom: 22 }}>
+              Existen materias primas en rojo con faltante de stock para cubrir la receta teórica.{'\n\n'}
+              ¿Deseas <Text style={{ fontWeight: '800', color: '#0f172a' }}>FORZAR la emisión de la OP</Text> de todos modos? Se reservará todo el stock disponible y las cantidades faltantes podrán ajustarse luego en planta.
+            </Text>
+
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: '#f1f5f9', padding: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}
+                onPress={() => setForceModalVisible(false)}
+              >
+                <Text style={{ color: '#64748b', fontWeight: '800', fontSize: 15 }}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1.2, backgroundColor: '#d97706', padding: 14, borderRadius: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+                onPress={() => {
+                  setForceModalVisible(false);
+                  executeProductionOrder(true);
+                }}
+              >
+                <Play color="#fff" size={18} fill="#fff" />
+                <Text style={{ color: '#fff', fontWeight: '900', fontSize: 15 }}>Forzar OP</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
