@@ -25,75 +25,88 @@ const normalizeString = (str) => {
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 };
 
-const findFormulaMatch = (allFormulas, searchInput) => {
-  if (!searchInput || !allFormulas || allFormulas.length === 0) return null;
-  const inputNorm = normalizeString(searchInput).trim();
-  const inputClean = inputNorm.replace(/^granel\s+/i, '').replace(/[()]/g, '').trim();
-  const inputParts = searchInput.split('/').map(p => normalizeString(p).trim()).filter(Boolean);
-  const inputTokens = inputNorm.replace(/[()/]/g, ' ').split(/\s+/).filter(t => t.length > 0 && t !== 'granel');
+const cleanStr = (str) => {
+  return normalizeString(str)
+    .replace(/[()\/_\-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
 
-  // Si busca 'nf', no puede matchear uno sin 'nf', y viceversa
-  const isSearchNF = inputTokens.includes('nf');
+const extractCodes = (str) => {
+  const norm = normalizeString(str).toUpperCase();
+  const matches = norm.match(/\b(BBS[- ]?)?(FM\d+|FI\d+|FQ\d+|SQ\d+|\d+)\b/g) || [];
+  return matches.map(m => m.replace(/[- ]/g, ''));
+};
 
-  const searchSynonyms = new Set([
-    normalizeString(searchInput),
-    inputNorm,
-    inputClean,
-    ...inputParts
-  ]);
+const scoreFormula = (f, searchInput) => {
+  const fName = f.productName || '';
+  const fClean = cleanStr(fName);
+  const sClean = cleanStr(searchInput);
 
-  Object.keys(EQUIVALENCIES).forEach(k => {
-    const normK = normalizeString(k);
-    if (searchSynonyms.has(normK) || inputParts.includes(normK) || (inputClean && normK === inputClean)) {
-      (EQUIVALENCIES[k] || []).forEach(syn => searchSynonyms.add(normalizeString(syn)));
+  if (fClean === sClean) return 10000;
+
+  let score = 0;
+
+  const fTokens = fClean.split(' ').filter(t => t.length > 0 && t !== 'granel');
+  const sTokens = sClean.split(' ').filter(t => t.length > 0 && t !== 'granel');
+
+  // 1. NF check (infracción estricta)
+  const fHasNF = fTokens.includes('nf');
+  const sHasNF = sTokens.includes('nf');
+  if (sHasNF !== fHasNF) return -10000;
+
+  // 2. Códigos técnicos (ej: FM00 vs FM02 vs FM01)
+  const sCodes = extractCodes(searchInput);
+  const fCodes = extractCodes(fName);
+  
+  if (sCodes.length > 0) {
+    const hasSameCode = sCodes.some(sc => fCodes.includes(sc) || fCodes.some(fc => fc.includes(sc) || sc.includes(fc)));
+    if (hasSameCode) {
+      score += 4000;
+    } else if (fCodes.length > 0) {
+      score -= 5000;
     }
+  }
+
+  // 3. Nombres comerciales clave (ej: BERN vs BASEL)
+  const keyNames = ['bern', 'basel', 'zurich', 'ixibio', 'momentum', 'syner', 'mariscal', 'power', 'restart'];
+  keyNames.forEach(k => {
+    const sHasK = sTokens.includes(k);
+    const fHasK = fTokens.includes(k);
+    if (sHasK && fHasK) score += 1000;
+    if (!sHasK && fHasK) score -= 800;
   });
 
-  // Filtrar candidatos respetando NF vs no-NF
-  const candidateFormulas = allFormulas.filter(f => {
-    const fNorm = normalizeString(f.productName || '');
-    const fHasNF = fNorm.split(/\s+/).includes('nf') || fNorm.includes('nf');
-    if (isSearchNF && !fHasNF) return false;
-    if (!isSearchNF && fHasNF) return false;
-    return true;
+  // 4. Token overlap
+  sTokens.forEach(st => {
+    if (fTokens.includes(st)) score += 200;
   });
 
-  // 1. Coincidencia exacta o sinónimo directo
-  for (const f of candidateFormulas) {
-    const fNorm = normalizeString(f.productName || '').trim();
-    if (fNorm === inputNorm || searchSynonyms.has(fNorm)) return f;
+  // 5. Coincidencia por partes split('/')
+  const fParts = fName.split('/').map(p => cleanStr(p).replace(/^granel\s+/i, ''));
+  const sParts = searchInput.split('/').map(p => cleanStr(p).replace(/^granel\s+/i, ''));
+  fParts.forEach(fp => {
+    if (fp && sParts.includes(fp)) score += 500;
+  });
+
+  return score;
+};
+
+const findFormulaMatch = (allFormulas, searchInput) => {
+  if (!allFormulas || allFormulas.length === 0 || !searchInput) return null;
+
+  let bestFormula = null;
+  let bestScore = -9999;
+
+  for (const f of allFormulas) {
+    const s = scoreFormula(f, searchInput);
+    if (s > bestScore && s > 0) {
+      bestScore = s;
+      bestFormula = f;
+    }
   }
 
-  // 2. Coincidencia por partes (split por /)
-  for (const f of candidateFormulas) {
-    const fParts = (f.productName || '').split('/').map(p => normalizeString(p).trim()).filter(Boolean);
-    const fCleanParts = (f.productName || '').split('/').map(p => normalizeString(p.replace(/^granel\s+/i, '').replace(/[()]/g, '')).trim()).filter(Boolean);
-    const match = fParts.some(fp => searchSynonyms.has(fp) || inputParts.includes(fp)) ||
-                  fCleanParts.some(fcp => searchSynonyms.has(fcp) || fcp === inputClean);
-    if (match) return f;
-  }
-
-  // 3. Coincidencia por tokens significativos (ej: tokens 'basel' y 'bbs-fm00')
-  for (const f of candidateFormulas) {
-    const fNorm = normalizeString(f.productName || '').replace(/[()/]/g, ' ');
-    if (inputTokens.length > 0 && inputTokens.every(tok => fNorm.includes(tok))) return f;
-  }
-
-  // 4. Coincidencia por tokens individuales significativos (ej: 'basel')
-  for (const f of candidateFormulas) {
-    const fNorm = normalizeString(f.productName || '').replace(/[()/]/g, ' ');
-    const mainTokens = inputTokens.filter(t => t !== 'de' && t !== 'la' && t !== 'el' && t.length > 2);
-    if (mainTokens.some(tok => fNorm.split(/\s+/).includes(tok))) return f;
-  }
-
-  // 5. Coincidencia por subcadena
-  for (const f of candidateFormulas) {
-    const fNorm = normalizeString(f.productName || '').trim();
-    const fClean = fNorm.replace(/^granel\s+/i, '').replace(/[()]/g, '').trim();
-    if (inputClean && (fNorm.includes(inputClean) || fClean.includes(inputClean) || inputNorm.includes(fClean))) return f;
-  }
-
-  return null;
+  return bestFormula;
 };
 
 export default function ProductionOrderScreen({ route, navigation }) {
