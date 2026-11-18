@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, TextInput, 
   TouchableOpacity, Alert, StatusBar, ActivityIndicator, FlatList, Modal, Linking, Platform
@@ -23,6 +23,77 @@ import Toast from 'react-native-toast-message';
 const normalizeString = (str) => {
   if (!str) return '';
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+};
+
+const findFormulaMatch = (allFormulas, searchInput) => {
+  if (!searchInput || !allFormulas || allFormulas.length === 0) return null;
+  const inputNorm = normalizeString(searchInput).trim();
+  const inputClean = inputNorm.replace(/^granel\s+/i, '').replace(/[()]/g, '').trim();
+  const inputParts = searchInput.split('/').map(p => normalizeString(p).trim()).filter(Boolean);
+  const inputTokens = inputNorm.replace(/[()/]/g, ' ').split(/\s+/).filter(t => t.length > 0 && t !== 'granel');
+
+  // Si busca 'nf', no puede matchear uno sin 'nf', y viceversa
+  const isSearchNF = inputTokens.includes('nf');
+
+  const searchSynonyms = new Set([
+    normalizeString(searchInput),
+    inputNorm,
+    inputClean,
+    ...inputParts
+  ]);
+
+  Object.keys(EQUIVALENCIES).forEach(k => {
+    const normK = normalizeString(k);
+    if (searchSynonyms.has(normK) || inputParts.includes(normK) || (inputClean && normK === inputClean)) {
+      (EQUIVALENCIES[k] || []).forEach(syn => searchSynonyms.add(normalizeString(syn)));
+    }
+  });
+
+  // Filtrar candidatos respetando NF vs no-NF
+  const candidateFormulas = allFormulas.filter(f => {
+    const fNorm = normalizeString(f.productName || '');
+    const fHasNF = fNorm.split(/\s+/).includes('nf') || fNorm.includes('nf');
+    if (isSearchNF && !fHasNF) return false;
+    if (!isSearchNF && fHasNF) return false;
+    return true;
+  });
+
+  // 1. Coincidencia exacta o sinónimo directo
+  for (const f of candidateFormulas) {
+    const fNorm = normalizeString(f.productName || '').trim();
+    if (fNorm === inputNorm || searchSynonyms.has(fNorm)) return f;
+  }
+
+  // 2. Coincidencia por partes (split por /)
+  for (const f of candidateFormulas) {
+    const fParts = (f.productName || '').split('/').map(p => normalizeString(p).trim()).filter(Boolean);
+    const fCleanParts = (f.productName || '').split('/').map(p => normalizeString(p.replace(/^granel\s+/i, '').replace(/[()]/g, '')).trim()).filter(Boolean);
+    const match = fParts.some(fp => searchSynonyms.has(fp) || inputParts.includes(fp)) ||
+                  fCleanParts.some(fcp => searchSynonyms.has(fcp) || fcp === inputClean);
+    if (match) return f;
+  }
+
+  // 3. Coincidencia por tokens significativos (ej: tokens 'basel' y 'bbs-fm00')
+  for (const f of candidateFormulas) {
+    const fNorm = normalizeString(f.productName || '').replace(/[()/]/g, ' ');
+    if (inputTokens.length > 0 && inputTokens.every(tok => fNorm.includes(tok))) return f;
+  }
+
+  // 4. Coincidencia por tokens individuales significativos (ej: 'basel')
+  for (const f of candidateFormulas) {
+    const fNorm = normalizeString(f.productName || '').replace(/[()/]/g, ' ');
+    const mainTokens = inputTokens.filter(t => t !== 'de' && t !== 'la' && t !== 'el' && t.length > 2);
+    if (mainTokens.some(tok => fNorm.split(/\s+/).includes(tok))) return f;
+  }
+
+  // 5. Coincidencia por subcadena
+  for (const f of candidateFormulas) {
+    const fNorm = normalizeString(f.productName || '').trim();
+    const fClean = fNorm.replace(/^granel\s+/i, '').replace(/[()]/g, '').trim();
+    if (inputClean && (fNorm.includes(inputClean) || fClean.includes(inputClean) || inputNorm.includes(fClean))) return f;
+  }
+
+  return null;
 };
 
 export default function ProductionOrderScreen({ route, navigation }) {
@@ -111,6 +182,10 @@ export default function ProductionOrderScreen({ route, navigation }) {
     return JSON.parse(JSON.stringify(obj, (k, v) => (v === undefined ? null : v)));
   };
 
+  const scrollViewRef = useRef(null);
+  const [calcError, setCalcError] = useState(null);
+  const [allMasterFormulas, setAllMasterFormulas] = useState([]);
+
   const [productName, setProductName] = useState('');
   const [targetQuantity, setTargetQuantity] = useState('');
   const [expiryDate, setExpiryDate] = useState(getDefaultExpiryDate());
@@ -141,9 +216,12 @@ export default function ProductionOrderScreen({ route, navigation }) {
   useEffect(() => {
     const fetchFormulas = async () => {
       try {
-        const q = query(collection(db, "Formulas_Maestras"), where("status", "==", "ACTIVA"));
-        const snap = await getDocs(q);
-        const data = snap.docs.map(doc => doc.data().productName);
+        const snap = await getDocs(collection(db, "Formulas_Maestras"));
+        const docs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setAllMasterFormulas(docs);
+
+        const activeDocs = docs.filter(d => !d.status || d.status === 'ACTIVA');
+        const data = activeDocs.map(doc => doc.productName).filter(Boolean);
         
         // Filter out formulas whose names are already part of a PRODUCTS_MADRE_LIST equivalent string
         const filteredData = data.filter(dbName => {
@@ -161,37 +239,79 @@ export default function ProductionOrderScreen({ route, navigation }) {
 
 
   const handleCalculateNeeds = async () => {
-    if (!productName.trim() || !targetQuantity.trim()) {
-      Alert.alert("Faltan Datos", "Selecciona un Producto Madre para realizar el cálculo y define el volumen.");
+    if (!productName.trim()) {
+      Toast.show({
+        type: 'info',
+        text1: 'Falta Producto Madre',
+        text2: 'Selecciona o escribe el producto que deseas fabricar.'
+      });
+      return;
+    }
+
+    if (!targetQuantity.trim()) {
+      Toast.show({
+        type: 'info',
+        text1: 'Falta Volumen',
+        text2: 'Ingresa el volumen objetivo en Litros.'
+      });
       return;
     }
 
     const targetVolume = Number(targetQuantity.replace(',', '.'));
     if (isNaN(targetVolume) || targetVolume <= 0) {
-      Alert.alert("Error", "El volumen debe ser un número mayor a 0.");
+      Toast.show({
+        type: 'error',
+        text1: 'Volumen Inválido',
+        text2: 'El volumen debe ser un número mayor a 0.'
+      });
       return;
     }
-    setIsCalculating(true);
-    try {
-      const formulasRef = collection(db, 'Formulas_Maestras');
-      
-      const rawName = productName;
-      const cleanName = productName.trim().toUpperCase();
-      const eqNames = EQUIVALENCIES[cleanName] || [];
-      const possibleFormulaNames = [...new Set([rawName, cleanName, ...eqNames])];
-      
-      const qFormula = query(formulasRef, where('productName', 'in', possibleFormulaNames));
-      const formulaSnap = await getDocs(qFormula);
 
-      if (formulaSnap.empty) {
-        Alert.alert("Fórmula no encontrada", "No existe receta maestra para este producto.");
+    setIsCalculating(true);
+    setCalcError(null);
+    try {
+      let formulas = allMasterFormulas;
+      if (!formulas || formulas.length === 0) {
+        const snap = await getDocs(collection(db, 'Formulas_Maestras'));
+        formulas = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setAllMasterFormulas(formulas);
+      }
+
+      const matchedFormula = findFormulaMatch(formulas, productName);
+
+      if (!matchedFormula) {
+        const errMsg = `No se encontró receta maestra para "${productName}".`;
+        setCalcError(errMsg);
+        Toast.show({
+          type: 'error',
+          text1: 'Fórmula no encontrada',
+          text2: errMsg
+        });
         setIsCalculating(false);
         return;
       }
 
-      const formulaData = formulaSnap.docs[0].data();
-      const density = formulaData.densidadObjetivo || formulaData.densidad || 1;
+      // Autocompletar nombre canónico
+      if (matchedFormula.productName && matchedFormula.productName !== productName) {
+        setProductName(matchedFormula.productName);
+      }
+
+      const density = Number(matchedFormula.densidadObjetivo || matchedFormula.densidad || 1);
       const targetKilos = targetVolume * density;
+      const formulaIngredients = matchedFormula.ingredients || matchedFormula.ingredientes || [];
+
+      if (!Array.isArray(formulaIngredients) || formulaIngredients.length === 0) {
+        const errMsg = `La receta de "${matchedFormula.productName}" no tiene materias primas registradas.`;
+        setCalcError(errMsg);
+        Toast.show({
+          type: 'error',
+          text1: 'Receta sin ingredientes',
+          text2: errMsg
+        });
+        setIsCalculating(false);
+        return;
+      }
+
       const calculatedNeeds = [];
 
       // CARGAMOS TODO EL STOCK ACTIVO UNA SOLA VEZ PARA MATCHEO LOCAL INTELIGENTE
@@ -208,23 +328,22 @@ export default function ProductionOrderScreen({ route, navigation }) {
       });
 
       // MAPA DE DENSIDADES PARA CONVERSIÓN DE GRANELES (Kg a Lts)
-      const allFormulasSnap = await getDocs(collection(db, 'Formulas_Maestras'));
       const densityMap = {};
-      allFormulasSnap.forEach(doc => {
-        const d = doc.data();
-        densityMap[normalizeString(d.productName)] = Number(d.densidadObjetivo || d.densidad || 1);
+      formulas.forEach(f => {
+        densityMap[normalizeString(f.productName || '')] = Number(f.densidadObjetivo || f.densidad || 1);
       });
 
-      for (const ingredient of formulaData.ingredients) {
+      for (const ingredient of formulaIngredients) {
         if (ingredient.type === 'NOTE') {
           calculatedNeeds.push({
             type: 'NOTE',
-            text: ingredient.text
+            text: ingredient.text || ingredient.texto || ''
           });
           continue;
         }
 
-        const percentageValue = ingredient.percentage !== undefined ? ingredient.percentage / 100 : 0;
+        const percentageRaw = ingredient.percentage !== undefined ? ingredient.percentage : (ingredient.porcentaje !== undefined ? ingredient.porcentaje : 0);
+        const percentageValue = Number(percentageRaw) / 100;
         const requiredKg = Number((targetKilos * percentageValue).toFixed(2)); // Siempre en Kg (para mostrar al operario)
         let requiredQty = requiredKg; // En Lts si es Granel (para comparar/descontar stock)
         
@@ -353,11 +472,29 @@ export default function ProductionOrderScreen({ route, navigation }) {
         needs: calculatedNeeds,
         targetVolume,
         density,
-        targetKilos
+        targetKilos,
+        formulaName: matchedFormula.productName
       });
+      setCalcError(null);
+
+      Toast.show({
+        type: 'success',
+        text1: 'Requerimientos Calculados',
+        text2: `Receta: ${matchedFormula.productName} | ${calculatedNeeds.filter(n => n.type !== 'NOTE').length} MPs calculadas.`
+      });
+
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 150);
     } catch (error) {
-      console.error(error);
-      Alert.alert("Error", "Hubo un problema al calcular los requerimientos.");
+      console.error('Error calculando requerimientos:', error);
+      const errMsg = `Error al calcular: ${error?.message || 'Verifica la conexión'}`;
+      setCalcError(errMsg);
+      Toast.show({
+        type: 'error',
+        text1: 'Error de Cálculo',
+        text2: errMsg
+      });
     } finally {
       setIsCalculating(false);
     }
@@ -848,6 +985,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
       ) : (
         // VISTA CREACIÓN
         <ScrollView 
+          ref={scrollViewRef}
           contentContainerStyle={styles.container}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -870,7 +1008,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
               <AutocompleteInput 
                 data={availableFormulas}
                 value={productName}
-                onChangeText={(text) => { setProductName(text); setRequirements(null); }}
+                onChangeText={(text) => { setProductName(text); setRequirements(null); setCalcError(null); }}
                 placeholder="Ej: PRODUCTO MADRE X"
                 icon={<FileText color="#94a3b8" size={20} />}
               />
@@ -885,7 +1023,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
                   placeholder="Ej: 1000" 
                   keyboardType="numeric"
                   value={targetQuantity}
-                  onChangeText={(text) => { setTargetQuantity(text); setRequirements(null); }}
+                  onChangeText={(text) => { setTargetQuantity(text); setRequirements(null); setCalcError(null); }}
                   placeholderTextColor="#94a3b8"
                 />
               </View>
@@ -918,15 +1056,38 @@ export default function ProductionOrderScreen({ route, navigation }) {
                 )}
               </TouchableOpacity>
             )}
+
+            {calcError && (
+              <View style={[styles.workflowAlert, { backgroundColor: '#fef2f2', borderColor: '#fca5a5', marginTop: 15 }]}>
+                <ShieldAlert color="#ef4444" size={20} style={{ marginTop: 2 }} />
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={[styles.workflowTitle, { color: '#991b1b' }]}>Fórmula No Encontrada</Text>
+                  <Text style={[styles.workflowText, { color: '#b91c1c' }]}>{calcError}</Text>
+                </View>
+              </View>
+            )}
           </View>
 
           {requirements && (
             <View style={styles.requirementsCard}>
               <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15}}>
-                <Text style={styles.reqTitle}>Proyección de Materias Primas</Text>
-                <View style={{alignItems: 'flex-end'}}>
-                  <Text style={{fontSize: 10, color: '#64748b', fontWeight: '800'}}>DENSIDAD</Text>
-                  <Text style={{fontSize: 14, color: '#0f172a', fontWeight: '900'}}>{requirements.density}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.reqTitle}>Proyección de Materias Primas</Text>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#3b82f6', marginTop: 2 }}>
+                    Receta: {requirements.formulaName || productName}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <TouchableOpacity 
+                    onPress={() => setRequirements(null)} 
+                    style={{ paddingHorizontal: 10, paddingVertical: 5, backgroundColor: '#f1f5f9', borderRadius: 8, borderWidth: 1, borderColor: '#cbd5e1' }}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: '#475569' }}>MODIFICAR</Text>
+                  </TouchableOpacity>
+                  <View style={{alignItems: 'flex-end'}}>
+                    <Text style={{fontSize: 10, color: '#64748b', fontWeight: '800'}}>DENSIDAD</Text>
+                    <Text style={{fontSize: 14, color: '#0f172a', fontWeight: '900'}}>{requirements.density}</Text>
+                  </View>
                 </View>
               </View>
               
