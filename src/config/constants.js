@@ -205,6 +205,9 @@ export const PRODUCTS_MADRE_LIST = [
   'GRANEL SULFURIC / AGROTURBO',
   'GRANEL POWER / POWER FULL / POWER BLUE',
   'GRANEL MOMENTUM NF / MOMENTUM NF',
+  'GRANEL ZURICH NUEVA FORMULA 11/26 / ZURICH NUEVA FORMULA 11/26',
+  'GRANEL ZURICH NUEVA FORMULA 11/26',
+  'GRANEL ZURICH NUEVA FORMULA',
   'GRANEL ZURICH BBS-SQ01 (FERARGEN-MONO) / ZURICH BBS-SQ01 (FERARGEN-MONO)',
   'GRANEL ZURICH NF (BBS-SQ01) / ZURICH NF',
   'GRANEL ZURICH NF (BBS-SQ01) LIGNO ACIDO / ZURICH NF LIGNO ACIDO',
@@ -235,11 +238,16 @@ export const PRODUCTS_MADRE_LIST = [
 ];
 
 export const PRODUCTS_FINAL_LIST = [
+  'ZURICH NUEVA FORMULA 11/26',
+  'ZURICH NUEVA FORMULA',
   'ZURICH BBS-SQ01 (FERARGEN-MONO)',
   'ZURICH NF',
   'ZURICH',
   'BASEL NF',
   'BASEL',
+  'GRANEL BASEL / (BBS-FM00)',
+  'BASEL / (BBS-FM00)',
+  'BBS-FM00',
   'BERN',
   'BERN SEED',
   'IXIBIO',
@@ -355,21 +363,27 @@ export const EQUIVALENCIES_MAP = {
   'TRIPLE ACCION': 'ACIDO TRICLOROISOCIANURICO PASTILLAS / TRIPLE ACCION / CLORO 87%',
   'CLORO PASTILLAS': 'ACIDO TRICLOROISOCIANURICO PASTILLAS / TRIPLE ACCION / CLORO 87%',
   'SYNERGYCIDE AB': 'GLICERINA',
-  'BASEL': 'GRANEL BASEL / (BBS-FM00)',
-  'BBS-FM00': 'GRANEL BASEL / (BBS-FM00)',
-  'GRANEL BASEL / (BBS-FM00)': 'GRANEL BASEL / (BBS-FM00)',
+  'BASEL': 'GRANEL BASEL / (BBS-FM00) / BASEL / BBS-FM00',
+  'BBS-FM00': 'GRANEL BASEL / (BBS-FM00) / BASEL / BBS-FM00',
+  'GRANEL BASEL': 'GRANEL BASEL / (BBS-FM00) / BASEL / BBS-FM00',
+  'GRANEL BASEL / (BBS-FM00)': 'GRANEL BASEL / (BBS-FM00) / BASEL / BBS-FM00',
+  'GRANEL BASEL / (BBS-FM00) / BASEL': 'GRANEL BASEL / (BBS-FM00) / BASEL / BBS-FM00',
+  'BASEL / (BBS-FM00)': 'GRANEL BASEL / (BBS-FM00) / BASEL / BBS-FM00',
+  'BASEL (BBS-FM00)': 'GRANEL BASEL / (BBS-FM00) / BASEL / BBS-FM00',
   'SYNERGYCIDE': 'GRANEL SYNER / SYNERGYCIDE',
   'SYNER': 'GRANEL SYNER / SYNERGYCIDE',
   'AGROTURBO': 'GRANEL SULFURIC / AGROTURBO',
   'SULFURIC': 'GRANEL SULFURIC / AGROTURBO',
   'MOMENTUM NF': 'GRANEL MOMENTUM NF / MOMENTUM NF',
   'TENSION-70': 'GRANEL TENSION-70 / TENSION-70',
+  'ZURICH NUEVA FORMULA 11/26': 'GRANEL ZURICH NUEVA FORMULA 11/26 / ZURICH NUEVA FORMULA 11/26 / ZURICH NUEVA FORMULA',
+  'ZURICH NUEVA FORMULA': 'GRANEL ZURICH NUEVA FORMULA 11/26 / ZURICH NUEVA FORMULA 11/26 / ZURICH NUEVA FORMULA',
+  'GRANEL ZURICH NUEVA FORMULA 11/26': 'GRANEL ZURICH NUEVA FORMULA 11/26 / ZURICH NUEVA FORMULA 11/26 / ZURICH NUEVA FORMULA',
+  'GRANEL ZURICH NUEVA FORMULA 11/26 / ZURICH NUEVA FORMULA 11/26': 'GRANEL ZURICH NUEVA FORMULA 11/26 / ZURICH NUEVA FORMULA 11/26 / ZURICH NUEVA FORMULA',
+  'GRANEL ZURICH NUEVA FORMULA': 'GRANEL ZURICH NUEVA FORMULA 11/26 / ZURICH NUEVA FORMULA 11/26 / ZURICH NUEVA FORMULA',
   'ZURICH NF': 'GRANEL ZURICH NF (BBS-SQ01) / ZURICH NF',
   'ZURICH': 'GRANEL ZURICH / ZURICH',
   'BASEL NF': 'GRANEL BASEL NF / BASEL NF',
-  'BASEL': 'GRANEL BASEL / (BBS-FM00)',
-  'BBS-FM00': 'GRANEL BASEL / (BBS-FM00)',
-  'GRANEL BASEL / (BBS-FM00)': 'GRANEL BASEL / (BBS-FM00)',
   'IXIBIO': 'GRANEL IXIBIO BBS-FI02 / IXIBIO',
   'MOLECULA': 'GRANEL DO5037 / MOLECULA / DO5037',
   'DO5037': 'GRANEL DO5037 / MOLECULA / DO5037',
@@ -425,10 +439,17 @@ export const EQUIVALENCIES_MAP = {
 
 export const PRODUCT_SYNONYMS = EQUIVALENCIES_MAP;
 
+// Helper para separar sinónimos respetando fechas o ratios como 11/26 sin partirlos
+export const splitSynonyms = (str) => {
+  if (!str) return [];
+  const protectedStr = str.replace(/(\d+)\/(\d+)/g, (m, g1, g2) => `${g1}__SLASH__${g2}`);
+  return protectedStr.split('/').map(p => p.replace(/__SLASH__/g, '/').trim()).filter(Boolean);
+};
+
 // Helper para obtener la lista exacta de nombres comerciales dado un granel seleccionado
 export const getCommercialNamesForGranel = (granelName) => {
   if (!granelName) return [];
-  const parts = granelName.split('/').map(p => p.trim());
+  const parts = splitSynonyms(granelName);
   if (parts.length <= 1) return [parts[0]]; // Si no hay sinónimos, devuelve el mismo nombre
   return parts.slice(1); // Devuelve todo lo que está después del primer '/'
 };
@@ -575,7 +596,7 @@ export const getLabelKeywords = (commercialName) => {
   // Equivalencias registradas en el mapa técnico
   const checkEquiv = (key) => {
     if (EQUIVALENCIES_MAP[key]) {
-      const parts = EQUIVALENCIES_MAP[key].split('/').map(p => p.replace(/GRANEL/gi, '').trim().toUpperCase()).filter(Boolean);
+      const parts = splitSynonyms(EQUIVALENCIES_MAP[key]).map(p => p.replace(/GRANEL/gi, '').trim().toUpperCase()).filter(Boolean);
       parts.forEach(part => keywords.add(part));
     }
   };

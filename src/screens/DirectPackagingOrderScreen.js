@@ -10,7 +10,7 @@ import { collection, query, where, getDocs, onSnapshot, serverTimestamp } from '
 import { registerMovement, createOrder, updateOrderStatus, checkTotalStock } from '../services/logisticsService';
 import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box, Droplet, Building2, Tag, Plus, ClipboardList, Play, CheckSquare, XCircle, ChevronDown, ChevronUp, Printer, Search, PackageOpen } from 'lucide-react-native';
 import AutocompleteInput from '../components/AutocompleteInput';
-import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS, POTE_BRANDS, POTE_CAPACITIES, RAW_MATERIALS_LIST, getCapacityKeywords, getLabelKeywords } from '../config/constants';
+import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS, POTE_BRANDS, POTE_CAPACITIES, RAW_MATERIALS_LIST, getCapacityKeywords, getLabelKeywords, splitSynonyms } from '../config/constants';
 import { canCreateOrders } from '../config/permissions';
 import { printOrder } from '../services/printService';
 
@@ -51,9 +51,9 @@ const doesLotMatchSelection = (lotItemName, searchInput) => {
   // Coincidencia exacta o directa
   if (lotFullNorm === searchNorm) return true;
 
-  // Partes separadas por '/'
-  const lotParts = lotItemName.split('/').map(p => normalizePart(p)).filter(p => p.length > 0);
-  const searchParts = searchInput.split('/').map(p => normalizePart(p)).filter(p => p.length > 0);
+  // Partes separadas por '/' (usando splitSynonyms para proteger '11/26' y similares)
+  const lotParts = splitSynonyms(lotItemName).map(p => normalizePart(p)).filter(p => p.length > 0);
+  const searchParts = splitSynonyms(searchInput).map(p => normalizePart(p)).filter(p => p.length > 0);
 
   // 1. Casos específicos conocidos de envasado directo (PT <-> MP)
   // CLORO 60% / SHOCK
@@ -112,7 +112,7 @@ const doesLotMatchSelection = (lotItemName, searchInput) => {
   // 3. Mapeo por EQUIVALENCIES_MAP (coincidencia exacta entre sinónimos oficiales)
   for (const [commercialKey, equivRaw] of Object.entries(EQUIVALENCIES_MAP)) {
     const commNorm = normalizePart(commercialKey);
-    const equivParts = equivRaw.split('/').map(p => normalizePart(p)).filter(p => p.length > 0);
+    const equivParts = splitSynonyms(equivRaw).map(p => normalizePart(p)).filter(p => p.length > 0);
     if (searchParts.includes(commNorm) || equivParts.some(ep => searchParts.includes(ep))) {
       if (lotParts.includes(commNorm) || lotParts.some(lp => equivParts.includes(lp))) {
         return true;
@@ -122,7 +122,7 @@ const doesLotMatchSelection = (lotItemName, searchInput) => {
 
   // 4. Mapeo por RAW_MATERIALS_LIST (coincidencia exacta entre partes de la misma definición)
   for (const rawLine of RAW_MATERIALS_LIST) {
-    const rawParts = rawLine.split('/').map(p => normalizePart(p)).filter(p => p.length > 0);
+    const rawParts = splitSynonyms(rawLine).map(p => normalizePart(p)).filter(p => p.length > 0);
     const searchMatchesLine = searchParts.some(sp => rawParts.includes(sp));
     if (searchMatchesLine) {
       const lotMatchesLine = lotParts.some(lp => rawParts.includes(lp));

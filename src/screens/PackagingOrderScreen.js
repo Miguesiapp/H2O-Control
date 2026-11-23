@@ -9,7 +9,7 @@ import { collection, query, where, getDocs, onSnapshot, serverTimestamp, doc, up
 import { registerMovement, createOrder, updateOrderStatus, checkTotalStock, matchesFuzzyItem } from '../services/logisticsService'; 
 import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box, Droplet, Building2, Tag, Plus, ClipboardList, Play, CheckSquare, XCircle, ChevronDown, ChevronUp, Printer, ShieldAlert, FileText, X } from 'lucide-react-native';
 import AutocompleteInput from '../components/AutocompleteInput';
-import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS, getCommercialNamesForGranel, getCapacityKeywords, getLabelKeywords } from '../config/constants';
+import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS, getCommercialNamesForGranel, getCapacityKeywords, getLabelKeywords, splitSynonyms } from '../config/constants';
 import { canCreateOrders, canChangeStatus } from '../config/permissions';
 import { printOrder } from '../services/printService';
 import Toast from 'react-native-toast-message';
@@ -137,7 +137,6 @@ export default function PackagingOrderScreen({ route, navigation }) {
   }, [commercialName]);
 
   const mappedGranelStr = commercialName ? (EQUIVALENCIES_MAP[commercialName.trim().toUpperCase()] || commercialName.trim().toUpperCase()) : '';
-  const synonyms = mappedGranelStr.split('/').map(s => s.trim().toUpperCase());
   const normalizePart = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase().replace(/\s+/g, ' ');
   const cleanStr = (s) => (s || '')
     .normalize('NFD')
@@ -146,25 +145,58 @@ export default function PackagingOrderScreen({ route, navigation }) {
     .replace(/^GRANEL\s+/i, '')
     .replace(/[^A-Z0-9]/g, '');
 
-  const synParts = synonyms.map(s => normalizePart(s).replace(/^GRANEL\s+/i, ''));
+  const rawCandidates = commercialName ? [
+    commercialName,
+    mappedGranelStr,
+    ...splitSynonyms(mappedGranelStr),
+    ...splitSynonyms(commercialName)
+  ] : [];
 
-  // Filtrado robusto por coincidencia exacta de parte o nombre completo, evitando falsos positivos por subcadenas
+  const synParts = [...new Set(rawCandidates.map(s => normalizePart(s).replace(/^GRANEL\s+/i, '')).filter(Boolean))];
+  const synCleanList = [...new Set(rawCandidates.map(s => cleanStr(s)).filter(Boolean))];
+
+  // Filtrado robusto para emparejar lotes aprobados con el producto comercial seleccionado
   const filteredApprovedLots = commercialName ? approvedLots.filter(l => {
     if (!l.itemName) return false;
     const lotNameNorm = normalizePart(l.itemName);
-    const lotParts = l.itemName.split('/').map(p => normalizePart(p).replace(/^GRANEL\s+/i, ''));
-    const lotCleanParts = l.itemName.split('/').map(p => cleanStr(p));
+    const lotParts = splitSynonyms(l.itemName).map(p => normalizePart(p).replace(/^GRANEL\s+/i, ''));
+    const lotCleanParts = splitSynonyms(l.itemName).map(p => cleanStr(p));
     const lotCleanFull = cleanStr(l.itemName);
 
-    return synParts.some(syn => {
-      const synClean = cleanStr(syn);
+    // Guardas de seguridad para evitar confusiones entre productos similares:
+    // 1. Distinguir BERN / FM02 vs BASEL / (BBS-FM00)
+    const searchIsBasel = synParts.some(p => p.includes('BASEL') || p.includes('FM00')) && !synParts.some(p => p.includes('BERN') || p.includes('FM02'));
+    const lotIsBern = lotParts.some(p => p.includes('BERN') || p.includes('FM02') || p.includes('FM 02')) || lotCleanFull.includes('FM02') || lotCleanFull.includes('BERN');
+    if (searchIsBasel && lotIsBern) return false;
+
+    // 2. Distinguir BASEL común vs BASEL NF
+    const searchHasNF = synParts.some(p => p.includes('NF'));
+    const lotHasNF = lotParts.some(p => p.includes('NF')) || lotCleanFull.includes('NF');
+    if (!searchHasNF && lotHasNF) return false;
+    if (searchHasNF && !lotHasNF) return false;
+
+    // 3. Distinguir ZURICH NUEVA FORMULA (11/26) vs ZURICH regular o SQ01
+    const searchIsZurichNF1126 = synParts.some(p => p.includes('11/26') || p.includes('1126') || p.includes('NUEVA FORMULA'));
+    const lotIsZurichNF1126 = lotParts.some(p => p.includes('11/26') || p.includes('NUEVA FORMULA')) || lotCleanFull.includes('1126') || lotCleanFull.includes('NUEVAFORMULA');
+    if (searchIsZurichNF1126 && !lotIsZurichNF1126) return false;
+    if (!searchIsZurichNF1126 && lotIsZurichNF1126) return false;
+
+    // Coincidencia directa por nombre normalizado o por partes
+    const directMatch = synParts.some(syn => {
       return lotNameNorm === syn || 
              lotNameNorm.replace(/^GRANEL\s+/i, '') === syn || 
-             lotParts.includes(syn) || 
-             synonyms.includes(l.itemName.trim().toUpperCase()) ||
-             (synClean && lotCleanFull === synClean) ||
-             (synClean && lotCleanParts.includes(synClean));
+             lotParts.includes(syn);
     });
+    if (directMatch) return true;
+
+    // Coincidencia por string limpio (eliminando símbolos '/', '-', '(', ')' y espacios)
+    const cleanMatch = synCleanList.some(synClean => {
+      return (synClean && lotCleanFull === synClean) ||
+             (synClean && lotCleanParts.includes(synClean)) ||
+             (synClean && synClean.length >= 5 && lotCleanFull.includes(synClean)) ||
+             (lotCleanFull && lotCleanFull.length >= 5 && synClean.includes(lotCleanFull));
+    });
+    return cleanMatch;
   }) : [];
 
   const units = Number(formData.unitsProduced) || 0;
@@ -813,7 +845,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
                 const sortedGroupedLots = Object.values(groupedApprovedLots).sort((a, b) => a.itemName.localeCompare(b.itemName));
 
                 return sortedGroupedLots.map((group) => {
-                  const isExpanded = expandedGroups.includes(group.itemName);
+                  const isExpanded = expandedGroups.includes(group.itemName) || sortedGroupedLots.length === 1;
                   return (
                     <View key={group.itemName} style={styles.groupContainer}>
                       <TouchableOpacity 
