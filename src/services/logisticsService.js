@@ -66,15 +66,24 @@ export const matchesFuzzyItem = (docItemName, fuzzyFilter) => {
   });
 };
 
-// Helper: Elimina el documento de inventario si la cantidad llega a 0 o menos
+// Helper: Limpia documentos de insumos en 0, pero preserva MP y GRANEL en 0 para no perder su historial de BBS Calidad
 const checkAndCleanupEmptyStock = async (docRef) => {
   try {
     const snap = await getDoc(docRef);
     if (snap.exists()) {
-      const currentQty = snap.data().quantity || 0;
+      const data = snap.data();
+      const currentQty = Number(data.quantity) || 0;
       if (currentQty <= 0) {
-        await deleteDoc(docRef);
-        console.log(`Lote ${docRef.id} eliminado porque su stock llegó a ${currentQty}`);
+        const isMPorGranel = data.stockType === 'MP' || data.stockType === 'GRANEL';
+        if (isMPorGranel || data.authorizedAt || data.measuredPh || data.measuredDensity) {
+          // No eliminar de Firestore para preservar el historial de Calidad BBS; fijar quantity en 0
+          if (currentQty < 0) {
+            await updateDoc(docRef, { quantity: 0 });
+          }
+        } else {
+          await deleteDoc(docRef);
+          console.log(`Lote de insumo/PT ${docRef.id} eliminado porque su stock llegó a ${currentQty}`);
+        }
       }
     }
   } catch (error) {
@@ -259,6 +268,7 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
           itemName: itemNameUpper,
           company: effectiveCompany,
           quantity: numericQty,
+          originalQuantity: data.originalQuantity || numericQty,
           stockType: effectiveStockType, 
           status: effectiveStatus || 'APTO',
           minStock: inheritedMinStock || 100,

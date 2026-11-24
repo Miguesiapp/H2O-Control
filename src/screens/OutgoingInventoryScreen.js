@@ -7,9 +7,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
 import { collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { registerMovement, createOrder, updateOrderStatus } from '../services/logisticsService';
-import { ChevronLeft, Truck, Send, PackageMinus, MapPin, Hash, ClipboardType, Plus, ClipboardList, CheckSquare, CheckCircle2, Play, Droplet, ChevronDown, X, Printer, XCircle } from 'lucide-react-native';
+import { ChevronLeft, Truck, Send, PackageMinus, MapPin, Hash, ClipboardType, Plus, ClipboardList, CheckSquare, CheckCircle2, Play, Droplet, ChevronDown, X, Printer, XCircle, Search, Share2 } from 'lucide-react-native';
 import { canCreateOrders } from '../config/permissions';
-import { printOrder } from '../services/printService';
+import { printOrder, shareOrderWhatsApp } from '../services/printService';
 
 const BIDON_CAPACITIES = ['1000', '20', '10', '5', '1', 'POTE 5KG', 'POTE 1KG'];
 const BIDON_LABELS = { '1000': '1000L (Contenedor)', '20': '20L', '10': '10L', '5': '5L', '1': '1L', 'POTE 5KG': 'Pote 5Kg', 'POTE 1KG': 'Pote 1Kg' };
@@ -26,6 +26,7 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [orderModalVisible, setOrderModalVisible] = useState(false);
   const [processingOrder, setProcessingOrder] = useState(false);
+  const [orderSearchQuery, setOrderSearchQuery] = useState('');
 
   useEffect(() => {
     // Escuchar órdenes de tipo OD (Orden de Despacho)
@@ -383,6 +384,22 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
           )}
           
           <Text style={styles.sectionTitle}>Órdenes Recientes</Text>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 12, marginBottom: 14 }}>
+            <Search color="#94a3b8" size={18} />
+            <TextInput
+              style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 8, fontSize: 14, color: '#0f172a', fontWeight: '600' }}
+              placeholder="Buscar OD por producto, lote, cliente o estado..."
+              placeholderTextColor="#94a3b8"
+              value={orderSearchQuery}
+              onChangeText={setOrderSearchQuery}
+            />
+            {orderSearchQuery !== '' && (
+              <TouchableOpacity onPress={() => setOrderSearchQuery('')} style={{ padding: 4 }}>
+                <X color="#64748b" size={18} />
+              </TouchableOpacity>
+            )}
+          </View>
           
           {loadingOrders ? (
             <ActivityIndicator color="#ef4444" style={{ marginTop: 40 }} />
@@ -393,7 +410,14 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
             </View>
           ) : (
             <FlatList maximumZoomScale={1} 
-              data={orders}
+              data={orders.filter(item => {
+                if (!orderSearchQuery.trim()) return true;
+                const q = orderSearchQuery.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+                const d = item.data || {};
+                const hay = `${d.itemName || ''} ${d.batchInternal || ''} ${d.clientName || ''} ${item.status || ''}`
+                  .normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+                return hay.includes(q);
+              })}
               keyExtractor={item => item.id}
               showsVerticalScrollIndicator={false}
               renderItem={({item}) => (
@@ -624,9 +648,15 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
               <Text style={styles.headerTitle}>Detalle de OD</Text>
               <Text style={styles.headerSub}>{selectedOrder?.data?.batchInternal}</Text>
             </View>
-            <TouchableOpacity onPress={() => selectedOrder && printOrder(selectedOrder)} style={{ padding: 8, backgroundColor: '#3b82f6', borderRadius: 8 }}>
-              <Printer color="#fff" size={20} />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <TouchableOpacity onPress={() => selectedOrder && shareOrderWhatsApp(selectedOrder)} style={{ paddingHorizontal: 10, paddingVertical: 8, backgroundColor: '#16a34a', borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Share2 color="#fff" size={18} />
+                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800' }}>WhatsApp</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => selectedOrder && printOrder(selectedOrder)} style={{ padding: 8, backgroundColor: '#3b82f6', borderRadius: 8 }}>
+                <Printer color="#fff" size={20} />
+              </TouchableOpacity>
+            </View>
           </View>
           <ScrollView maximumZoomScale={1} style={{flex: 1, padding: 20}}>
             <View style={styles.card}>

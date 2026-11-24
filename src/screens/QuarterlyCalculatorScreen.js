@@ -6,10 +6,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
 import { collection, getDocs, query, where, addDoc, serverTimestamp, doc, deleteDoc } from 'firebase/firestore';
-import { ChevronLeft, Calculator, AlertCircle, CheckCircle2, ShoppingCart, Target, Beaker, Factory, ChevronDown, X, ClipboardList, Download, Plus, Trash2, Printer } from 'lucide-react-native';
+import { ChevronLeft, Calculator, AlertCircle, CheckCircle2, ShoppingCart, Target, Beaker, Factory, ChevronDown, X, ClipboardList, Download, Plus, Trash2, Printer, Share2 } from 'lucide-react-native';
 
 import { EQUIVALENCIES } from '../services/formulaService';
 import { PRODUCTS_MADRE_LIST, RAW_MATERIALS_LIST, formatDisplayName } from '../config/constants';
+import { executePrint, openWhatsAppShare } from '../services/printService';
 import AutocompleteInput from '../components/AutocompleteInput';
 
 const normalizeString = (str) => {
@@ -202,14 +203,13 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
         const mp = mpRequirements[key];
         
         let totalInStock = 0;
-        const BLOCKED_STATUSES = ['PENDIENTE', 'PENDIENTE_LABORATORIO'];
+        const BLOCKED_STATUSES = ['PENDIENTE', 'PENDIENTE_LABORATORIO', 'RECHAZADO'];
         allMPStock.forEach(item => {
-           if (BLOCKED_STATUSES.includes(item.status)) return; // Respetar cuarentena de BBS Calidad
+           if (BLOCKED_STATUSES.includes(item.status)) return; // Respetar cuarentena y rechazos de BBS Calidad
            
            const rawQty = Number(item.quantity) || 0;
-           // Limpieza y descarte de residuos infinitesimales (< 1 gramo / 0.001)
+           // Ignorar lotes agotados (<= 0.001) sin eliminarlos para preservar el Historial de BBS Calidad
            if (rawQty <= 0.001) {
-             if (item.id) deleteDoc(doc(db, "Inventory", item.id)).catch(() => {});
              return;
            }
 
@@ -409,17 +409,33 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
       </html>
     `;
 
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(html);
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-      }, 250);
-    } else {
-      Alert.alert("Bloqueo de Pop-up", "Por favor permite las ventanas emergentes (pop-ups) para generar el PDF.");
-    }
+    const waText = buildSimulationWhatsAppText();
+    executePrint(html, 'H2O_Proyeccion_MultiGranel', waText);
+  };
+
+  const buildSimulationWhatsAppText = () => {
+    const validTargets = targets.filter(t => t.selectedFormula && parseFloat(t.goal) > 0);
+    const lines = [
+      '*H2O NEURAL CONTROL - PROYECCIÓN CONSOLIDADA MULTI-GRANEL*',
+      '────────────────────',
+      `📅 *Fecha:* ${new Date().toLocaleDateString('es-AR')}`,
+      '',
+      '*🎯 OBJETIVOS PROYECTADOS:*'
+    ];
+    validTargets.forEach(t => {
+      lines.push(`• ${formatDisplayName(t.selectedFormula.productName)}: *${parseFloat(t.goal).toLocaleString('es-AR')} Lts*`);
+    });
+    lines.push('', '*🧪 BALANCE DE MATERIAS PRIMAS:*');
+    results.forEach(i => {
+      const sign = i.balance > 0 ? '+' : '';
+      const emoji = i.balance < 0 ? '⚠️' : '✅';
+      lines.push(`${emoji} *${formatDisplayName(i.name)}:* Req ${i.needed.toFixed(1)} | Stock ${i.stock.toFixed(1)} | Bal *${sign}${i.balance.toFixed(1)}*`);
+    });
+    return lines.join('\n');
+  };
+
+  const handleShareWhatsAppSimulation = () => {
+    openWhatsAppShare(buildSimulationWhatsAppText());
   };
 
   if (initialLoading) {
@@ -571,10 +587,18 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
 
             <View style={styles.actionButtonsRow}>
               <TouchableOpacity 
+                style={[styles.actionBtn, { backgroundColor: '#16a34a' }]}
+                onPress={handleShareWhatsAppSimulation}
+              >
+                <Share2 color="#fff" size={18} />
+                <Text style={styles.actionBtnText}>WhatsApp</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
                 style={[styles.actionBtn, { backgroundColor: '#3b82f6' }]}
                 onPress={handleDownloadSimulation}
               >
-                <Printer color="#fff" size={20} />
+                <Printer color="#fff" size={18} />
                 <Text style={styles.actionBtnText}>Imprimir / PDF</Text>
               </TouchableOpacity>
 
@@ -583,7 +607,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
                   style={[styles.actionBtn, { backgroundColor: '#0f172a' }]}
                   onPress={handleGenerateRequests}
                 >
-                  <ClipboardList color="#fff" size={20} />
+                  <ClipboardList color="#fff" size={18} />
                   <Text style={styles.actionBtnText}>Pedir Faltantes</Text>
                 </TouchableOpacity>
               )}

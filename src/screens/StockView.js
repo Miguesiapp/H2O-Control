@@ -7,9 +7,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
 import { collection, query, where, onSnapshot, writeBatch, doc, deleteDoc, updateDoc, increment, serverTimestamp, addDoc } from 'firebase/firestore';
 import { registerMovement } from '../services/logisticsService';
-import { ChevronLeft, Search, PackageOpen, AlertTriangle, ShieldCheck, X, FlaskConical, Droplet, Box, Tag, Printer, ChevronDown, ChevronUp, Edit2, Trash2, Boxes } from 'lucide-react-native';
+import { ChevronLeft, Search, PackageOpen, AlertTriangle, ShieldCheck, X, FlaskConical, Droplet, Box, Tag, Printer, ChevronDown, ChevronUp, Edit2, Trash2, Boxes, Share2 } from 'lucide-react-native';
 import { RAW_MATERIALS_LIST, PRODUCTS_MADRE_LIST, formatDisplayName } from '../config/constants';
-import { printStockReport } from '../services/printService';
+import { printStockReport, shareStockReportWhatsApp } from '../services/printService';
 
 const normalizeString = (str) => {
   if (!str) return '';
@@ -286,11 +286,12 @@ export default function StockView({ route, navigation }) {
         }
         if (data.status === 'RECHAZADO') return;
 
-        // Solo incluir documentos con cantidad positiva real (> 0.001 para depurar residuos infinitesimales)
+        // Solo incluir documentos con cantidad positiva real (> 0.001) en la vista de stock disponible
         const itemQty = Number(data.quantity) || 0;
         if (itemQty > 0.001) {
           stockData.push({ ...data, id: doc.id });
-        } else {
+        } else if (isDocInsumo) {
+          // Solo limpiar documentos vacíos si son insumos (preservar MP y GRANEL en 0 para Historial de BBS Calidad)
           toCleanup.push(doc.id);
         }
       });
@@ -564,6 +565,20 @@ export default function StockView({ route, navigation }) {
             <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
               <TouchableOpacity style={styles.searchBtn} onPress={() => setIsSearching(true)} activeOpacity={0.7}>
                 <Search color="#0f172a" size={20} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.printHeaderBtn, { backgroundColor: '#dcfce7', borderColor: '#86efac' }]}
+                onPress={() => shareStockReportWhatsApp({
+                  title: title || 'ESTADO GENERAL DE STOCK',
+                  companyName: isCentralInsumos ? 'STOCK CENTRAL INSUMOS' : companyName,
+                  stockType: isCentralInsumos ? 'INSUMOS' : stockType,
+                  items: groupedItems,
+                  filterQuery: searchQuery.trim() || null,
+                  activeTab: isCentralInsumos ? activeInsumoTab : null
+                })}
+                activeOpacity={0.7}
+              >
+                <Share2 color="#16a34a" size={20} />
               </TouchableOpacity>
               <TouchableOpacity 
                 style={styles.printHeaderBtn} 

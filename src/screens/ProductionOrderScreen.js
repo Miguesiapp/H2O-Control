@@ -8,12 +8,12 @@ import { auth, db } from '../config/firebase';
 import { collection, query, where, getDocs, onSnapshot, serverTimestamp, addDoc, Timestamp, updateDoc, doc } from 'firebase/firestore';
 import { registerMovement, createOrder, updateOrderStatus } from '../services/logisticsService';
 import { 
-  ChevronLeft, Play, Beaker, FileText, Factory, AlertCircle, Calculator, CheckCircle2, XCircle, Plus, ClipboardList, CheckSquare, Calendar as CalendarIcon, X, Pencil, RotateCcw, Printer, ShieldAlert 
+  ChevronLeft, Play, Beaker, FileText, Factory, AlertCircle, Calculator, CheckCircle2, XCircle, Plus, ClipboardList, CheckSquare, Calendar as CalendarIcon, X, Pencil, RotateCcw, Printer, ShieldAlert, Search, Share2 
 } from 'lucide-react-native';
 import { Calendar as CalendarPicker } from 'react-native-calendars';
 import { ChevronRight } from 'lucide-react-native';
 import { printBatchLabels } from '../services/labelService';
-import { printOrder } from '../services/printService';
+import { printOrder, shareOrderWhatsApp } from '../services/printService';
 import AutocompleteInput from '../components/AutocompleteInput';
 import { EQUIVALENCIES } from '../services/formulaService';
 import { PRODUCTS_MADRE_LIST, generateBatchId, RAW_MATERIALS_LIST, formatDisplayName } from '../config/constants';
@@ -121,6 +121,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [orderModalVisible, setOrderModalVisible] = useState(false);
   const [processingOrder, setProcessingOrder] = useState(false);
+  const [orderSearchQuery, setOrderSearchQuery] = useState('');
   const [eigDocs, setEigDocs] = useState([]);
   const [eigModalDoc, setEigModalDoc] = useState(null);
 
@@ -955,6 +956,22 @@ export default function ProductionOrderScreen({ route, navigation }) {
           )}
           
           <Text style={styles.sectionTitle}>Órdenes Recientes</Text>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 12, marginBottom: 14 }}>
+            <Search color="#94a3b8" size={18} />
+            <TextInput
+              style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 8, fontSize: 14, color: '#0f172a', fontWeight: '600' }}
+              placeholder="Buscar OP por producto, lote o estado..."
+              placeholderTextColor="#94a3b8"
+              value={orderSearchQuery}
+              onChangeText={setOrderSearchQuery}
+            />
+            {orderSearchQuery !== '' && (
+              <TouchableOpacity onPress={() => setOrderSearchQuery('')} style={{ padding: 4 }}>
+                <X color="#64748b" size={18} />
+              </TouchableOpacity>
+            )}
+          </View>
           
           {loadingOrders ? (
             <ActivityIndicator color="#3b82f6" style={{ marginTop: 40 }} />
@@ -965,7 +982,16 @@ export default function ProductionOrderScreen({ route, navigation }) {
             </View>
           ) : (
             <FlatList 
-              data={orders}
+              data={orders.filter(item => {
+                if (!orderSearchQuery.trim()) return true;
+                const q = normalizeString(orderSearchQuery);
+                const d = item.data || {};
+                return normalizeString(d.itemName || '').includes(q) ||
+                       normalizeString(formatDisplayName(d.itemName || '')).includes(q) ||
+                       normalizeString(d.batchInternal || '').includes(q) ||
+                       normalizeString(item.status || '').includes(q) ||
+                       normalizeString(String(d.quantity || '')).includes(q);
+              })}
               keyExtractor={item => item.id}
               showsVerticalScrollIndicator={false}
               renderItem={({item}) => (
@@ -1300,9 +1326,15 @@ export default function ProductionOrderScreen({ route, navigation }) {
                 <Text style={styles.batchBadgeText}>{selectedOrder?.data?.batchInternal}</Text>
               </View>
             </View>
-            <TouchableOpacity onPress={() => selectedOrder && printOrder(selectedOrder)} style={{ padding: 8, backgroundColor: '#3b82f6', borderRadius: 8 }}>
-              <Printer color="#fff" size={20} />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <TouchableOpacity onPress={() => selectedOrder && shareOrderWhatsApp(selectedOrder)} style={{ paddingHorizontal: 10, paddingVertical: 8, backgroundColor: '#16a34a', borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Share2 color="#fff" size={18} />
+                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '800' }}>WhatsApp</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => selectedOrder && printOrder(selectedOrder)} style={{ padding: 8, backgroundColor: '#3b82f6', borderRadius: 8 }}>
+                <Printer color="#fff" size={20} />
+              </TouchableOpacity>
+            </View>
           </View>
           <ScrollView style={{flex: 1, padding: 20}}>
             <View style={styles.card}>

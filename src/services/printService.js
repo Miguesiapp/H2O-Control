@@ -1,7 +1,112 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { Alert, Platform } from 'react-native';
+import { Alert, Platform, Linking } from 'react-native';
 import { formatDisplayName } from '../config/constants';
+
+export const openWhatsAppShare = (text) => {
+  const url = `https://wa.me/?text=${encodeURIComponent(text || 'H2O Control')}`;
+  if (Platform.OS === 'web') {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  } else {
+    Linking.openURL(url).catch(() => Alert.alert('Error', 'No se pudo abrir WhatsApp.'));
+  }
+};
+
+export const generateOrderWhatsAppText = (order) => {
+  if (!order) return 'H2O Control - Orden';
+  const { type, data = {}, status } = order;
+  const dateObj = data?.fechaCreacion?.seconds
+    ? new Date(data.fechaCreacion.seconds * 1000)
+    : (order?.createdAt?.toDate ? order.createdAt.toDate() : new Date());
+  const dateStr = dateObj.toLocaleDateString('es-AR');
+  const batch = data?.batch || data?.batchInternal || data?.dispatchId || 'S/D';
+
+  if (type === 'OP') {
+    const prod = formatDisplayName(data?.formulaName || data?.itemName || 'General');
+    const lts = data?.quantity || data?.liters || data?.targetVolume || 0;
+    const kgs = Number(data?.kilos || data?.targetKilos || 0).toFixed(1);
+    const dens = data?.density || 'S/D';
+    const ings = (data?.ingredients || data?.needs || [])
+      .map(ing => {
+        if (ing.type === 'NOTE') return `  • _Nota: ${ing.text}_`;
+        const actual = data?.actualIngredients?.find(a => a.name === ing.name);
+        const qty = Number(actual ? actual.actualQty : (ing.required || ing.amount || 0)).toFixed(2);
+        const unit = ing.isGranel ? 'Lts' : 'Kg';
+        const lotes = (ing.batchesToConsume && ing.batchesToConsume.length > 0)
+          ? ` [${ing.batchesToConsume.map(b => b.batchProvider && b.batchProvider !== 'S/D' ? `Prov:${b.batchProvider}` : `Int:${b.batchInternal}`).join(', ')}]`
+          : '';
+        return `  • *${formatDisplayName(ing.name)}*: ${qty} ${unit}${lotes}`;
+      })
+      .join('\n');
+
+    return `*H2O CONTROL — ORDEN DE PRODUCCIÓN (OP)*\n` +
+      `📅 *Fecha:* ${dateStr}\n` +
+      `🧪 *Producto:* ${prod}\n` +
+      `🏷️ *Lote:* ${batch}\n` +
+      `📊 *Volumen:* ${lts} Lts (${kgs} Kg | Dens: ${dens})\n` +
+      `📌 *Estado:* ${status || 'ENVIADO'}\n\n` +
+      `*Desglose de Formulación:*\n${ings || '  • Sin detalle'}`;
+  }
+
+  if (type === 'OE' || type === 'OEM') {
+    const rawItemName = data?.itemName || '';
+    const prod = rawItemName.includes(' - ')
+      ? rawItemName.split(' - ').slice(0, -1).join(' - ')
+      : (data?.commercialName || rawItemName || 'Envasado');
+    const isPote = data?.containerType === 'POTE' || rawItemName.includes('POTE');
+    const unitSuffix = isPote ? 'Kg (Pote)' : 'L';
+    const envaseLabel = isPote
+      ? `POTE ${data?.presentation || 5}KG (${data?.brandPote || data?.brandBidon || 'H2O'})`
+      : (Number(data?.presentation) === 1000 ? 'CONTENEDOR 1000L' : `BIDON ${data?.presentation || 20}L (${data?.brandBidon || 'H2O'})`);
+    const cajaLine = data?.requiredBoxes > 0 ? `\n📦 *Cajas:* ${data.requiredBoxes} Uds (${data.brandCaja || 'H2O'})` : '';
+    const clientLine = data?.clientName ? `\n👤 *Cliente:* ${data.clientName}${data.clientLot ? ` (Lote: ${data.clientLot})` : ''}` : '';
+
+    return `*H2O CONTROL — ORDEN DE ENVASADO (${type === 'OEM' ? 'OED' : 'OE'})*\n` +
+      `📅 *Fecha:* ${dateStr}\n` +
+      `🧴 *Producto:* ${prod}\n` +
+      `🏷️ *Lote Origen:* ${batch}\n` +
+      `🔢 *Cantidad:* ${data?.quantity || 0} x ${data?.presentation || ''}${unitSuffix}\n` +
+      `💧 *Consumo Granel/MP:* ${data?.litersConsumed || 0} ${isPote ? 'Kg' : 'Lts'}\n` +
+      `🛢️ *Envase:* ${envaseLabel}${cajaLine}${clientLine}\n` +
+      `📌 *Estado:* ${status || 'ENVIADO'}`;
+  }
+
+  if (type === 'OD') {
+    return `*H2O CONTROL — ORDEN DE DESPACHO (OD)*\n` +
+      `📅 *Fecha:* ${dateStr}\n` +
+      `🚚 *Producto:* ${data?.itemName || data?.productName || 'Despacho'}\n` +
+      `🏷️ *Lote:* ${batch}\n` +
+      `🔢 *Cantidad:* ${data?.quantity || 0} ${data?.unit || 'Uds'}\n` +
+      (data?.clientName ? `👤 *Cliente:* ${data.clientName}\n` : '') +
+      `📌 *Estado:* ${status || 'ENVIADO'}`;
+  }
+
+  return `*H2O CONTROL — DOCUMENTO*\nProducto: ${data?.itemName || 'S/D'}\nLote: ${batch}`;
+};
+
+export const shareOrderWhatsApp = (order) => {
+  const text = generateOrderWhatsAppText(order);
+  openWhatsAppShare(text);
+};
+
+export const generateStockWhatsAppText = ({ title, companyName, stockType, items, activeTab }) => {
+  const dateStr = new Date().toLocaleDateString('es-AR');
+  const sortedItems = [...(items || [])].sort((a, b) => (a.itemName || '').localeCompare(b.itemName || '', 'es'));
+  const lines = sortedItems.map((item, idx) => {
+    const qty = Number(item.quantity || 0).toFixed(2);
+    return `${idx + 1}. *${formatDisplayName(item.itemName || 'S/N')}*: ${qty} ${item.unit || ''}`;
+  }).join('\n');
+
+  return `*H2O CONTROL — ${ (title || 'REPORTE DE STOCK').toUpperCase() }*\n` +
+    `📅 *Fecha:* ${dateStr} | 🏢 *Sector:* ${companyName || stockType}${activeTab ? ` (${activeTab})` : ''}\n` +
+    `📦 *Total Artículos:* ${sortedItems.length}\n\n` +
+    `${lines || 'Sin existencias registradas.'}`;
+};
+
+export const shareStockReportWhatsApp = (options) => {
+  const text = generateStockWhatsAppText(options);
+  openWhatsAppShare(text);
+};
 
 const generateHTML = (order) => {
   const { type, data, id, _createdAt } = order;
@@ -283,9 +388,10 @@ const generateHTML = (order) => {
   `;
 };
 
-export const executePrint = async (html, documentTitle = 'H2O Control - Documento') => {
+export const executePrint = async (html, documentTitle = 'H2O Control - Documento', whatsappText = '') => {
   try {
     if (Platform.OS === 'web') {
+      const encodedWaText = encodeURIComponent(whatsappText || `*H2O CONTROL* — ${documentTitle}`);
       const toolbarHtml = `
         <div class="h2o-web-toolbar">
           <div class="h2o-toolbar-info">
@@ -293,9 +399,12 @@ export const executePrint = async (html, documentTitle = 'H2O Control - Document
             <span class="h2o-toolbar-title">${documentTitle}</span>
           </div>
           <div class="h2o-toolbar-hint">
-            💡 Para enviar por WhatsApp o guardar: pulsa <strong>Imprimir / Guardar PDF</strong> y selecciona <em>"Guardar como PDF"</em> en Destino.
+            💡 Pulsa <strong>Compartir WhatsApp</strong> para enviar el resumen, o <strong>Imprimir / Guardar PDF</strong> (seleccionando <em>"Guardar como PDF"</em>).
           </div>
           <div class="h2o-toolbar-actions">
+            <a href="https://wa.me/?text=${encodedWaText}" target="_blank" rel="noopener noreferrer" class="h2o-btn-whatsapp" title="Enviar resumen del documento por WhatsApp">
+              💬 Compartir WhatsApp
+            </a>
             <button onclick="window.print()" class="h2o-btn-print" title="Abrir cuadro de impresión o guardar como PDF">
               🖨️ Imprimir / Guardar PDF
             </button>
@@ -369,6 +478,26 @@ export const executePrint = async (html, documentTitle = 'H2O Control - Document
             display: flex;
             align-items: center;
             gap: 10px;
+          }
+          .h2o-btn-whatsapp {
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+            color: #ffffff;
+            text-decoration: none;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 2px 6px rgba(22,163,74,0.4);
+            transition: all 0.2s;
+          }
+          .h2o-btn-whatsapp:hover {
+            background: #15803d;
+            transform: translateY(-1px);
           }
           .h2o-btn-print {
             background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
@@ -498,7 +627,8 @@ export const printOrder = async (order) => {
   const data = order?.data || {};
   const batch = data?.batch || data?.batchInternal || data?.dispatchId || order?.id || '';
   const documentTitle = `H2O_${type}_${batch || 'Doc'}`;
-  await executePrint(html, documentTitle);
+  const whatsappText = generateOrderWhatsAppText(order);
+  await executePrint(html, documentTitle, whatsappText);
 };
 
 export const generateTraceabilityHTML = (logs, query) => {
@@ -879,5 +1009,6 @@ export const printStockReport = async (options) => {
   const sType = options?.stockType || 'General';
   const cName = options?.companyName ? `_${String(options.companyName).trim().replace(/\s+/g, '_')}` : '';
   const documentTitle = `H2O_Stock_${sType}${cName}`;
-  await executePrint(html, documentTitle);
+  const whatsappText = generateStockWhatsAppText(options);
+  await executePrint(html, documentTitle, whatsappText);
 };

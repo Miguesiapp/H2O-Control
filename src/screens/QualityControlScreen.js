@@ -6,9 +6,36 @@ import {
 import Toast from 'react-native-toast-message';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db, auth } from '../config/firebase';
-import { collection, query, where, onSnapshot, updateDoc, doc, orderBy, limit, getDocs } from 'firebase/firestore';
-import { ChevronLeft, CheckCircle, XCircle, Beaker, ClipboardCheck, AlertCircle, FileSignature, Database, Container, History, ListTodo, ChevronDown, ChevronUp, User } from 'lucide-react-native';
+import { collection, query, where, onSnapshot, updateDoc, doc, orderBy, limit, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import { ChevronLeft, CheckCircle, XCircle, Beaker, ClipboardCheck, AlertCircle, FileSignature, Database, Container, History, ListTodo, ChevronDown, ChevronUp, User, Search, X } from 'lucide-react-native';
 import { formatDisplayName } from '../config/constants';
+
+const extractEffectiveDate = (item) => {
+  if (!item) return new Date();
+  if (item.authorizedAt) {
+    const d = new Date(item.authorizedAt);
+    if (!isNaN(d.getTime())) return d;
+  }
+  if (item.finalizedAt && typeof item.finalizedAt.toDate === 'function') return item.finalizedAt.toDate();
+  if (item.timestamp && typeof item.timestamp.toDate === 'function') return item.timestamp.toDate();
+  if (item.createdAt && typeof item.createdAt.toDate === 'function') return item.createdAt.toDate();
+  if (item.lastUpdated && typeof item.lastUpdated.toDate === 'function') return item.lastUpdated.toDate();
+  if (item.createdAt) {
+    const d = new Date(item.createdAt);
+    if (!isNaN(d.getTime())) return d;
+  }
+  // Extraer fecha desde el código de lote (ej. H2O-24112026 o H2O-MAN-20261124-1234)
+  const batch = String(item.batchInternal || '');
+  const m1 = batch.match(/H2O-(\d{2})(\d{2})(20\d{2})/);
+  if (m1) {
+    return new Date(Number(m1[3]), Number(m1[2]) - 1, Number(m1[1]), 12, 0, 0);
+  }
+  const m2 = batch.match(/(20\d{2})(\d{2})(\d{2})/);
+  if (m2) {
+    return new Date(Number(m2[1]), Number(m2[2]) - 1, Number(m2[3]), 12, 0, 0);
+  }
+  return new Date();
+};
 
 const normalizeString = (str) => {
   if (!str) return '';
@@ -41,6 +68,7 @@ export default function QualityControlScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [selectedOpDetails, setSelectedOpDetails] = useState(null);
   const [loadingOpDetails, setLoadingOpDetails] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const toggleExpand = (id) => {
     setExpandedItems(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
@@ -83,61 +111,210 @@ export default function QualityControlScreen({ navigation }) {
     setSelectedOpDetails(null);
 
     const targetStockType = activeTab === 'MP' ? 'MP' : 'GRANEL';
-    let q;
 
     if (viewMode === 'PENDING') {
       const targetStatus = activeTab === 'MP' ? 'PENDIENTE' : 'PENDIENTE_LABORATORIO';
-      q = query(
+      const q = query(
         collection(db, "Inventory"), 
         where("stockType", "==", targetStockType),
         where("status", "==", targetStatus)
       );
-    } else {
-      q = query(
-        collection(db, "Inventory"), 
-        where("stockType", "==", targetStockType),
-        where("status", "in", ["APTO", "RECHAZADO"])
-      );
-      // Nota: Sin índice compuesto, obtenemos todos y ordenamos localmente para extraer los últimos 300.
-    }
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      
-      if (viewMode === 'HISTORY') {
-        // Ordenar descendentemente por fecha de autorización
-        data = data.sort((a, b) => {
-          const dateA = a.authorizedAt ? new Date(a.authorizedAt).getTime() : 0;
-          const dateB = b.authorizedAt ? new Date(b.authorizedAt).getTime() : 0;
-          return dateB - dateA;
-        }).slice(0, 300); // Limitar a 300 en memoria
-        
-        // Agregar mes/año para agrupar
-        data = data.map(item => {
-          const d = item.authorizedAt ? new Date(item.authorizedAt) : new Date();
-          return {
-            ...item,
-            monthYear: d.toLocaleString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase(),
-            formattedAuthDate: d.toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
-          };
-        });
-        
-        setHistoryLots(data);
-      } else {
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setPendingLots(data);
-        // Si el lote seleccionado se procesó (ya no está), limpia el formulario
         if (selectedLot && !data.find(d => d.id === selectedLot.id)) {
           setSelectedLot(null);
         }
-      }
-      setLoading(false);
-    }, (error) => {
-      console.error(error);
-      Alert.alert("Error de Conexión", "Fallo al sincronizar con el servidor de Calidad.");
-      setLoading(false);
-    });
-    
-    return () => unsubscribe();
+        setLoading(false);
+      }, (error) => {
+        console.error(error);
+        Alert.alert("Error de Conexión", "Fallo al sincronizar con el servidor de Calidad.");
+        setLoading(false);
+      });
+      return () => unsubscribe();
+    } else {
+      // MODO HISTORIAL: Reconstruir historial completo combinando Inventory + Orders (OP) + AuditLog
+      // para recuperar todos los lotes de noviembre y meses anteriores cuyos documentos de Inventory se habían eliminado al llegar su stock a 0
+      const qInv = query(
+        collection(db, "Inventory"), 
+        where("stockType", "==", targetStockType)
+      );
+
+      const unsubscribe = onSnapshot(qInv, async (invSnapshot) => {
+        try {
+          const allInvDocs = invSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+          const pendingStatuses = ['PENDIENTE', 'PENDIENTE_LABORATORIO'];
+          const pendingKeys = new Set();
+
+          allInvDocs.forEach(item => {
+            if (pendingStatuses.includes(item.status)) {
+              const bKey = `${(item.batchInternal || '').trim().toUpperCase()}__${formatDisplayName(item.itemName || item.productName).toUpperCase()}`;
+              pendingKeys.add(bKey);
+            }
+          });
+
+          const mergedMap = new Map();
+
+          // 1. Documentos actuales en Inventory (APTO o RECHAZADO)
+          allInvDocs.forEach(item => {
+            if (item.status !== 'APTO' && item.status !== 'RECHAZADO') return;
+            const cleanName = formatDisplayName(item.itemName || item.productName).toUpperCase();
+            const batch = (item.batchInternal || '').trim().toUpperCase();
+            const key = (batch && batch !== 'S/D') ? `${batch}__${cleanName}` : `inv_${item.id}`;
+            mergedMap.set(key, {
+              ...item,
+              originalQuantity: item.originalQuantity || item.quantity || 0
+            });
+          });
+
+          // 2. Para GRANEL: Cruzar con Órdenes de Producción (OP) finalizadas
+          if (targetStockType === 'GRANEL') {
+            try {
+              const qOrders = query(collection(db, "Orders"), where("type", "==", "OP"));
+              const ordersSnap = await getDocs(qOrders);
+              const opDetailsCache = {};
+
+              ordersSnap.docs.forEach(d => {
+                const oData = d.data();
+                const od = oData.data || {};
+                const batch = (od.batchInternal || '').trim().toUpperCase();
+                const name = od.itemName || od.formulaName || 'GRANEL';
+                const cleanName = formatDisplayName(name).toUpperCase();
+                const key = (batch && batch !== 'S/D') ? `${batch}__${cleanName}` : `op_${d.id}`;
+
+                if (batch) {
+                  opDetailsCache[batch] = { id: d.id, ...oData };
+                }
+
+                if (oData.status !== 'FINALIZADO') return;
+                if (pendingKeys.has(key)) return;
+
+                if (!mergedMap.has(key)) {
+                  mergedMap.set(key, {
+                    id: `op_${d.id}`,
+                    itemName: name,
+                    quantity: od.quantity || 0,
+                    originalQuantity: od.quantity || 0,
+                    unit: od.unit || 'Lts',
+                    stockType: 'GRANEL',
+                    status: 'APTO',
+                    batchInternal: batch || 'S/D',
+                    batchProvider: 'PROPIA',
+                    expiryDate: od.expiryDate || 'S/V',
+                    measuredPh: od.measuredPh || od.ph || null,
+                    measuredDensity: od.measuredDensity || od.density || null,
+                    authorizedBy: oData.finalizedBy || oData.createdBy || 'Sistema',
+                    finalizedAt: oData.finalizedAt || oData.lastUpdated || oData.createdAt,
+                    createdAt: oData.createdAt
+                  });
+                } else {
+                  const existing = mergedMap.get(key);
+                  if (!existing.originalQuantity || existing.originalQuantity <= 0) {
+                    existing.originalQuantity = od.quantity || existing.quantity || 0;
+                  }
+                }
+              });
+
+              setHistoryOpsDetails(prev => ({ ...prev, ...opDetailsCache }));
+            } catch (errOp) {
+              console.warn("No se pudieron cargar OPs históricas para Calidad:", errOp);
+            }
+          }
+
+          // 3. Cruzar con AuditLog para recuperar lotes históricos agotados de todos los meses y firmas de laboratorio
+          try {
+            const qAudit = query(collection(db, "AuditLog"), where("stockType", "==", targetStockType));
+            const auditSnap = await getDocs(qAudit);
+
+            const validIngresoActions = targetStockType === 'GRANEL'
+              ? ['INGRESO_OP', 'ALTA_POR_AJUSTE_GRANEL', 'LIBERACION_CALIDAD_BBS', 'RECHAZO_CALIDAD_BBS']
+              : ['INGRESO_MANUAL_MATERIA_PRIMA', 'INGRESO_COMPRA', 'INGRESO_MASIVO_IA', 'ALTA_POR_AJUSTE_MATERIA_PRIMA', 'CARGA_INICIAL', 'LIBERACION_CALIDAD_BBS', 'RECHAZO_CALIDAD_BBS'];
+
+            auditSnap.docs.forEach(d => {
+              const log = d.data();
+              const action = (log.action || '').toUpperCase();
+              if (!validIngresoActions.includes(action)) return;
+              const qty = Number(log.quantity) || 0;
+              if (qty <= 0 && !action.includes('CALIDAD_BBS')) return;
+
+              const name = log.itemName || 'Desconocido';
+              if (Array.isArray(name)) return;
+              const cleanName = formatDisplayName(name).toUpperCase();
+              const batch = (log.batchInternal || '').trim().toUpperCase();
+              const key = (batch && batch !== 'S/D' && batch !== 'N/A') ? `${batch}__${cleanName}` : `log_${d.id}`;
+
+              if (pendingKeys.has(key)) return;
+
+              if (action === 'LIBERACION_CALIDAD_BBS' || action === 'RECHAZO_CALIDAD_BBS') {
+                const existing = mergedMap.get(key) || {};
+                mergedMap.set(key, {
+                  ...existing,
+                  id: existing.id || `log_${d.id}`,
+                  itemName: existing.itemName || name,
+                  quantity: existing.quantity ?? qty,
+                  originalQuantity: log.originalQuantity || existing.originalQuantity || qty,
+                  unit: log.unit || existing.unit || (targetStockType === 'GRANEL' ? 'Lts' : 'Kg'),
+                  stockType: targetStockType,
+                  status: action === 'RECHAZO_CALIDAD_BBS' ? 'RECHAZADO' : 'APTO',
+                  batchInternal: batch || existing.batchInternal || 'S/D',
+                  batchProvider: log.loteProveedor || log.batchProvider || existing.batchProvider || (targetStockType === 'GRANEL' ? 'PROPIA' : 'S/D'),
+                  providerName: log.providerName || existing.providerName || 'S/D',
+                  expiryDate: log.expiryDate || existing.expiryDate || 'S/F',
+                  measuredPh: log.measuredPh ?? existing.measuredPh ?? null,
+                  measuredDensity: log.measuredDensity ?? existing.measuredDensity ?? null,
+                  qualityObs: log.qualityObs || log.details || existing.qualityObs,
+                  authorizedBy: log.user || existing.authorizedBy || 'Sistema',
+                  authorizedAt: log.authorizedAt || existing.authorizedAt,
+                  timestamp: log.timestamp || existing.timestamp
+                });
+              } else if (!mergedMap.has(key)) {
+                mergedMap.set(key, {
+                  id: `log_${d.id}`,
+                  itemName: name,
+                  quantity: qty,
+                  originalQuantity: qty,
+                  unit: log.unit || (targetStockType === 'GRANEL' ? 'Lts' : 'Kg'),
+                  stockType: targetStockType,
+                  status: 'APTO',
+                  batchInternal: batch || 'S/D',
+                  batchProvider: log.loteProveedor || (targetStockType === 'GRANEL' ? 'PROPIA' : 'S/D'),
+                  AuthorizedFromLog: true,
+                  authorizedBy: log.user || 'Sistema',
+                  timestamp: log.timestamp
+                });
+              }
+            });
+          } catch (errAudit) {
+            console.warn("No se pudo cargar AuditLog histórico para Calidad:", errAudit);
+          }
+
+          let data = Array.from(mergedMap.values()).map(item => {
+            const d = extractEffectiveDate(item);
+            return {
+              ...item,
+              _effectiveTime: d.getTime(),
+              monthYear: d.toLocaleString('es-ES', { month: 'long', year: 'numeric' }).toUpperCase(),
+              formattedAuthDate: d.toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
+            };
+          });
+
+          // Ordenar descendentemente por fecha real del lote/autorización
+          data.sort((a, b) => b._effectiveTime - a._effectiveTime);
+
+          setHistoryLots(data);
+          setLoading(false);
+        } catch (err) {
+          console.error(err);
+          setLoading(false);
+        }
+      }, (error) => {
+        console.error(error);
+        Alert.alert("Error de Conexión", "Fallo al sincronizar con el servidor de Calidad.");
+        setLoading(false);
+      });
+
+      return () => unsubscribe();
+    }
   }, [activeTab, viewMode]);
 
   useEffect(() => {
@@ -177,24 +354,48 @@ export default function QualityControlScreen({ navigation }) {
     }
 
     try {
+      const authIso = new Date().toISOString();
+      const origQty = lot.originalQuantity || lot.quantity || 0;
       const updatePayload = {
         status: status, 
         measuredPh: Number(phVal) || null,
         measuredDensity: Number(densityVal) || null,
         qualityObs: analysis.obs.trim() || 'Sin observaciones.',
         authorizedBy: userEmail,
-        authorizedAt: new Date().toISOString()
+        authorizedAt: authIso,
+        originalQuantity: origQty
       };
 
       // Si el lote es RECHAZADO, ponemos quantity en 0 como capa extra de seguridad
       // para que nunca sea contado en el stock disponible, incluso si el filtro
       // por status fallara. El historial de auditoría queda intacto (AuditLog).
       if (status === 'RECHAZADO') {
-        updatePayload.originalQuantity = lot.quantity; // Preservar cantidad original para historial
         updatePayload.quantity = 0;
       }
 
       await updateDoc(doc(db, "Inventory", lot.id), updatePayload);
+
+      // Guardar firma de laboratorio en AuditLog para que el historial de BBS Calidad sea 100% permanente e inalterable
+      await addDoc(collection(db, "AuditLog"), {
+        user: userEmail,
+        action: status === 'APTO' ? 'LIBERACION_CALIDAD_BBS' : 'RECHAZO_CALIDAD_BBS',
+        company: lot.company || (activeTab === 'MP' ? 'STOCK_CENTRAL_MP' : 'H2O'),
+        itemName: (lot.itemName || lot.productName || 'Desconocido').toUpperCase(),
+        quantity: origQty,
+        originalQuantity: origQty,
+        unit: lot.unit || (activeTab === 'GRANEL' ? 'Lts' : 'Kg'),
+        stockType: activeTab === 'MP' ? 'MP' : 'GRANEL',
+        batchInternal: lot.batchInternal || 'S/D',
+        loteProveedor: lot.batchProvider || lot.loteProveedor || 'S/D',
+        providerName: lot.providerName || 'S/D',
+        expiryDate: lot.expiryDate || 'S/V',
+        measuredPh: Number(phVal) || null,
+        measuredDensity: Number(densityVal) || null,
+        qualityObs: analysis.obs.trim() || 'Sin observaciones.',
+        authorizedAt: authIso,
+        details: `Dictamen BBS Calidad: ${status} | pH: ${phVal || '-'} | Densidad: ${densityVal || '-'} | Obs: ${analysis.obs.trim() || 'S/O'}`,
+        timestamp: serverTimestamp()
+      });
 
       let toastText2, alertMsg;
       if (status === 'APTO') {
@@ -440,10 +641,21 @@ export default function QualityControlScreen({ navigation }) {
     );
   };
 
+  // Filtrar lotes por buscador (producto, lote interno o lote proveedor)
+  const matchesQualitySearch = (item) => {
+    if (!searchQuery.trim()) return true;
+    const q = normalizeString(searchQuery);
+    const name = normalizeString(item.itemName || item.productName || '');
+    const batchInt = normalizeString(item.batchInternal || '');
+    const batchProv = normalizeString(item.batchProvider || item.loteProveedor || '');
+    const prov = normalizeString(item.providerName || '');
+    return name.includes(q) || batchInt.includes(q) || batchProv.includes(q) || prov.includes(q);
+  };
+
   // Group pending lots by product
-  const groupedLotsMap = pendingLots.reduce((acc, item) => {
+  const groupedLotsMap = pendingLots.filter(matchesQualitySearch).reduce((acc, item) => {
     const rawName = item.itemName || item.productName || 'Desconocido';
-    const groupKey = rawName.trim().toUpperCase();
+    const groupKey = formatDisplayName(rawName).toUpperCase();
     
     if (!acc[groupKey]) {
       acc[groupKey] = {
@@ -456,9 +668,9 @@ export default function QualityControlScreen({ navigation }) {
     return acc;
   }, {});
   
-  const groupedLots = Object.values(groupedLotsMap).sort((a, b) => a.itemName.localeCompare(b.itemName));
+  const groupedLots = Object.values(groupedLotsMap).sort((a, b) => formatDisplayName(a.itemName).localeCompare(formatDisplayName(b.itemName)));
 
-  const historyGroupedMap = historyLots.reduce((acc, item) => {
+  const historyGroupedMap = historyLots.filter(matchesQualitySearch).reduce((acc, item) => {
     if (!acc[item.monthYear]) acc[item.monthYear] = [];
     acc[item.monthYear].push(item);
     return acc;
@@ -522,6 +734,21 @@ export default function QualityControlScreen({ navigation }) {
 
       {/* ZONA SUPERIOR: LISTA PRINCIPAL */}
       <View style={styles.topSection}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', paddingHorizontal: 12, marginBottom: 12 }}>
+          <Search color="#94a3b8" size={18} />
+          <TextInput
+            style={{ flex: 1, paddingVertical: 10, paddingHorizontal: 8, fontSize: 14, color: '#0f172a', fontWeight: '600' }}
+            placeholder="Buscar por producto o número de lote..."
+            placeholderTextColor="#94a3b8"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery !== '' && (
+            <TouchableOpacity onPress={() => setSearchQuery('')} style={{ padding: 4 }}>
+              <X color="#64748b" size={18} />
+            </TouchableOpacity>
+          )}
+        </View>
         <Text style={styles.sectionTitle}>{viewMode === 'PENDING' ? `En Cuarentena (${activeTab})` : `Historial de Calidad (${activeTab})`}</Text>
         
         {loading ? (
