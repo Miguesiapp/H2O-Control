@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, 
-  StatusBar, KeyboardAvoidingView, Platform, ActivityIndicator, Animated 
+  StatusBar, KeyboardAvoidingView, Platform, ActivityIndicator, Animated, Image 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase'; 
@@ -87,11 +87,15 @@ export default function LoginScreen({ navigation }) {
       >
         {/* CABECERA CORPORATIVA */}
         <Animated.View style={[styles.brandSection, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-          <View style={styles.logoCircle}>
-            <Text style={styles.logoTitle}>H2O</Text>
-            <Text style={styles.logoSub}>CONTROL</Text>
+          <View style={styles.logoSquareBox}>
+            <Image
+              source={require('../../assets/logo-white.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
           </View>
-          <Text style={styles.brandSub}>AGRICULTURA SUSTENTABLE</Text>
+          <Text style={styles.brandSub}>SISTEMA LOGÍSTICO & PRODUCCIÓN</Text>
+          <Text style={styles.brandTagline}>Soluciones químicas para una agricultura sustentable</Text>
         </Animated.View>
 
         {/* TARJETA DE LOGIN */}
@@ -161,73 +165,71 @@ export default function LoginScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#004ca8' },
-  container: { flex: 1, justifyContent: 'center', padding: 25 },
+  safe: { flex: 1, backgroundColor: '#004ea8' },
+  container: { flex: 1, justifyContent: 'center', padding: 25, maxWidth: 460, width: '100%', alignSelf: 'center' },
   
-  brandSection: { alignItems: 'center', marginBottom: 45 },
-  logoCircle: {
-    width: 120,
+  brandSection: { alignItems: 'center', marginBottom: 36 },
+  logoSquareBox: {
+    width: 156,
     height: 120,
-    borderRadius: 60,
-    borderWidth: 2,
-    borderColor: '#ffffff',
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'transparent',
-    marginBottom: 15
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    padding: 14,
+    marginBottom: 16
   },
-  logoTitle: {
-    fontSize: 40,
-    fontWeight: '900',
-    color: '#ffffff',
-    marginBottom: -4,
-  },
-  logoSub: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#ffffff',
-    letterSpacing: 3,
-    marginLeft: 3,
+  logoImage: {
+    width: 126,
+    height: 92,
   },
   brandSub: { 
     fontSize: 11, 
-    color: 'rgba(255,255,255,0.7)', 
-    letterSpacing: 2, 
-    fontWeight: '600' 
+    color: '#ffffff', 
+    letterSpacing: 2.5, 
+    fontWeight: '800' 
+  },
+  brandTagline: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.72)',
+    marginTop: 5,
+    fontWeight: '500'
   },
   
-  card: { backgroundColor: '#ffffff', padding: 25, borderRadius: 24, elevation: 10, shadowColor: '#000', shadowOffset: {width: 0, height: 10}, shadowOpacity: 0.1, shadowRadius: 20 },
-  label: { fontSize: 18, fontWeight: '900', color: '#1e293b', marginBottom: 20, textAlign: 'center' },
+  card: { backgroundColor: '#f8fafc', padding: 26, borderRadius: 24, elevation: 12, shadowColor: '#0a1929', shadowOffset: {width: 0, height: 12}, shadowOpacity: 0.18, shadowRadius: 24, borderWidth: 1, borderColor: '#e2e8f0' },
+  label: { fontSize: 18, fontWeight: '900', color: '#0a1929', marginBottom: 20, textAlign: 'center', letterSpacing: 0.3 },
   
   inputBox: { 
     flexDirection: 'row', 
     alignItems: 'center', 
-    backgroundColor: '#f8fafc', 
-    borderRadius: 16, 
-    marginBottom: 18, 
+    backgroundColor: '#ffffff', 
+    borderRadius: 14, 
+    marginBottom: 16, 
     paddingHorizontal: 15,
     borderWidth: 1,
-    borderColor: '#e2e8f0'
+    borderColor: '#cbd5e1'
   },
-  input: { flex: 1, paddingVertical: 16, marginLeft: 12, color: '#0f172a', fontSize: 16, fontWeight: '600' },
+  input: { flex: 1, paddingVertical: 15, marginLeft: 12, color: '#0a1929', fontSize: 15, fontWeight: '600' },
   
   mainBtn: { 
-    backgroundColor: '#0f172a', 
-    padding: 18, 
-    borderRadius: 16, 
+    backgroundColor: '#004ea8', 
+    padding: 17, 
+    borderRadius: 14, 
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 10,
+    marginTop: 8,
     elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
+    shadowColor: '#004ea8',
+    shadowOpacity: 0.25,
     gap: 10
   },
   mainBtnText: { color: 'white', fontWeight: '900', fontSize: 14, letterSpacing: 1 },
   
-  footerLink: { marginTop: 35, alignSelf: 'center' },
+  footerLink: { marginTop: 30, alignSelf: 'center' },
   footerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  linkText: { color: 'rgba(255,255,255,0.6)', fontSize: 14 },
-  linkBold: { color: '#fff', fontWeight: 'bold', textDecorationLine: 'underline' }
+  linkText: { color: 'rgba(255,255,255,0.75)', fontSize: 13 },
+  linkBold: { color: '#fff', fontWeight: '800', textDecorationLine: 'underline' }
 });

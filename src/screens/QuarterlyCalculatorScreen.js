@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, 
-  ActivityIndicator, ScrollView, TextInput, StatusBar, Modal, Platform
+  View, Text, StyleSheet, TouchableOpacity, Alert, 
+  ActivityIndicator, ScrollView, TextInput, StatusBar, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { auth, db } from '../config/firebase';
 import { collection, getDocs, query, where, addDoc, serverTimestamp, doc, deleteDoc } from 'firebase/firestore';
-import { ChevronLeft, Calculator, AlertCircle, CheckCircle2, ShoppingCart, Target, Beaker, Factory, ChevronDown, X, ClipboardList, Download, Plus, Trash2, Printer, Share2 } from 'lucide-react-native';
+import { ChevronLeft, Calculator, AlertCircle, CheckCircle2, Target, Beaker, Factory, ClipboardList, Plus, Trash2, Printer, Share2 } from 'lucide-react-native';
 
 import { EQUIVALENCIES } from '../services/formulaService';
 import { PRODUCTS_MADRE_LIST, RAW_MATERIALS_LIST, formatDisplayName } from '../config/constants';
@@ -58,7 +58,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
     setTargets(targets.map(t => {
       if (t.key !== key) return t;
       const updated = { ...t, [field]: value };
-      
+
       if (field === 'productName') {
         const valUpper = value.toUpperCase();
         let found = formulas.find(f => {
@@ -88,7 +88,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
     const invalidFormulaTargets = targets.filter(t => t.productName && !t.selectedFormula);
     if (invalidFormulaTargets.length > 0) {
       Alert.alert(
-        "Fórmula no encontrada", 
+        "Fórmula no encontrada",
         `No se encontró una fórmula activa para el producto: ${invalidFormulaTargets[0].productName}. Verifica en la sección Formulación que exista y esté activa.`
       );
       return;
@@ -102,7 +102,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
     setLoading(true);
     try {
       const inventoryRef = collection(db, "Inventory");
-      
+
       // CARGAMOS TODO EL STOCK MP Y GRANEL
       const qAllMP = query(inventoryRef, where("stockType", "in", ["MP", "GRANEL"]));
       const snapAllMP = await getDocs(qAllMP);
@@ -125,10 +125,10 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
 
         (target.selectedFormula.ingredients || []).forEach(ing => {
           if (ing.type === 'NOTE' || !ing.name) return;
-          
+
           const ingNameUpper = String(ing.name).trim().toUpperCase();
           let amountNeeded = (targetKilos * Number(ing.percentage)) / 100;
-          
+
           // CONVERSIÓN A LITROS SI ES UN GRANEL
           const isRawMaterial = RAW_MATERIALS_LIST.some(rm => {
             const rmParts = rm.split('/').map(p => normalizeString(p.trim()));
@@ -139,34 +139,34 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
             return pmParts.includes(normalizeString(ingNameUpper));
           });
           if (isGranel) {
-             let ingDensity = 1;
-             const matchedFormulaKey = Object.keys(densityMap).find(k => k === normalizeString(ingNameUpper) || k.includes(normalizeString(ingNameUpper)));
-             if (matchedFormulaKey) {
-                ingDensity = densityMap[matchedFormulaKey];
-             }
-             amountNeeded = amountNeeded / ingDensity;
+            let ingDensity = 1;
+            const matchedFormulaKey = Object.keys(densityMap).find(k => k === normalizeString(ingNameUpper) || k.includes(normalizeString(ingNameUpper)));
+            if (matchedFormulaKey) {
+              ingDensity = densityMap[matchedFormulaKey];
+            }
+            amountNeeded = amountNeeded / ingDensity;
           }
-          
+
           // BÚSQUEDA INTELIGENTE
           let searchNamesUpper = [ingNameUpper];
           if (ingNameUpper.includes('/')) {
-             searchNamesUpper.push(...ingNameUpper.split('/').map(p => p.trim()));
+            searchNamesUpper.push(...ingNameUpper.split('/').map(p => p.trim()));
           }
-          
+
           const allEquivalencies = [];
           searchNamesUpper.forEach(p => {
-             if (EQUIVALENCIES[p]) {
-                allEquivalencies.push(...EQUIVALENCIES[p]);
-             }
+            if (EQUIVALENCIES[p]) {
+              allEquivalencies.push(...EQUIVALENCIES[p]);
+            }
           });
-          
+
           searchNamesUpper = [...new Set([...searchNamesUpper, ...allEquivalencies])];
           const searchNamesNorm = searchNamesUpper.map(n => normalizeString(n));
 
           // El primaryKey será el primer nombre normalizado, o podemos usar el ingNameUpper para mostrar.
           // Para agrupar bien, buscamos si ya existe una key en mpRequirements que comparta sinónimos
           let existingKey = Object.keys(mpRequirements).find(key => {
-             return mpRequirements[key].searchNamesNorm.some(n => searchNamesNorm.includes(n));
+            return mpRequirements[key].searchNamesNorm.some(n => searchNamesNorm.includes(n));
           });
 
           if (existingKey) {
@@ -195,44 +195,44 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
       });
 
       const calculation = [];
-      
+
       // Ahora cruzamos con el stock real y buscamos sharedFormulas
       const formulaNamesInCalc = validTargets.map(t => t.selectedFormula.productName);
 
       Object.keys(mpRequirements).forEach(key => {
         const mp = mpRequirements[key];
-        
+
         let totalInStock = 0;
         const BLOCKED_STATUSES = ['PENDIENTE', 'PENDIENTE_LABORATORIO', 'RECHAZADO'];
         allMPStock.forEach(item => {
-           if (BLOCKED_STATUSES.includes(item.status)) return; // Respetar cuarentena y rechazos de BBS Calidad
-           
-           const rawQty = Number(item.quantity) || 0;
-           // Ignorar lotes agotados (<= 0.001) sin eliminarlos para preservar el Historial de BBS Calidad
-           if (rawQty <= 0.001) {
-             return;
-           }
+          if (BLOCKED_STATUSES.includes(item.status)) return; // Respetar cuarentena y rechazos de BBS Calidad
 
-           // El granel reside exclusivamente en los tanques de planta H2O.
-           // Si un documento de GRANEL tiene asignada empresa STOCK_CENTRAL_MP, es un registro huérfano/duplicado
-           // de migraciones antiguas (el lote físico real ya existe bajo H2O).
-           if (item.stockType === 'GRANEL' && item.company === 'STOCK_CENTRAL_MP') {
-             if (item.id) deleteDoc(doc(db, "Inventory", item.id)).catch(() => {});
-             return;
-           }
+          const rawQty = Number(item.quantity) || 0;
+          // Ignorar lotes agotados (<= 0.001) sin eliminarlos para preservar el Historial de BBS Calidad
+          if (rawQty <= 0.001) {
+            return;
+          }
 
-           // Si el insumo requerido es un Granel madre, solo computar graneles reales de planta H2O
-           if (mp.isGranel && item.stockType !== 'GRANEL') return;
-           if (!mp.isGranel && item.stockType === 'GRANEL') return;
-           if (mp.isGranel && item.company && item.company !== 'H2O' && item.company !== 'H2Ocontrol') return;
+          // El granel reside exclusivamente en los tanques de planta H2O.
+          // Si un documento de GRANEL tiene asignada empresa STOCK_CENTRAL_MP, es un registro huérfano/duplicado
+          // de migraciones antiguas (el lote físico real ya existe bajo H2O).
+          if (item.stockType === 'GRANEL' && item.company === 'STOCK_CENTRAL_MP') {
+            if (item.id) deleteDoc(doc(db, "Inventory", item.id)).catch(() => { });
+            return;
+          }
 
-           const itemNameNorm = normalizeString(item.itemName || '');
-           const isMatch = mp.searchNamesNorm.some(pn => 
-             pn === itemNameNorm || itemNameNorm.includes(pn) || pn.includes(itemNameNorm)
-           );
-           if (isMatch) {
-             totalInStock += rawQty;
-           }
+          // Si el insumo requerido es un Granel madre, solo computar graneles reales de planta H2O
+          if (mp.isGranel && item.stockType !== 'GRANEL') return;
+          if (!mp.isGranel && item.stockType === 'GRANEL') return;
+          if (mp.isGranel && item.company && item.company !== 'H2O' && item.company !== 'H2Ocontrol') return;
+
+          const itemNameNorm = normalizeString(item.itemName || '');
+          const isMatch = mp.searchNamesNorm.some(pn =>
+            pn === itemNameNorm || itemNameNorm.includes(pn) || pn.includes(itemNameNorm)
+          );
+          if (isMatch) {
+            totalInStock += rawQty;
+          }
         });
         mp.stock = Number(totalInStock.toFixed(2));
         mp.balance = Number((totalInStock - mp.needed).toFixed(2));
@@ -246,14 +246,14 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
               let oiUpper = String(oi.name).trim().toUpperCase();
               let oiParts = [oiUpper];
               if (oiUpper.includes('/')) oiParts.push(...oiUpper.split('/').map(p => p.trim()));
-              
+
               const oiEquivs = [];
               oiParts.forEach(p => {
                 if (EQUIVALENCIES[p]) oiEquivs.push(...EQUIVALENCIES[p]);
               });
               const allOiNames = [...new Set([...oiParts, ...oiEquivs])];
               const oiNorms = allOiNames.map(n => normalizeString(n));
-              
+
               return oiNorms.some(n => mp.searchNamesNorm.includes(n));
             });
             if (usesIng) {
@@ -295,7 +295,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
                 const missingQty = Math.abs(item.balance).toFixed(1);
                 // Construir descripción de uso con nombres limpios
                 const usedInDesc = item.usedIn.map(u => formatDisplayName(u.formulaName)).join(', ');
-                
+
                 await addDoc(collection(db, 'PurchaseRequests'), {
                   text: `COMPRAR: ${missingQty} L/Kg de ${formatDisplayName(item.name)} (Requerido para: ${usedInDesc})`,
                   title: `COMPRAR: ${missingQty} L/Kg de ${formatDisplayName(item.name)} (Faltante para proyección multi-granel)`,
@@ -315,7 +315,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
     );
   };
 
-  const handleDownloadSimulation = () => {
+  const handleDownloadSimulation = async () => {
     if (Platform.OS !== 'web') {
       Alert.alert("Impresión", "La impresión de reportes A4 solo está disponible en la versión Web.");
       return;
@@ -410,7 +410,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
     `;
 
     const waText = buildSimulationWhatsAppText();
-    executePrint(html, 'H2O_Proyeccion_MultiGranel', waText);
+    await executePrint(html, 'H2O_Proyeccion_MultiGranel', waText);
   };
 
   const buildSimulationWhatsAppText = () => {
@@ -450,19 +450,19 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <StatusBar barStyle="dark-content" />
-      
+
       <View style={styles.header}>
         <TouchableOpacity onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate('Home'))} style={styles.backBtn}>
           <ChevronLeft color="#0f172a" size={28} />
         </TouchableOpacity>
-        <View style={{alignItems: 'center'}}>
+        <View style={{ alignItems: 'center' }}>
           <Text style={styles.headerTitle}>Proyección Consolidada</Text>
           <Text style={styles.headerSub}>Logística Multi-Granel</Text>
         </View>
         <Target color="#0f172a" size={24} />
       </View>
 
-      <ScrollView maximumZoomScale={1} 
+      <ScrollView maximumZoomScale={1}
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -480,7 +480,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
             <Text style={styles.addBtnText}>Agregar</Text>
           </TouchableOpacity>
         </View>
-        
+
         {formulas.length === 0 ? (
           <View style={styles.emptyFormulasBox}>
             <AlertCircle color="#f59e0b" size={20} />
@@ -492,7 +492,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
           targets.map((target, index) => (
             <View key={target.key} style={styles.targetCard}>
               <View style={{ zIndex: 3000 - index, position: 'relative' }}>
-                <AutocompleteInput 
+                <AutocompleteInput
                   data={[...new Set(formulas.map(f => f.productName).filter(Boolean))]}
                   value={target.productName}
                   onChangeText={(text) => updateTarget(target.key, 'productName', text)}
@@ -500,13 +500,13 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
                   icon={<Beaker color="#94a3b8" size={18} />}
                 />
               </View>
-              
+
               <View style={styles.targetRowBottom}>
                 <View style={styles.inputWrapper}>
                   <Factory color="#94a3b8" size={18} style={{ marginRight: 8 }} />
-                  <TextInput 
-                    style={styles.input} 
-                    placeholder="Volumen (Lts)" 
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Volumen (Lts)"
                     keyboardType="decimal-pad"
                     placeholderTextColor="#94a3b8"
                     value={target.goal}
@@ -523,8 +523,8 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
           ))
         )}
 
-        <TouchableOpacity 
-          style={[styles.calcBtn, (loading || formulas.length === 0) && { opacity: 0.7 }]} 
+        <TouchableOpacity
+          style={[styles.calcBtn, (loading || formulas.length === 0) && { opacity: 0.7 }]}
           onPress={() => {
             if (loading) {
               Alert.alert("Calculando", "Por favor espera...");
@@ -535,7 +535,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
               return;
             }
             runCalculation();
-          }} 
+          }}
         >
           {loading ? (
             <ActivityIndicator color="#fff" size="small" />
@@ -550,20 +550,20 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
         {results.length > 0 && (
           <View style={styles.resultsContainer}>
             <Text style={styles.resultsTitle}>Balance Operativo Consolidado</Text>
-            
+
             {results.map((item, index) => (
               <View key={index} style={[styles.resultRow, item.balance < 0 ? styles.borderError : styles.borderSuccess]}>
                 <View style={styles.resultHeader}>
                   <Text style={styles.itemName}>{formatDisplayName(item.name)}</Text>
                   {item.balance < 0 ? <AlertCircle color="#ef4444" size={18} /> : <CheckCircle2 color="#10b981" size={18} />}
                 </View>
-                
+
                 <View style={styles.compactDataRow}>
-                  <Text style={styles.compactDataText}>Req: <Text style={{fontWeight:'800', color:'#0f172a'}}>{item.needed.toFixed(1)}</Text></Text>
+                  <Text style={styles.compactDataText}>Req: <Text style={{ fontWeight: '800', color: '#0f172a' }}>{item.needed.toFixed(1)}</Text></Text>
                   <Text style={styles.compactDataText}>|</Text>
-                  <Text style={styles.compactDataText}>Stock: <Text style={{fontWeight:'800', color:'#0f172a'}}>{item.stock.toFixed(1)}</Text></Text>
+                  <Text style={styles.compactDataText}>Stock: <Text style={{ fontWeight: '800', color: '#0f172a' }}>{item.stock.toFixed(1)}</Text></Text>
                   <Text style={styles.compactDataText}>|</Text>
-                  <Text style={styles.compactDataText}>Bal: <Text style={{fontWeight:'900', color: item.balance < 0 ? '#ef4444' : '#10b981'}}>{item.balance > 0 ? '+' : ''}{item.balance.toFixed(1)}</Text></Text>
+                  <Text style={styles.compactDataText}>Bal: <Text style={{ fontWeight: '900', color: item.balance < 0 ? '#ef4444' : '#10b981' }}>{item.balance > 0 ? '+' : ''}{item.balance.toFixed(1)}</Text></Text>
                 </View>
 
                 {item.usedIn.length > 0 && (
@@ -586,7 +586,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
             ))}
 
             <View style={styles.actionButtonsRow}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.actionBtn, { backgroundColor: '#16a34a' }]}
                 onPress={handleShareWhatsAppSimulation}
               >
@@ -594,7 +594,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
                 <Text style={styles.actionBtnText}>WhatsApp</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.actionBtn, { backgroundColor: '#3b82f6' }]}
                 onPress={handleDownloadSimulation}
               >
@@ -603,7 +603,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
               </TouchableOpacity>
 
               {results.some(item => item.balance < 0) && (
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[styles.actionBtn, { backgroundColor: '#0f172a' }]}
                   onPress={handleGenerateRequests}
                 >
@@ -622,34 +622,34 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#f8fafc' },
-  header: { 
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
-    paddingHorizontal: 20, paddingVertical: 15, backgroundColor: '#fff', 
-    borderBottomWidth: 1, borderBottomColor: '#e2e8f0', elevation: 2 
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 20, paddingVertical: 15, backgroundColor: '#fff',
+    borderBottomWidth: 1, borderBottomColor: '#e2e8f0', elevation: 2
   },
   backBtn: { padding: 5 },
   headerTitle: { fontSize: 16, fontWeight: '900', color: '#0f172a' },
   headerSub: { fontSize: 10, color: '#64748b', textTransform: 'uppercase', fontWeight: '800', letterSpacing: 0.5 },
-  
+
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc' },
   loadingText: { marginTop: 15, color: '#475569', fontWeight: '700', fontSize: 14 },
-  
+
   container: { padding: 15 },
   infoBanner: { backgroundColor: '#eff6ff', padding: 12, borderRadius: 10, marginBottom: 20, borderWidth: 1, borderColor: '#bfdbfe' },
   bannerText: { color: '#1e3a8a', fontSize: 11, textAlign: 'center', lineHeight: 16, fontWeight: '500' },
 
   targetsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, marginTop: 5 },
   label: { fontSize: 12, fontWeight: '800', color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 },
-  
+
   addBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#eff6ff', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: '#bfdbfe' },
   addBtnText: { color: '#3b82f6', fontSize: 12, fontWeight: '800', marginLeft: 4 },
 
   targetCard: { backgroundColor: '#fff', padding: 12, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: '#e2e8f0', elevation: 1 },
   targetRowBottom: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
-  
+
   inputWrapper: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 10, paddingHorizontal: 12, zIndex: 1 },
   input: { flex: 1, paddingVertical: 12, fontSize: 16, color: '#0f172a', fontWeight: '800' },
-  
+
   removeBtn: { marginLeft: 10, padding: 10, backgroundColor: '#fef2f2', borderRadius: 10, borderWidth: 1, borderColor: '#fecaca' },
 
   emptyFormulasBox: { flexDirection: 'row', backgroundColor: '#fffbeb', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: '#fde68a', alignItems: 'center', marginBottom: 25 },
@@ -657,17 +657,17 @@ const styles = StyleSheet.create({
 
   calcBtn: { backgroundColor: '#0f172a', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 16, borderRadius: 12, marginTop: 15, gap: 10, elevation: 2 },
   calcBtnText: { color: '#fff', fontSize: 15, fontWeight: '900', letterSpacing: 0.5 },
-  
+
   resultsContainer: { marginTop: 30, paddingBottom: 20 },
   resultsTitle: { fontSize: 13, fontWeight: '900', color: '#475569', marginBottom: 15, textTransform: 'uppercase', letterSpacing: 1 },
-  
+
   resultRow: { backgroundColor: '#fff', padding: 15, borderRadius: 12, marginBottom: 12, elevation: 1, borderWidth: 1, borderColor: '#e2e8f0' },
   borderError: { borderLeftWidth: 5, borderLeftColor: '#ef4444' },
   borderSuccess: { borderLeftWidth: 5, borderLeftColor: '#10b981' },
-  
+
   resultHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   itemName: { fontSize: 14, fontWeight: '900', color: '#0f172a' },
-  
+
   compactDataRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   compactDataText: { fontSize: 12, color: '#64748b', fontWeight: '600' },
 

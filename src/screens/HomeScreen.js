@@ -1,35 +1,60 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  Alert, StatusBar, useWindowDimensions, Modal, Pressable, Platform
+  Alert, StatusBar, useWindowDimensions, Modal, Pressable, Platform, Image, BackHandler
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db, auth } from '../config/firebase';
-import { collection, query, where, getDocs, onSnapshot, getDoc, doc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDoc, doc } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
 import { canAccessQualityControl } from '../config/permissions';
-import { ALLOWED_ATTENDANCE_EMAILS, formatDisplayName } from '../config/constants';
-import { LogOut, FlaskConical, ClipboardCheck, ChevronRight, Clock, Sparkles, Calculator, UserCheck, Database, Keyboard, Package, Truck, Beaker, Container, Box, MonitorPlay, ShoppingCart, Search, ShieldAlert, Book, CheckCircle2, AlertTriangle, BrainCircuit } from 'lucide-react-native';
+import { formatDisplayName } from '../config/constants';
+import {
+  LogOut, FlaskConical, ChevronRight, ChevronLeft,
+  Sparkles, Keyboard, ShoppingCart, Search, Book,
+  BrainCircuit, Menu, X, ShieldCheck, AlertOctagon,
+  Calculator, Clock
+} from 'lucide-react-native';
 
 export default function HomeScreen({ navigation }) {
-  const { width, height } = useWindowDimensions();
-  const isLandscape = width > height;
+  const { width } = useWindowDimensions();
+
+  // Vista activa en el Home: 'MAIN' | 'INGRESOS' | 'ORDENES' | 'STOCK'
+  const [activeSection, setActiveSection] = useState('MAIN');
+  const [menuVisible, setMenuVisible] = useState(false);
 
   const [criticalItems, setCriticalItems] = useState([]);
   const [loadingAlerts, setLoadingAlerts] = useState(true);
-  const [mpModalVisible, setMpModalVisible] = useState(false);
   const [pendingOPCount, setPendingOPCount] = useState(0);
   const [pendingOECount, setPendingOECount] = useState(0);
   const [pendingOEMCount, setPendingOEMCount] = useState(0);
   const [pendingODCount, setPendingODCount] = useState(0);
   const [pendingPurchasesCount, setPendingPurchasesCount] = useState(0);
   const [pendingLabCount, setPendingLabCount] = useState(0);
+
   const currentUserEmail = auth.currentUser?.email || 'Usuario';
   const [currentUserName, setCurrentUserName] = useState(
     auth.currentUser?.displayName
       ? auth.currentUser.displayName.split(' ')[0]
       : currentUserEmail.split('@')[0]
   );
+
+  // Manejo del botón físico "Atrás" en Android cuando estamos dentro de una sub-pantalla (Ingresos / Órdenes / Stock)
+  useEffect(() => {
+    const onBackPress = () => {
+      if (menuVisible) {
+        setMenuVisible(false);
+        return true;
+      }
+      if (activeSection !== 'MAIN') {
+        setActiveSection('MAIN');
+        return true;
+      }
+      return false;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [activeSection, menuVisible]);
 
   // AUTO-MIGRACIÓN PARA USUARIOS ANTIGUOS
   useEffect(() => {
@@ -40,7 +65,6 @@ export default function HomeScreen({ navigation }) {
           if (userDoc.exists() && userDoc.data().name) {
             const fullName = userDoc.data().name;
             setCurrentUserName(fullName.split(' ')[0]);
-            // Actualizamos silenciosamente el perfil de Auth para futuras sesiones
             await updateProfile(auth.currentUser, { displayName: fullName });
           }
         } catch (error) {
@@ -51,12 +75,13 @@ export default function HomeScreen({ navigation }) {
     fetchAndMigrateName();
   }, []);
 
+  // MONITOR DE STOCK CRÍTICO
   useEffect(() => {
     const q = query(collection(db, "Inventory"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const items = snapshot.docs.map(doc => doc.data());
-      
+      const items = snapshot.docs.map(d => d.data());
       const aggregated = {};
+
       items.forEach(item => {
         if (item.status === 'PENDIENTE' || item.status === 'PENDIENTE_LABORATORIO' || item.status === 'RECHAZADO') return;
         const qty = Number(item.quantity) || 0;
@@ -71,9 +96,9 @@ export default function HomeScreen({ navigation }) {
           };
         }
         aggregated[name].totalQuantity += qty;
-        
+
         if (aggregated[name].minStock === null && item.minStock !== undefined) {
-           aggregated[name].minStock = item.minStock;
+          aggregated[name].minStock = item.minStock;
         }
       });
 
@@ -94,70 +119,47 @@ export default function HomeScreen({ navigation }) {
     return () => unsubscribe();
   }, []);
 
+  // CONTADORES EN TIEMPO REAL DE ÓRDENES, CALIDAD Y PEDIDOS
   useEffect(() => {
     const qOP = query(
       collection(db, "Orders"),
       where("type", "==", "OP"),
       where("status", "in", ["ENVIADO", "EN_PROCESO"])
     );
-    const unsubscribeOP = onSnapshot(qOP, (snapshot) => {
-      setPendingOPCount(snapshot.docs.length);
-    }, (error) => {
-      console.error("Error fetching pending OP:", error);
-    });
+    const unsubscribeOP = onSnapshot(qOP, (snapshot) => setPendingOPCount(snapshot.docs.length));
 
     const qOE = query(
       collection(db, "Orders"),
       where("type", "==", "OE"),
       where("status", "in", ["ENVIADO", "EN_PROCESO"])
     );
-    const unsubscribeOE = onSnapshot(qOE, (snapshot) => {
-      setPendingOECount(snapshot.docs.length);
-    }, (error) => {
-      console.error("Error fetching pending OE:", error);
-    });
+    const unsubscribeOE = onSnapshot(qOE, (snapshot) => setPendingOECount(snapshot.docs.length));
 
     const qOEM = query(
       collection(db, "Orders"),
       where("type", "==", "OEM"),
       where("status", "in", ["ENVIADO", "EN_PROCESO"])
     );
-    const unsubscribeOEM = onSnapshot(qOEM, (snapshot) => {
-      setPendingOEMCount(snapshot.docs.length);
-    }, (error) => {
-      console.error("Error fetching pending OEM:", error);
-    });
+    const unsubscribeOEM = onSnapshot(qOEM, (snapshot) => setPendingOEMCount(snapshot.docs.length));
 
     const qOD = query(
       collection(db, "Orders"),
       where("type", "==", "OD"),
       where("status", "in", ["ENVIADO", "EN_PROCESO"])
     );
-    const unsubscribeOD = onSnapshot(qOD, (snapshot) => {
-      setPendingODCount(snapshot.docs.length);
-    }, (error) => {
-      console.error("Error fetching pending OD:", error);
-    });
+    const unsubscribeOD = onSnapshot(qOD, (snapshot) => setPendingODCount(snapshot.docs.length));
 
     const qPurchases = query(
       collection(db, "PurchaseRequests"),
       where("status", "==", "PENDING")
     );
-    const unsubscribePurchases = onSnapshot(qPurchases, (snapshot) => {
-      setPendingPurchasesCount(snapshot.docs.length);
-    }, (error) => {
-      console.error("Error fetching pending purchases:", error);
-    });
+    const unsubscribePurchases = onSnapshot(qPurchases, (snapshot) => setPendingPurchasesCount(snapshot.docs.length));
 
     const qLab = query(
       collection(db, "Inventory"),
       where("status", "in", ["PENDIENTE", "PENDIENTE_LABORATORIO"])
     );
-    const unsubscribeLab = onSnapshot(qLab, (snapshot) => {
-      setPendingLabCount(snapshot.docs.length);
-    }, (error) => {
-      console.error("Error fetching pending lab items:", error);
-    });
+    const unsubscribeLab = onSnapshot(qLab, (snapshot) => setPendingLabCount(snapshot.docs.length));
 
     return () => {
       unsubscribeOP();
@@ -168,6 +170,8 @@ export default function HomeScreen({ navigation }) {
       unsubscribeLab();
     };
   }, []);
+
+  const totalPendingOrders = pendingOPCount + pendingOECount + pendingOEMCount + pendingODCount;
 
   const handleHardRefresh = () => {
     if (Platform.OS === 'web') {
@@ -187,6 +191,7 @@ export default function HomeScreen({ navigation }) {
   };
 
   const handleLogOut = () => {
+    setMenuVisible(false);
     if (Platform.OS === 'web') {
       const confirmLogout = window.confirm("¿Deseas desconectar este dispositivo de la red corporativa?");
       if (confirmLogout) {
@@ -200,481 +205,958 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
+  const handleOpenQuality = () => {
+    if (canAccessQualityControl(currentUserEmail)) {
+      navigation.navigate('QualityControl');
+    } else {
+      Alert.alert("Acceso Restringido", "No tienes permisos de Laboratorio/Calidad para acceder a BBS Calidad.");
+    }
+  };
+
+  const navigateFromMenu = (routeName, params = {}) => {
+    setMenuVisible(false);
+    navigation.navigate(routeName, params);
+  };
+
+  // ============================================================================
+  // SUB-PANTALLA: ÓRDENES OPERATIVAS (OP, OE, OED, OD)
+  // ============================================================================
+  const renderOrdenesSection = () => (
+    <View style={styles.subScreenWrapper}>
+      <View style={styles.subHeaderCard}>
+        <TouchableOpacity
+          style={styles.backToMainBtn}
+          activeOpacity={0.75}
+          onPress={() => setActiveSection('MAIN')}
+        >
+          <ChevronLeft color="#004ea8" size={18} />
+          <Text style={styles.backToMainText}>Volver</Text>
+        </TouchableOpacity>
+        <Text style={styles.subHeaderTitle}>Órdenes Operativas</Text>
+      </View>
+
+      <Text style={styles.groupLabel}>PRODUCCIÓN Y ENVASADO</Text>
+
+      <TouchableOpacity
+        style={styles.subOptionCard}
+        activeOpacity={0.82}
+        onPress={() => navigation.navigate('ProductionOrder', { companyName: 'H2O' })}
+      >
+        <View style={styles.titleWithBadgeRow}>
+          <Text style={styles.subOptionTitle}>Orden de Producción (OP)</Text>
+          {pendingOPCount > 0 && (
+            <View style={styles.liveCountPill}>
+              <Text style={styles.liveCountPillText}>{pendingOPCount}</Text>
+            </View>
+          )}
+        </View>
+        <ChevronRight color="#004ea8" size={18} />
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.subOptionCard}
+        activeOpacity={0.82}
+        onPress={() => navigation.navigate('PackagingOrder', { companyName: 'H2O' })}
+      >
+        <View style={styles.titleWithBadgeRow}>
+          <Text style={styles.subOptionTitle}>Orden de Envasado (OE)</Text>
+          {pendingOECount > 0 && (
+            <View style={styles.liveCountPill}>
+              <Text style={styles.liveCountPillText}>{pendingOECount}</Text>
+            </View>
+          )}
+        </View>
+        <ChevronRight color="#004ea8" size={18} />
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.subOptionCard}
+        activeOpacity={0.82}
+        onPress={() => navigation.navigate('DirectPackagingOrder', { companyName: 'H2O' })}
+      >
+        <View style={styles.titleWithBadgeRow}>
+          <Text style={styles.subOptionTitle}>Orden Envasado Directo (OED)</Text>
+          {pendingOEMCount > 0 && (
+            <View style={styles.liveCountPill}>
+              <Text style={styles.liveCountPillText}>{pendingOEMCount}</Text>
+            </View>
+          )}
+        </View>
+        <ChevronRight color="#004ea8" size={18} />
+      </TouchableOpacity>
+
+      <Text style={[styles.groupLabel, { marginTop: 16 }]}>DESPACHO</Text>
+
+      <TouchableOpacity
+        style={styles.subOptionCard}
+        activeOpacity={0.82}
+        onPress={() => navigation.navigate('OutgoingInventory', { companyName: 'H2O' })}
+      >
+        <View style={styles.titleWithBadgeRow}>
+          <Text style={styles.subOptionTitle}>Orden de Despacho (OD)</Text>
+          {pendingODCount > 0 && (
+            <View style={styles.liveCountPill}>
+              <Text style={styles.liveCountPillText}>{pendingODCount}</Text>
+            </View>
+          )}
+        </View>
+        <ChevronRight color="#004ea8" size={18} />
+      </TouchableOpacity>
+    </View>
+  );
+
+  // ============================================================================
+  // SUB-PANTALLA 3: INVENTARIOS CENTRALES Y STOCK
+  // ============================================================================
+  const renderStockSection = () => (
+    <View style={styles.subScreenWrapper}>
+      <View style={styles.subHeaderCard}>
+        <TouchableOpacity
+          style={styles.backToMainBtn}
+          activeOpacity={0.75}
+          onPress={() => setActiveSection('MAIN')}
+        >
+          <ChevronLeft color="#004ea8" size={18} />
+          <Text style={styles.backToMainText}>Volver</Text>
+        </TouchableOpacity>
+        <Text style={styles.subHeaderTitle}>Control de Stock</Text>
+      </View>
+
+      <Text style={styles.groupLabel}>ALMACENES</Text>
+
+      <TouchableOpacity
+        style={styles.subOptionCard}
+        activeOpacity={0.82}
+        onPress={() => navigation.navigate('StockView', { companyName: 'STOCK_CENTRAL_MP', stockType: 'MP', title: 'Materia Prima General' })}
+      >
+        <Text style={styles.subOptionTitle}>Stock Materia Prima</Text>
+        <ChevronRight color="#004ea8" size={18} />
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.subOptionCard}
+        activeOpacity={0.82}
+        onPress={() => navigation.navigate('StockView', { companyName: 'STOCK_CENTRAL_INSUMOS', stockType: 'INSUMOS', title: 'Inventario de Insumos' })}
+      >
+        <Text style={styles.subOptionTitle}>Stock Insumos</Text>
+        <ChevronRight color="#004ea8" size={18} />
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.subOptionCard}
+        activeOpacity={0.82}
+        onPress={() => navigation.navigate('StockView', { companyName: 'H2O', stockType: 'GRANEL', title: 'Inventario Granel' })}
+      >
+        <Text style={styles.subOptionTitle}>Stock Granel</Text>
+        <ChevronRight color="#004ea8" size={18} />
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.subOptionCard}
+        activeOpacity={0.82}
+        onPress={() => navigation.navigate('StockView', { companyName: 'H2O', stockType: 'FINAL', title: 'Producto Envasado' })}
+      >
+        <Text style={styles.subOptionTitle}>Stock Terminado</Text>
+        <ChevronRight color="#004ea8" size={18} />
+      </TouchableOpacity>
+
+      <Text style={[styles.groupLabel, { marginTop: 16 }]}>ALERTAS</Text>
+
+      {criticalItems.length === 0 ? (
+        <View style={styles.subOptionCard}>
+          <Text style={[styles.subOptionTitle, { color: '#16a34a' }]}>Stock Saludable (Sin faltantes)</Text>
+        </View>
+      ) : (
+        <TouchableOpacity
+          style={styles.subOptionCard}
+          activeOpacity={0.82}
+          onPress={() => navigation.navigate('LowStockAlerts', { items: criticalItems })}
+        >
+          <View style={styles.titleWithBadgeRow}>
+            <Text style={[styles.subOptionTitle, { color: '#dc2626' }]}>Alertas de Stock Crítico</Text>
+            <View style={[styles.liveCountPill, { backgroundColor: '#dc2626' }]}>
+              <Text style={styles.liveCountPillText}>{criticalItems.length}</Text>
+            </View>
+          </View>
+          <ChevronRight color="#dc2626" size={18} />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
+  // ============================================================================
+  // PANTALLA PRINCIPAL: 4 ACCESOS COMPACTOS + CALCULADORA E HISTORIAL
+  // ============================================================================
+  const renderMainDashboard = () => (
+    <View>
+      {/* BARRA DE PULSO OPERATIVO */}
+      <View style={styles.kpiStrip}>
+        <TouchableOpacity
+          style={styles.kpiCell}
+          activeOpacity={0.75}
+          onPress={() => setActiveSection('ORDENES')}
+        >
+          <Text style={styles.kpiLabel}>ÓRDENES ACTIVAS</Text>
+          <View style={styles.kpiValueRow}>
+            <Text style={[styles.kpiValue, totalPendingOrders > 0 && { color: '#004ea8' }]}>
+              {totalPendingOrders}
+            </Text>
+            <View style={[styles.kpiDot, { backgroundColor: totalPendingOrders > 0 ? '#004ea8' : '#94a3b8' }]} />
+          </View>
+        </TouchableOpacity>
+
+        <View style={styles.kpiDivider} />
+
+        <TouchableOpacity
+          style={styles.kpiCell}
+          activeOpacity={0.75}
+          onPress={handleOpenQuality}
+        >
+          <Text style={styles.kpiLabel}>CALIDAD BBS</Text>
+          <View style={styles.kpiValueRow}>
+            <Text style={[styles.kpiValue, pendingLabCount > 0 && { color: '#d97706' }]}>
+              {pendingLabCount > 0 ? `${pendingLabCount} Pend.` : 'Al día'}
+            </Text>
+            <View style={[styles.kpiDot, { backgroundColor: pendingLabCount > 0 ? '#f59e0b' : '#10b981' }]} />
+          </View>
+        </TouchableOpacity>
+
+        <View style={styles.kpiDivider} />
+
+        <TouchableOpacity
+          style={styles.kpiCell}
+          activeOpacity={0.75}
+          onPress={() => setActiveSection('STOCK')}
+        >
+          <Text style={styles.kpiLabel}>ESTADO STOCK</Text>
+          <View style={styles.kpiValueRow}>
+            <Text style={[styles.kpiValue, { color: criticalItems.length > 0 ? '#dc2626' : '#0f172a' }]}>
+              {loadingAlerts ? '...' : (criticalItems.length > 0 ? `${criticalItems.length} Crít.` : 'Óptimo')}
+            </Text>
+            <View style={[styles.kpiDot, { backgroundColor: criticalItems.length > 0 ? '#dc2626' : '#10b981' }]} />
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {/* 4 ACCESOS PRINCIPALES (GRILLA 2x2 PROTAGÓNICA) */}
+      <View style={styles.coreGrid}>
+        {/* 1. INGRESOS - ABRE DIRECTAMENTE INGRESO MP / INSUMOS */}
+        <TouchableOpacity
+          style={styles.coreCard}
+          activeOpacity={0.82}
+          onPress={() => navigation.navigate('IncomingInventory', { companyName: 'STOCK_CENTRAL_MP', initialType: 'MP' })}
+        >
+          <Text style={styles.coreCardTitle}>Ingresos</Text>
+          <View style={styles.coreCardFooter}>
+            <Text style={styles.coreCardActionText}>Abrir recepción</Text>
+            <ChevronRight color="#004ea8" size={17} />
+          </View>
+        </TouchableOpacity>
+
+        {/* 2. ÓRDENES */}
+        <TouchableOpacity
+          style={styles.coreCard}
+          activeOpacity={0.82}
+          onPress={() => setActiveSection('ORDENES')}
+        >
+          <View style={styles.titleWithBadgeRow}>
+            <Text style={styles.coreCardTitle}>Órdenes</Text>
+            {totalPendingOrders > 0 && (
+              <View style={styles.badgeSmallBlue}>
+                <Text style={styles.badgeSmallText}>{totalPendingOrders}</Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.coreCardFooter}>
+            <Text style={styles.coreCardActionText}>Gestionar órdenes</Text>
+            <ChevronRight color="#004ea8" size={17} />
+          </View>
+        </TouchableOpacity>
+
+        {/* 3. STOCK */}
+        <TouchableOpacity
+          style={styles.coreCard}
+          activeOpacity={0.82}
+          onPress={() => setActiveSection('STOCK')}
+        >
+          <View style={styles.titleWithBadgeRow}>
+            <Text style={styles.coreCardTitle}>Stock</Text>
+            {criticalItems.length > 0 && (
+              <View style={styles.badgeSmallDanger}>
+                <Text style={styles.badgeSmallText}>{criticalItems.length}</Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.coreCardFooter}>
+            <Text style={styles.coreCardActionText}>Consultar inventarios</Text>
+            <ChevronRight color="#004ea8" size={17} />
+          </View>
+        </TouchableOpacity>
+
+        {/* 4. CALIDAD BBS */}
+        <TouchableOpacity
+          style={[
+            styles.coreCard,
+            !canAccessQualityControl(currentUserEmail) && { opacity: 0.65 }
+          ]}
+          activeOpacity={0.82}
+          onPress={handleOpenQuality}
+        >
+          <View style={styles.titleWithBadgeRow}>
+            <Text style={styles.coreCardTitle}>Calidad BBS</Text>
+            {pendingLabCount > 0 && (
+              <View style={styles.badgeSmallWarning}>
+                <Text style={styles.badgeSmallText}>{pendingLabCount}</Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.coreCardFooter}>
+            <Text style={styles.coreCardActionText}>Laboratorio</Text>
+            <ChevronRight color="#004ea8" size={17} />
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {/* ICONOS ACCESORIOS ABAJO: CALCULADORA E HISTORIAL */}
+      <View style={styles.bottomIconsRow}>
+        <TouchableOpacity
+          style={styles.bottomIconBtn}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate('QuarterlyCalculator')}
+        >
+          <Calculator color="#004ea8" size={20} />
+          <Text style={styles.bottomIconText}>Calculadora</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.bottomIconBtn}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate('History')}
+        >
+          <Clock color="#004ea8" size={20} />
+          <Text style={styles.bottomIconText}>Historial</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
 
-      {/* HEADER ENTERPRISE */}
-      <View style={styles.header}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.headerSup}>SISTEMA OPERATIVO CENTRAL</Text>
-          <Text style={styles.welcome}>Hola, {currentUserName}</Text>
-          <View style={styles.userBadge}>
-            <View style={[styles.statusDot, { backgroundColor: '#10b981' }]} />
-            <Text style={styles.userMail} numberOfLines={1}>{currentUserEmail}</Text>
-          </View>
-        </View>
+      {/* CABECERA CORPORATIVA H2O CONTROL */}
+      <View style={styles.headerBar}>
+        <TouchableOpacity
+          style={styles.brandBlock}
+          activeOpacity={0.85}
+          onPress={() => setActiveSection('MAIN')}
+        >
+          <Image
+            source={require('../../assets/logo-blue.png')}
+            style={styles.brandLogoImg}
+            resizeMode="contain"
+          />
+          <Text style={styles.welcome} numberOfLines={1}>Hola, {currentUserName}</Text>
+        </TouchableOpacity>
 
-        {/* PANEL DE ACCESO RÁPIDO */}
-        <View style={styles.headerButtons}>
+        {/* ACCIONES DE CABECERA: REFRESH (WEB) Y MENÚ */}
+        <View style={styles.headerActions}>
           {Platform.OS === 'web' && (
-            <TouchableOpacity activeOpacity={0.7} style={styles.actionBtn} onPress={handleHardRefresh}>
-              <Sparkles color="#3b82f6" size={22} />
+            <TouchableOpacity
+              activeOpacity={0.75}
+              style={styles.headerIconBtn}
+              onPress={handleHardRefresh}
+            >
+              <Sparkles color="#004ea8" size={18} />
             </TouchableOpacity>
           )}
 
-          <TouchableOpacity activeOpacity={0.7} style={styles.actionBtn} onPress={() => navigation.navigate('History')}>
-            <Clock color="#475569" size={22} />
-          </TouchableOpacity>
-
-          <TouchableOpacity activeOpacity={0.7} style={styles.actionBtnLogOut} onPress={handleLogOut}>
-            <LogOut color="#ef4444" size={20} />
+          <TouchableOpacity
+            activeOpacity={0.85}
+            style={styles.menuTriggerBtn}
+            onPress={() => setMenuVisible(true)}
+          >
+            <Menu color="#ffffff" size={19} />
+            <Text style={styles.menuTriggerText}>Menú</Text>
+            {pendingPurchasesCount > 0 && (
+              <View style={styles.menuBadgeDot} />
+            )}
           </TouchableOpacity>
         </View>
       </View>
 
-      <ScrollView maximumZoomScale={1}
+      {/* CONTENIDO PRINCIPAL */}
+      <ScrollView
+        maximumZoomScale={1}
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-
-        {/* ENTRADAS DE STOCK - MOVIDO ARRIBA */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Ingresos de Stock</Text>
-
-
-
-          <TouchableOpacity
-            style={[styles.mainCard, { borderColor: '#64748b', backgroundColor: '#f8fafc' }]}
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate('IncomingInventory', { companyName: 'STOCK_CENTRAL_MP' })}
-          >
-            <View style={[styles.mainCardIcon, { backgroundColor: '#64748b' }]}>
-              <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800' }}>Q1</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.mainCardTitle, { color: '#0f172a' }]}>Ingreso Manual</Text>
-              <Text style={styles.mainCardSub}>MP e Insumos (Bidones, Cajas, Etiquetas)</Text>
-            </View>
-            <ChevronRight color="#64748b" size={24} />
-          </TouchableOpacity>
+        <View style={styles.contentMaxWidth}>
+          {activeSection === 'MAIN' && renderMainDashboard()}
+          {activeSection === 'ORDENES' && renderOrdenesSection()}
+          {activeSection === 'STOCK' && renderStockSection()}
         </View>
-
-        {/* INVENTARIO CENTRAL */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Inventarios Centrales</Text>
-
-          <TouchableOpacity
-            style={[styles.mainCard, { borderColor: '#3b82f6', backgroundColor: '#eff6ff' }]}
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate('StockView', { companyName: 'STOCK_CENTRAL_MP', stockType: 'MP', title: 'Materia Prima General' })}
-          >
-            <View style={[styles.mainCardIcon, { backgroundColor: '#3b82f6' }]}>
-              <Database color="#fff" size={24} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.mainCardTitle, { color: '#1e3a8a' }]}>Stock Materia Prima</Text>
-              <Text style={styles.mainCardSub}>Químicos y componentes base</Text>
-            </View>
-            <ChevronRight color="#3b82f6" size={24} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.mainCard, { borderColor: '#8b5cf6', backgroundColor: '#f5f3ff' }]}
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate('StockView', { companyName: 'STOCK_CENTRAL_INSUMOS', stockType: 'INSUMOS', title: 'Inventario de Insumos' })}
-          >
-            <View style={[styles.mainCardIcon, { backgroundColor: '#8b5cf6' }]}>
-              <Box color="#fff" size={24} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.mainCardTitle, { color: '#4c1d95' }]}>Stock Insumos</Text>
-              <Text style={styles.mainCardSub}>Bidones, cajas y etiquetas</Text>
-            </View>
-            <ChevronRight color="#8b5cf6" size={24} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.mainCard, { borderColor: '#f59e0b', backgroundColor: '#fffbeb' }]}
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate('StockView', { companyName: 'H2O', stockType: 'GRANEL', title: 'Inventario Granel' })}
-          >
-            <View style={[styles.mainCardIcon, { backgroundColor: '#f59e0b' }]}>
-              <Container color="#fff" size={24} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.mainCardTitle, { color: '#92400e' }]}>Stock Granel</Text>
-              <Text style={styles.mainCardSub}>Productos madres fabricados</Text>
-            </View>
-            <ChevronRight color="#f59e0b" size={24} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.mainCard, { borderColor: '#10b981', backgroundColor: '#ecfdf5' }]}
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate('StockView', { companyName: 'H2O', stockType: 'FINAL', title: 'Producto Envasado' })}
-          >
-            <View style={[styles.mainCardIcon, { backgroundColor: '#10b981' }]}>
-              <Package color="#fff" size={24} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.mainCardTitle, { color: '#064e3b' }]}>Stock Terminado</Text>
-              <Text style={styles.mainCardSub}>Productos listos para despacho</Text>
-            </View>
-            <ChevronRight color="#10b981" size={24} />
-          </TouchableOpacity>
-
-          {/* ALERTAS DE STOCK */}
-          {criticalItems.length === 0 ? (
-            <TouchableOpacity
-              style={[styles.mainCard, { borderColor: '#10b981', backgroundColor: '#ecfdf5', marginTop: 15 }]}
-              activeOpacity={1}
-            >
-              <View style={[styles.mainCardIcon, { backgroundColor: '#10b981' }]}>
-                <CheckCircle2 color="#fff" size={24} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.mainCardTitle, { color: '#064e3b' }]}>Stock Saludable</Text>
-                <Text style={styles.mainCardSub}>No hay ítems por debajo del mínimo</Text>
-              </View>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={[styles.mainCard, { borderColor: '#ef4444', backgroundColor: '#fef2f2', marginTop: 15 }]}
-              activeOpacity={0.8}
-              onPress={() => navigation.navigate('LowStockAlerts', { items: criticalItems })}
-            >
-              <View style={[styles.mainCardIcon, { backgroundColor: '#ef4444' }]}>
-                <AlertTriangle color="#fff" size={24} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.mainCardTitle, { color: '#991b1b' }]}>Alertas de Stock ({criticalItems.length})</Text>
-                <Text style={[styles.mainCardSub, { color: '#b91c1c', fontWeight: 'bold' }]}>Ítems requieren reposición</Text>
-              </View>
-              <ChevronRight color="#ef4444" size={24} />
-            </TouchableOpacity>
-          )}
-
-        </View>
-
-        {/* FLUJO OPERATIVO */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Órdenes y Operativa</Text>
-
-
-
-          <TouchableOpacity activeOpacity={0.8} style={styles.labCard} onPress={() => navigation.navigate('ProductionOrder', { companyName: 'H2O' })}>
-            <View style={[styles.labIconBox, { backgroundColor: '#f0f9ff' }]}>
-              <Text style={{ color: '#0ea5e9', fontSize: 18, fontWeight: '800' }}>Q2</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={styles.labCardTitle}>Orden de Producción (OP)</Text>
-                {pendingOPCount > 0 && (
-                  <View style={styles.badgeCount}>
-                    <Text style={styles.badgeCountText}>{pendingOPCount}</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.labCardSub}>Fabricar Producto Madre (Granel)</Text>
-            </View>
-            <ChevronRight color="#cbd5e1" size={20} />
-          </TouchableOpacity>
-
-          <TouchableOpacity activeOpacity={0.8} style={styles.labCard} onPress={() => navigation.navigate('PackagingOrder', { companyName: 'H2O' })}>
-            <View style={[styles.labIconBox, { backgroundColor: '#fdf4ff' }]}>
-              <Text style={{ color: '#c026d3', fontSize: 18, fontWeight: '800' }}>Q3</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={styles.labCardTitle}>Orden de Envasado (OE)</Text>
-                {pendingOECount > 0 && (
-                  <View style={styles.badgeCount}>
-                    <Text style={styles.badgeCountText}>{pendingOECount}</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.labCardSub}>Envasar en Bidones y Cajas</Text>
-            </View>
-            <ChevronRight color="#cbd5e1" size={20} />
-          </TouchableOpacity>
-
-          <TouchableOpacity activeOpacity={0.8} style={styles.labCard} onPress={() => navigation.navigate('DirectPackagingOrder', { companyName: 'H2O' })}>
-            <View style={[styles.labIconBox, { backgroundColor: '#ecfdf5' }]}>
-              <Box color="#10b981" size={24} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={styles.labCardTitle}>Orden Envasado Directo (OED)</Text>
-                {pendingOEMCount === 1 && (
-                  <View style={styles.badgeDot} />
-                )}
-                {pendingOEMCount >= 2 && (
-                  <View style={styles.badgeCount}>
-                    <Text style={styles.badgeCountText}>{pendingOEMCount}</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.labCardSub}>Envasar Materia Prima en Bidones/Cajas</Text>
-            </View>
-            <ChevronRight color="#cbd5e1" size={20} />
-          </TouchableOpacity>
-
-          <TouchableOpacity activeOpacity={0.8} style={styles.labCard} onPress={() => navigation.navigate('OutgoingInventory', { companyName: 'H2O' })}>
-            <View style={[styles.labIconBox, { backgroundColor: '#fef2f2' }]}>
-              <Text style={{ color: '#ef4444', fontSize: 18, fontWeight: '800' }}>Q5</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={styles.labCardTitle}>Orden de Despacho (OD)</Text>
-                {pendingODCount > 0 && (
-                  <View style={styles.badgeCount}>
-                    <Text style={styles.badgeCountText}>{pendingODCount}</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.labCardSub}>Despacho físico a clientes</Text>
-            </View>
-            <ChevronRight color="#cbd5e1" size={20} />
-          </TouchableOpacity>
-        </View>
-
-        {/* PLANTA Y LABORATORIO */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Planta y Calidad</Text>
-          <View style={styles.row}>
-            <TouchableOpacity
-              style={[styles.qualityCard, !canAccessQualityControl(currentUserEmail) && { opacity: 0.5 }]}
-              activeOpacity={canAccessQualityControl(currentUserEmail) ? 0.8 : 1}
-              onPress={() => {
-                if (canAccessQualityControl(currentUserEmail)) {
-                  navigation.navigate('QualityControl');
-                } else {
-                  Alert.alert("Acceso Denegado", "No tienes permisos de Laboratorio/Calidad para acceder a esta sección.");
-                }
-              }}
-            >
-              <View style={[styles.qualityIconBox, { backgroundColor: '#fffbeb' }]}>
-                <ClipboardCheck color="#f59e0b" size={24} />
-                {pendingLabCount > 0 && (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{pendingLabCount}</Text>
-                  </View>
-                )}
-              </View>
-              <Text style={styles.qualityCardText}>BBS Calidad</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.qualityCard} onPress={() => navigation.navigate('Formulation')}>
-              <View style={[styles.qualityIconBox, { backgroundColor: '#fdf4ff' }]}>
-                <FlaskConical color="#c026d3" size={24} />
-              </View>
-              <Text style={styles.qualityCardText}>Formulación</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.row}>
-            <TouchableOpacity style={styles.qualityCard} onPress={() => navigation.navigate('Dictionary')}>
-              <View style={[styles.qualityIconBox, { backgroundColor: '#f0f9ff' }]}>
-                <Book color="#0ea5e9" size={24} />
-              </View>
-              <Text style={styles.qualityCardText}>Diccionario de MP</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.qualityCard} onPress={() => navigation.navigate('PurchaseRequests')}>
-              <View style={[styles.qualityIconBox, { backgroundColor: '#fef2f2' }]}>
-                <ShoppingCart color="#ef4444" size={24} />
-                {pendingPurchasesCount > 0 && <View style={styles.notificationDot} />}
-              </View>
-              <Text style={styles.qualityCardText}>Pedidos Internos</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* LOGÍSTICA TRANSVERSAL Y HERRAMIENTAS */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Funciones Extras</Text>
-          <View style={styles.row}>
-            <TouchableOpacity style={styles.adminSmallCard} onPress={() => navigation.navigate('ExecutiveReports')}>
-              <BrainCircuit color="#3b82f6" size={20} />
-              <Text style={styles.adminSmallCardText}>Auditoría IA</Text>
-            </TouchableOpacity>
-            <View style={{flex: 1}} />
-          </View>
-          <View style={[styles.row, { marginTop: 15 }]}>
-            <TouchableOpacity style={styles.adminSmallCard} onPress={() => navigation.navigate('QuarterlyCalculator')}>
-              <Calculator color="#334155" size={20} />
-              <Text style={styles.adminSmallCardText}>Calculadora</Text>
-            </TouchableOpacity>
-            <View style={{flex: 1}} />
-          </View>
-          <View style={[styles.row, { marginTop: 15 }]}>
-            <TouchableOpacity style={styles.adminSmallCard} onPress={() => navigation.navigate('InventoryAdjustment')}>
-              <Keyboard color="#334155" size={20} />
-              <Text style={styles.adminSmallCardText}>Ajuste Stock</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.adminSmallCard} onPress={() => navigation.navigate('Traceability')}>
-              <Search color="#334155" size={20} />
-              <Text style={styles.adminSmallCardText}>Trazabilidad</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={[styles.row, { marginTop: 15 }]}>
-            <TouchableOpacity
-              style={[styles.adminSmallCard, { borderColor: '#2a7d7b', backgroundColor: '#2a7d7b', justifyContent: 'center' }]}
-              onPress={() => navigation.navigate('EIGPanel')}
-            >
-              <Text style={[styles.adminSmallCardText, { color: '#fff', fontSize: 14, textAlign: 'center' }]}>Panel EIG</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[styles.adminSmallCard, { borderColor: '#3b82f6', backgroundColor: '#3b82f6', justifyContent: 'center' }]}
-              onPress={() => navigation.navigate('Eventualities')}
-            >
-              <Text style={[styles.adminSmallCardText, { color: '#fff', fontSize: 14, textAlign: 'center' }]}>Eventualidades</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={{ height: 90 }} />
       </ScrollView>
 
+      {/* MENÚ DESPLEGABLE CORPORATIVO */}
+      <Modal
+        visible={menuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuVisible(false)}
+      >
+        <Pressable style={styles.menuBackdrop} onPress={() => setMenuVisible(false)}>
+          <Pressable style={styles.menuDrawer} onPress={(e) => e.stopPropagation()}>
+            {/* CABECERA DEL MENÚ */}
+            <View style={styles.menuHeader}>
+              <View style={styles.menuHeaderBrand}>
+                <Image
+                  source={require('../../assets/logo-blue.png')}
+                  style={{ width: 44, height: 32 }}
+                  resizeMode="contain"
+                />
+                <Text style={styles.menuHeaderTitle}>Menú</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.menuCloseBtn}
+                onPress={() => setMenuVisible(false)}
+              >
+                <X color="#0a1929" size={20} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.menuListContent}>
+              <Text style={styles.menuSectionLabel}>PLANTA Y FÓRMULAS</Text>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.75}
+                onPress={() => navigateFromMenu('Formulation')}
+              >
+                <Text style={styles.menuItemTitle}>Fórmulas</Text>
+                <ChevronRight color="#94a3b8" size={18} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.75}
+                onPress={() => navigateFromMenu('Dictionary')}
+              >
+                <Text style={styles.menuItemTitle}>Diccionario MP</Text>
+                <ChevronRight color="#94a3b8" size={18} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.75}
+                onPress={() => navigateFromMenu('PurchaseRequests')}
+              >
+                <View style={styles.titleWithBadgeRow}>
+                  <Text style={styles.menuItemTitle}>Pedidos Internos</Text>
+                  {pendingPurchasesCount > 0 && (
+                    <View style={styles.menuCountBadge}>
+                      <Text style={styles.menuCountBadgeText}>{pendingPurchasesCount}</Text>
+                    </View>
+                  )}
+                </View>
+                <ChevronRight color="#94a3b8" size={18} />
+              </TouchableOpacity>
+
+              <Text style={[styles.menuSectionLabel, { marginTop: 14 }]}>AUDITORÍA Y STOCK</Text>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.75}
+                onPress={() => navigateFromMenu('Traceability')}
+              >
+                <Text style={styles.menuItemTitle}>Trazabilidad</Text>
+                <ChevronRight color="#94a3b8" size={18} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.75}
+                onPress={() => navigateFromMenu('ExecutiveReports')}
+              >
+                <Text style={styles.menuItemTitle}>Auditoría IA</Text>
+                <ChevronRight color="#94a3b8" size={18} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.75}
+                onPress={() => navigateFromMenu('InventoryAdjustment')}
+              >
+                <Text style={styles.menuItemTitle}>Ajuste Stock</Text>
+                <ChevronRight color="#94a3b8" size={18} />
+              </TouchableOpacity>
+
+              <Text style={[styles.menuSectionLabel, { marginTop: 14 }]}>PLANTA Y SEGURIDAD</Text>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.75}
+                onPress={() => navigateFromMenu('Eventualities')}
+              >
+                <Text style={styles.menuItemTitle}>Eventos</Text>
+                <ChevronRight color="#94a3b8" size={18} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                activeOpacity={0.75}
+                onPress={() => navigateFromMenu('EIGPanel')}
+              >
+                <Text style={styles.menuItemTitle}>Panel EIG</Text>
+                <ChevronRight color="#94a3b8" size={18} />
+              </TouchableOpacity>
+
+              {/* CERRAR SESIÓN */}
+              <View style={styles.menuDivider} />
+
+              <TouchableOpacity
+                style={styles.menuLogoutItem}
+                activeOpacity={0.8}
+                onPress={handleLogOut}
+              >
+                <Text style={styles.menuLogoutTitle}>Cerrar Sesión</Text>
+                <LogOut color="#dc2626" size={18} />
+              </TouchableOpacity>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#f8fafc' },
-  scrollView: { flex: 1 },
-  scrollContent: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20 },
-
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, paddingHorizontal: 5 },
-  headerSup: { fontSize: 10, fontWeight: '800', color: '#64748b', letterSpacing: 1.5, marginBottom: 2 },
-  welcome: { fontSize: 26, fontWeight: '900', color: '#0f172a', letterSpacing: -0.5 },
-  userBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f1f5f9', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, alignSelf: 'flex-start', marginTop: 5, borderWidth: 1, borderColor: '#e2e8f0' },
-  statusDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
-  userMail: { fontSize: 11, color: '#475569', fontWeight: '600' },
-  headerButtons: { flexDirection: 'row', gap: 8, marginTop: 5 },
-  actionBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#e2e8f0' },
-  actionBtnLogOut: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#fef2f2', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#fee2e2' },
-
-  section: { marginBottom: 25 },
-  sectionTitle: { fontSize: 14, fontWeight: '900', color: '#1e293b', marginBottom: 15, textTransform: 'uppercase', letterSpacing: 0.5 },
-
-  mainCard: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, borderWidth: 1, marginBottom: 12, elevation: 1 },
-  mainCardIcon: { padding: 12, borderRadius: 12, marginRight: 15 },
-  mainCardTitle: { fontSize: 15, fontWeight: '900', letterSpacing: 0.5 },
-  mainCardSub: { fontSize: 12, color: '#64748b', marginTop: 2, fontWeight: '500' },
-
-  row: { flexDirection: 'row', gap: 12, marginBottom: 12 },
-  qualityCard: { flex: 1, backgroundColor: '#fff', padding: 18, borderRadius: 16, borderWidth: 1, borderColor: '#e2e8f0', alignItems: 'center', gap: 12, elevation: 1 },
-  qualityIconBox: { padding: 12, borderRadius: 14 },
-  qualityCardText: { fontWeight: '800', fontSize: 13, color: '#334155' },
-
-  labCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#e2e8f0', elevation: 1, marginBottom: 12 },
-  labIconBox: { backgroundColor: '#f5f3ff', padding: 12, borderRadius: 14, marginRight: 15 },
-  labCardTitle: { fontSize: 14, fontWeight: '800', color: '#0f172a' },
-  labCardSub: { fontSize: 11, color: '#64748b', marginTop: 2 },
-  badgeCount: { backgroundColor: '#ef4444', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, marginLeft: 8 },
-  badgeCountText: { color: '#fff', fontSize: 10, fontWeight: '900' },
-  badgeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444', marginLeft: 8 },
-  notificationDot: { position: 'absolute', top: 6, right: 6, width: 8, height: 8, borderRadius: 4, backgroundColor: '#ef4444' },
-
-  adminSmallCard: { flex: 1, flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#e2e8f0', backgroundColor: '#fff', gap: 12, elevation: 1 },
-  adminSmallCardText: { color: '#334155', fontSize: 13, fontWeight: '800' },
-
-  fabAiButton: {
-    position: 'absolute',
-    right: 20,
-    bottom: 90,
-    zIndex: 1000,
-    backgroundColor: 'rgba(15, 23, 42, 0.95)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 30,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    elevation: 8,
-    shadowColor: '#3b82f6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.6,
-    shadowRadius: 15
-  },
-  fabAiText: {
-    color: '#fff',
-    fontWeight: '900',
-    fontSize: 16,
-    letterSpacing: 1
-  },
-  modalOverlay: {
+  safe: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20
+    backgroundColor: '#f4f6f9'
   },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 24,
-    padding: 25,
+  scrollView: {
+    flex: 1,
+    backgroundColor: '#f4f6f9'
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 24
+  },
+  contentMaxWidth: {
     width: '100%',
-    maxWidth: 400,
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 20
+    maxWidth: 960,
+    alignSelf: 'center'
   },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: '#0f172a',
-    marginBottom: 5,
-    textAlign: 'center'
+
+  // CABECERA
+  headerBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0'
   },
-  modalSub: {
-    fontSize: 12,
-    color: '#64748b',
-    textAlign: 'center',
-    marginBottom: 25
-  },
-  modalBtnPrimary: {
-    backgroundColor: '#3b82f6',
+  brandBlock: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 12
+    flex: 1,
+    marginRight: 10
   },
-  modalBtnPrimaryText: {
-    color: '#fff',
-    fontSize: 15,
+  brandLogoImg: {
+    width: 48,
+    height: 36,
+    marginRight: 10
+  },
+  welcome: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#0a1929'
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
+  headerIconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: '#ebf3fc',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  menuTriggerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#004ea8',
+    paddingHorizontal: 12,
+    height: 38,
+    borderRadius: 10,
+    gap: 6
+  },
+  menuTriggerText: {
+    color: '#ffffff',
+    fontSize: 13,
     fontWeight: '800'
   },
-  modalBtnPrimarySub: {
-    color: '#bfdbfe',
-    fontSize: 11,
-    marginTop: 2
+  menuBadgeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#f59e0b',
+    borderWidth: 1.5,
+    borderColor: '#ffffff'
   },
-  modalBtnSecondary: {
-    backgroundColor: '#f1f5f9',
+
+  // PULSO OPERATIVO (KPIs)
+  kpiStrip: {
+    flexDirection: 'row',
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    marginBottom: 14
+  },
+  kpiCell: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4
+  },
+  kpiDivider: {
+    width: 1,
+    backgroundColor: '#e2e8f0',
+    marginVertical: 4
+  },
+  kpiLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#64748b',
+    letterSpacing: 0.6,
+    marginBottom: 3
+  },
+  kpiValueRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    gap: 5
+  },
+  kpiValue: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#0a1929'
+  },
+  kpiDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3
+  },
+
+  // 4 ACCESOS PRINCIPALES (GRILLA 2x2 PROTAGÓNICA)
+  coreGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 4,
+    marginBottom: 16
+  },
+  coreCard: {
+    width: '48.2%',
+    backgroundColor: '#ffffff',
     borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#dbe3ee',
+    padding: 16,
+    justifyContent: 'space-between',
+    minHeight: 104,
+    elevation: 2,
+    shadowColor: '#0a1929',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8
+  },
+  coreCardTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#0a1929',
+    letterSpacing: -0.2
+  },
+  coreCardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 14
+  },
+  coreCardActionText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#004ea8'
+  },
+
+  // ICONOS INFERIORES: CALCULADORA E HISTORIAL
+  bottomIconsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
+    marginTop: 6
+  },
+  bottomIconBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#ffffff',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    elevation: 1,
+    shadowColor: '#0a1929',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 4
+  },
+  bottomIconText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0a1929'
+  },
+
+  // BADGES PEQUEÑOS
+  badgeSmallBlue: {
+    backgroundColor: '#ebf3fc',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6
+  },
+  badgeSmallDanger: {
+    backgroundColor: '#fef2f2',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6
+  },
+  badgeSmallWarning: {
+    backgroundColor: '#fffbeb',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6
+  },
+  badgeSmallText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#0a1929'
+  },
+
+  // HERRAMIENTAS DIRECTAS (CALCULADORA E HISTORIAL)
+  quickToolsRow: {
+    flexDirection: 'row',
+    gap: 10
+  },
+  quickToolCard: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#ffffff',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#e2e8f0'
   },
-  modalBtnSecondaryText: {
-    color: '#0f172a',
-    fontSize: 15,
-    fontWeight: '800'
+  quickToolTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0a1929'
   },
-  modalBtnSecondarySub: {
-    color: '#64748b',
+
+  // SUB-PANTALLAS
+  subScreenWrapper: {
+    flex: 1
+  },
+  subHeaderCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 14
+  },
+  backToMainBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#ebf3fc',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginBottom: 8,
+    gap: 4
+  },
+  backToMainText: {
     fontSize: 11,
-    marginTop: 2
+    fontWeight: '800',
+    color: '#004ea8'
+  },
+  subHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#0a1929'
+  },
+  groupLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#64748b',
+    letterSpacing: 0.8,
+    marginBottom: 8,
+    marginLeft: 2
+  },
+  subOptionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#ffffff',
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 8
+  },
+  subOptionTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0a1929'
+  },
+  titleWithBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
+  liveCountPill: {
+    backgroundColor: '#004ea8',
+    paddingHorizontal: 7,
+    paddingVertical: 1,
+    borderRadius: 6
+  },
+  liveCountPillText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '900'
+  },
+
+  // MENÚ DESPLEGABLE
+  menuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(10, 25, 41, 0.45)',
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end'
+  },
+  menuDrawer: {
+    width: '85%',
+    maxWidth: 340,
+    height: '100%',
+    backgroundColor: '#f4f6f9',
+    borderLeftWidth: 1,
+    borderLeftColor: '#e2e8f0'
+  },
+  menuHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0'
+  },
+  menuHeaderBrand: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10
+  },
+  menuHeaderTitle: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: '#0a1929'
+  },
+  menuCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  menuListContent: {
+    padding: 14,
+    paddingBottom: 30
+  },
+  menuSectionLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#004ea8',
+    letterSpacing: 1,
+    marginBottom: 6,
+    marginLeft: 2
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#ffffff',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 6
+  },
+  menuItemTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0a1929'
+  },
+  menuCountBadge: {
+    backgroundColor: '#dc2626',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6
+  },
+  menuCountBadgeText: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontWeight: '900'
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#e2e8f0',
+    marginVertical: 10
+  },
+  menuLogoutItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#ffffff',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#fecaca'
+  },
+  menuLogoutTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#dc2626'
   }
 });

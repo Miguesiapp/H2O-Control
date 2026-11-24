@@ -96,16 +96,13 @@ export default function FormulationScreen({ navigation }) {
     const isExpanded = expandedFormulas.includes(item.id);
 
     return (
-      <View style={[styles.card, { borderTopColor: themeColor }]}>
+      <View style={styles.card}>
         <TouchableOpacity 
           activeOpacity={0.8}
           onPress={() => toggleExpand(item.id)}
         >
           <View style={styles.cardHeader}>
             <View style={styles.titleContainer}>
-              <View style={[styles.iconBox, { backgroundColor: bgTheme }]}>
-                <Beaker size={20} color={themeColor} />
-              </View>
               <View style={{ flex: 1, paddingRight: 10 }}>
                 <Text style={styles.productTitle}>{getDisplayName(item.productName)}</Text>
                 <Text style={styles.companySub}>{item.companyTarget}</Text>
@@ -340,7 +337,7 @@ const styles = StyleSheet.create({
   
   listContainer: { padding: 20, paddingBottom: 100 },
   
-  card: { backgroundColor: '#fff', borderRadius: 20, padding: 20, marginBottom: 20, elevation: 2, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 10, borderWidth: 1, borderColor: '#e2e8f0', borderTopWidth: 4 },
+  card: { backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 14, elevation: 1, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 6, borderWidth: 1, borderColor: '#e2e8f0' },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
   titleContainer: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   iconBox: { padding: 10, borderRadius: 12, marginRight: 12 },

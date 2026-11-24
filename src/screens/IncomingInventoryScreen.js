@@ -19,14 +19,25 @@ import {
   BIDON_BRANDS, POTE_BRANDS, CAJA_BRANDS, getBaseLabelName, normalizeEtiquetaName, normalizeCapacity, formatDisplayName
 } from '../config/constants';
 
-export default function IncomingInventoryScreen({ navigation }) {
-  const [inventoryType, setInventoryType] = useState('MP'); // 'MP' | 'INSUMOS'
+export default function IncomingInventoryScreen({ navigation, route }) {
+  const initialTypeParam = route?.params?.initialType || 'MP';
+  const initialCategoryParam = route?.params?.initialCategory || 'Bidones';
+  const [inventoryType, setInventoryType] = useState(initialTypeParam); // 'MP' | 'INSUMOS'
   const operationType = 'INGRESO'; // FIXED to normal input
   const [unitType, setUnitType] = useState('Kilos'); // 'Kilos' | 'Litros'
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [category, setCategory] = useState('Bidones'); 
+  const [category, setCategory] = useState(initialCategoryParam); 
   const [isCalendarVisible, setIsCalendarVisible] = useState(false);
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
+
+  React.useEffect(() => {
+    if (route?.params?.initialType) {
+      setInventoryType(route.params.initialType);
+    }
+    if (route?.params?.initialCategory) {
+      handleCategoryChange(route.params.initialCategory);
+    }
+  }, [route?.params?.initialType, route?.params?.initialCategory]);
   
   const [formData, setFormData] = useState({
     itemName: '',

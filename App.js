@@ -10,6 +10,11 @@ import Toast from 'react-native-toast-message';
 // FIX: Habilitar scroll nativo en React Native Web
 // ---------------------------------------------------------
 if (Platform.OS === 'web') {
+  const fontLink = document.createElement('link');
+  fontLink.rel = 'stylesheet';
+  fontLink.href = 'https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&display=swap';
+  document.head.appendChild(fontLink);
+
   const style = document.createElement('style');
   style.textContent = `
     html, body, #root { 
@@ -18,7 +23,12 @@ if (Platform.OS === 'web') {
       overflow-x: hidden;
       overflow-y: scroll; 
       display: flex; 
-      flex-direction: column; 
+      flex-direction: column;
+      background-color: #f4f6f9;
+      font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    * {
+      box-sizing: border-box;
     }
   `;
   document.head.appendChild(style);
@@ -99,7 +109,7 @@ export default function App() {
   if (!splashAnimationFinished) {
     return (
       <View style={styles.splashContainer}>
-        <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
+        <StatusBar barStyle="light-content" backgroundColor="#004ea8" />
         <Animated.View style={{ 
           opacity: fadeAnim, 
           transform: [{ scale: scaleAnim }],
@@ -107,12 +117,13 @@ export default function App() {
           height: '100%',
           justifyContent: 'center',
           alignItems: 'center',
-          backgroundColor: '#004ca8' 
+          backgroundColor: '#004ea8' 
         }}>
-          <View style={styles.logoCircle}>
-            <Text style={styles.logoTitle}>H2O</Text>
-            <Text style={styles.logoSub}>CONTROL</Text>
-          </View>
+          <Image
+            source={require('./assets/logo-white.png')}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
         </Animated.View>
       </View>
     );
@@ -138,29 +149,10 @@ export default function App() {
 const styles = StyleSheet.create({
   splashContainer: {
     flex: 1,
-    backgroundColor: '#004ca8', // Mismo color de fondo para evitar parpadeos
+    backgroundColor: '#004ea8',
   },
-  logoCircle: {
+  logoImage: {
     width: 200,
-    height: 200,
-    borderRadius: 100,
-    borderWidth: 3,
-    borderColor: '#ffffff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'transparent'
-  },
-  logoTitle: {
-    fontSize: 65,
-    fontWeight: '900',
-    color: '#ffffff',
-    marginBottom: -5,
-  },
-  logoSub: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#ffffff',
-    letterSpacing: 4,
-    marginLeft: 4, // Para centrar ópticamente por el letterSpacing
+    height: 150,
   }
 });
