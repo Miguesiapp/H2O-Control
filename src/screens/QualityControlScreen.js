@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { db, auth } from '../config/firebase';
 import { collection, query, where, onSnapshot, updateDoc, doc, orderBy, limit, getDocs } from 'firebase/firestore';
 import { ChevronLeft, CheckCircle, XCircle, Beaker, ClipboardCheck, AlertCircle, FileSignature, Database, Container, History, ListTodo, ChevronDown, ChevronUp, User } from 'lucide-react-native';
+import { formatDisplayName } from '../config/constants';
 
 const normalizeString = (str) => {
   if (!str) return '';
@@ -242,7 +243,7 @@ export default function QualityControlScreen({ navigation }) {
                <View style={styles.iconBox}>
                  {activeTab === 'MP' ? <Database size={18} color="#475569" /> : <Beaker size={18} color="#475569" />}
                </View>
-               <Text style={styles.lotTitle}>{item.itemName}</Text>
+               <Text style={styles.lotTitle}>{formatDisplayName(item.itemName)}</Text>
             </View>
             <View style={styles.badgeGroup}>
               <Text style={styles.badgeGroupText}>{item.lotes.length}</Text>
@@ -322,7 +323,7 @@ export default function QualityControlScreen({ navigation }) {
 
           <View style={styles.logBody}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.logItemName}>{item.itemName || item.productName || 'Desconocido'}</Text>
+              <Text style={styles.logItemName}>{formatDisplayName(item.itemName || item.productName || 'Desconocido')}</Text>
               {(item.measuredPh || item.measuredDensity) && (
                 <Text style={styles.logCompany}>pH: {item.measuredPh || '-'} | Den: {item.measuredDensity || '-'}</Text>
               )}
@@ -372,7 +373,7 @@ export default function QualityControlScreen({ navigation }) {
                             const hasAdjustment = !!actual;
                             return (
                               <View key={idx} style={{ marginBottom: 8, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}>
-                                <Text style={{ fontSize: 12, fontWeight: '800', color: '#1e293b' }}>{ing.name || ing.ingredientName}</Text>
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: '#1e293b' }}>{formatDisplayName(ing.name || ing.ingredientName)}</Text>
                                 <Text style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>Fórmula: {ing.isGranel ? `${((ing.requiredKg || ing.required) || 0).toFixed(2)} Kg` : `${(ing.required || 0).toFixed(2)} Kg`}</Text>
                                 {ing.batchesToConsume && ing.batchesToConsume.length > 0 ? (
                                   <Text style={{ fontSize: 11, color: '#475569', marginTop: 2 }}>
@@ -590,7 +591,7 @@ export default function QualityControlScreen({ navigation }) {
                       const hasAdjustment = !!actual;
                       return (
                         <View key={idx} style={{ marginBottom: 10, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
-                          <Text style={{ fontSize: 13, fontWeight: '800', color: '#1e293b' }}>{ing.name || ing.ingredientName}</Text>
+                          <Text style={{ fontSize: 13, fontWeight: '800', color: '#1e293b' }}>{formatDisplayName(ing.name || ing.ingredientName)}</Text>
                           <Text style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
                             Fórmula: {ing.isGranel ? `${((ing.requiredKg || ing.required) || 0).toFixed(2)} Kg (≈ ${(ing.required || 0).toFixed(2)} Lts)` : `${(ing.required || 0).toFixed(2)} Kg`}
                           </Text>

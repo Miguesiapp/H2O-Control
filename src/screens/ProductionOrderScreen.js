@@ -234,15 +234,9 @@ export default function ProductionOrderScreen({ route, navigation }) {
         setAllMasterFormulas(docs);
 
         const activeDocs = docs.filter(d => !d.status || d.status === 'ACTIVA');
-        const data = activeDocs.map(doc => doc.productName).filter(Boolean);
-        
-        // Filter out formulas whose names are already part of a PRODUCTS_MADRE_LIST equivalent string
-        const filteredData = data.filter(dbName => {
-          return !PRODUCTS_MADRE_LIST.some(madre => madre.includes(dbName));
-        });
-
-        const uniqueProducts = [...new Set([...filteredData, ...PRODUCTS_MADRE_LIST])];
-        setAvailableFormulas(uniqueProducts.sort());
+        const uniqueProducts = [...new Set(activeDocs.map(doc => doc.productName).filter(Boolean))]
+          .sort((a, b) => formatDisplayName(a).localeCompare(formatDisplayName(b)));
+        setAvailableFormulas(uniqueProducts);
       } catch (error) {
         console.error("Error fetching formulas", error);
       }
@@ -983,7 +977,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
                   }}
                 >
                   <View style={styles.orderCardHeader}>
-                    <Text style={styles.orderCardTitle}>{item.data.itemName}</Text>
+                    <Text style={styles.orderCardTitle}>{formatDisplayName(item.data.itemName)}</Text>
                     <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
                       <Text style={styles.statusText}>{item.status}</Text>
                     </View>
@@ -1087,7 +1081,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.reqTitle}>Proyección de Materias Primas</Text>
                   <Text style={{ fontSize: 12, fontWeight: '700', color: '#3b82f6', marginTop: 2 }}>
-                    Receta: {requirements.formulaName || productName}
+                    Receta: {formatDisplayName(requirements.formulaName || productName)}
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -1312,7 +1306,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
           </View>
           <ScrollView style={{flex: 1, padding: 20}}>
             <View style={styles.card}>
-              <Text style={{fontSize: 20, fontWeight: '900', color: '#0f172a', marginBottom: 5}}>{selectedOrder?.data?.itemName}</Text>
+              <Text style={{fontSize: 20, fontWeight: '900', color: '#0f172a', marginBottom: 5}}>{formatDisplayName(selectedOrder?.data?.itemName)}</Text>
               <View style={[styles.statusBadge, { alignSelf: 'flex-start', backgroundColor: getStatusColor(selectedOrder?.status), marginBottom: 15 }]}>
                  <Text style={styles.statusText}>{selectedOrder?.status}</Text>
               </View>
@@ -1351,7 +1345,7 @@ export default function ProductionOrderScreen({ route, navigation }) {
                 return (
                   <View key={idx} style={[styles.ingRow, hasAdjustment && styles.ingRowAdjusted]}>
                     <View style={{flex: 1}}>
-                      <Text style={{fontSize: 13, fontWeight: '800', color: '#1e293b'}}>{ing.name || ing.ingredientName}</Text>
+                      <Text style={{fontSize: 13, fontWeight: '800', color: '#1e293b'}}>{formatDisplayName(ing.name || ing.ingredientName)}</Text>
                       <Text style={{fontSize: 12, color: '#64748b'}}>
                         Fórmula: {ing.isGranel
                           ? `${((ing.requiredKg || ing.required) || 0).toFixed(2)} Kg (≈ ${(ing.required || 0).toFixed(2)} Lts)`

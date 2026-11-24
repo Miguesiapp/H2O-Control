@@ -16,7 +16,7 @@ import { Modal } from 'react-native';
 import { 
   RAW_MATERIALS_LIST, PROVIDERS_LIST, 
   ETIQUETA_CAPACITIES, BIDON_CAPACITIES, POTE_CAPACITIES, CAJA_FORMATS, PRODUCTS_FINAL_LIST, generateBatchId,
-  BIDON_BRANDS, POTE_BRANDS, CAJA_BRANDS, getBaseLabelName, normalizeEtiquetaName, normalizeCapacity
+  BIDON_BRANDS, POTE_BRANDS, CAJA_BRANDS, getBaseLabelName, normalizeEtiquetaName, normalizeCapacity, formatDisplayName
 } from '../config/constants';
 
 export default function IncomingInventoryScreen({ navigation }) {
@@ -210,13 +210,13 @@ export default function IncomingInventoryScreen({ navigation }) {
 
   const INSUMOS_CATEGORIES = ['Bidones', 'Potes', 'Cajas', 'Etiquetas'];
   
-  // Catálogo completo de etiquetas que incluye PT, nombres base de PT, MP que se envasan directo y materiales personalizados
-  const rawMaterialLabels = RAW_MATERIALS_LIST.flatMap(rm => rm.split(' / ').map(p => p.trim()));
+  // Catálogo limpio de etiquetas que incluye PT, nombres base de PT, MP que se envasan directo y materiales personalizados (sin listas largas de sinónimos)
+  const rawMaterialLabels = RAW_MATERIALS_LIST.map(rm => formatDisplayName(rm));
   const UNIQUE_LABELS_LIST = [...new Set([
-    ...PRODUCTS_FINAL_LIST,
-    ...PRODUCTS_FINAL_LIST.map(getBaseLabelName),
+    ...PRODUCTS_FINAL_LIST.map(formatDisplayName),
+    ...PRODUCTS_FINAL_LIST.map(getBaseLabelName).map(formatDisplayName),
     ...rawMaterialLabels,
-    ...customMaterials,
+    ...customMaterials.map(formatDisplayName),
     'XTM'
   ])].filter(Boolean).sort();
 
@@ -437,10 +437,25 @@ export default function IncomingInventoryScreen({ navigation }) {
               />
             </View>
 
-            {inventoryType === 'MP' && (
+            {inventoryType === 'MP' ? (
+              <View style={{ flexDirection: 'row', marginLeft: 10, backgroundColor: '#f1f5f9', borderRadius: 12, padding: 4 }}>
+                <TouchableOpacity
+                  style={[{ paddingVertical: 10, paddingHorizontal: 15, borderRadius: 8 }, unitType === 'Kilos' && { backgroundColor: '#0f172a' }]}
+                  onPress={() => setUnitType('Kilos')}
+                >
+                  <Text style={[{ fontSize: 13, fontWeight: '700', color: '#64748b' }, unitType === 'Kilos' && { color: '#fff' }]}>Kilos</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[{ paddingVertical: 10, paddingHorizontal: 15, borderRadius: 8 }, unitType === 'Litros' && { backgroundColor: '#0f172a' }]}
+                  onPress={() => setUnitType('Litros')}
+                >
+                  <Text style={[{ fontSize: 13, fontWeight: '700', color: '#64748b' }, unitType === 'Litros' && { color: '#fff' }]}>Litros</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
               <View style={{ flexDirection: 'row', marginLeft: 10, backgroundColor: '#f1f5f9', borderRadius: 12, padding: 4 }}>
                 <View style={{ paddingVertical: 10, paddingHorizontal: 15, borderRadius: 8, backgroundColor: '#0f172a' }}>
-                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>Kilos</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: '#fff' }}>Uds</Text>
                 </View>
               </View>
             )}

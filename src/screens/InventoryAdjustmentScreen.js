@@ -16,8 +16,8 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { 
   RAW_MATERIALS_LIST, PRODUCTS_MADRE_LIST, PRODUCTS_FINAL_LIST,
-  ETIQUETA_CAPACITIES, BIDON_CAPACITIES, CAJA_FORMATS, PROVIDERS_LIST,
-  generateBatchId, BIDON_BRANDS, CAJA_BRANDS, getBaseLabelName, normalizeEtiquetaName, normalizeCapacity
+  ETIQUETA_CAPACITIES, BIDON_CAPACITIES, POTE_CAPACITIES, CAJA_FORMATS, PROVIDERS_LIST,
+  generateBatchId, BIDON_BRANDS, POTE_BRANDS, CAJA_BRANDS, getBaseLabelName, normalizeEtiquetaName, normalizeCapacity, formatDisplayName
 } from '../config/constants';
 
 export default function InventoryAdjustmentScreen({ navigation }) {
@@ -38,8 +38,10 @@ export default function InventoryAdjustmentScreen({ navigation }) {
     expiryDate: '',
     observations: '',
     capacity: '20', 
+    capacityPote: '5KG',
     format: 'x5',
     brandBidon: 'H2O',
+    brandPote: 'H2O',
     brandCaja: 'H2O CON LOGO'
   });
 
@@ -50,8 +52,10 @@ export default function InventoryAdjustmentScreen({ navigation }) {
       const norm = normalizeCapacity(currentCap);
       setFormData(prev => ({ ...prev, capacity: norm }));
     } else if (newCat === 'Bidones') {
-      const currentCap = (formData.capacity || '20').replace(/L/gi, '');
+      const currentCap = (formData.capacity || '20').replace(/[^0-9]/g, '');
       setFormData(prev => ({ ...prev, capacity: currentCap || '20' }));
+    } else if (newCat === 'Potes') {
+      setFormData(prev => ({ ...prev, capacityPote: prev.capacityPote || '5KG', brandPote: prev.brandPote || 'H2O' }));
     }
   };
 
@@ -75,6 +79,7 @@ export default function InventoryAdjustmentScreen({ navigation }) {
 
       if (inventoryType === 'INSUMOS') {
         if (category === 'Bidones') finalItemName = `BIDON ${formData.capacity}L ${formData.brandBidon}`;
+        if (category === 'Potes') finalItemName = `POTE ${formData.capacityPote || '5KG'} ${formData.brandPote || 'H2O'}`;
         if (category === 'Cajas') finalItemName = `CAJA ${formData.format} ${formData.brandCaja}`;
         if (category === 'Etiquetas') finalItemName = normalizeEtiquetaName(formData.capacity, formData.itemName);
       }
@@ -193,6 +198,7 @@ export default function InventoryAdjustmentScreen({ navigation }) {
         finalUnit = unitType === 'Kilos' ? 'Kg' : 'Lts';
       } else if (!isMP) {
         if (category === 'Bidones') finalItemName = `BIDON ${formData.capacity}L ${formData.brandBidon}`;
+        if (category === 'Potes') finalItemName = `POTE ${formData.capacityPote || '5KG'} ${formData.brandPote || 'H2O'}`;
         if (category === 'Cajas') finalItemName = `CAJA ${formData.format} ${formData.brandCaja}`;
         if (category === 'Etiquetas') finalItemName = normalizeEtiquetaName(formData.capacity, formData.itemName);
       } else {
@@ -264,8 +270,14 @@ export default function InventoryAdjustmentScreen({ navigation }) {
     }
   };
 
-  const INSUMOS_CATEGORIES = ['Bidones', 'Cajas', 'Etiquetas'];
-  const UNIQUE_LABELS_LIST = [...new Set(PRODUCTS_FINAL_LIST.map(getBaseLabelName))].sort();
+  const INSUMOS_CATEGORIES = ['Bidones', 'Potes', 'Cajas', 'Etiquetas'];
+  const rawMaterialLabels = RAW_MATERIALS_LIST.map(rm => formatDisplayName(rm));
+  const UNIQUE_LABELS_LIST = [...new Set([
+    ...PRODUCTS_FINAL_LIST.map(formatDisplayName),
+    ...PRODUCTS_FINAL_LIST.map(getBaseLabelName).map(formatDisplayName),
+    ...rawMaterialLabels,
+    'XTM'
+  ])].filter(Boolean).sort();
   const isEgreso = operationType === 'EGRESO';
 
   return (
@@ -428,6 +440,41 @@ export default function InventoryAdjustmentScreen({ navigation }) {
                   >
                     <Building2 color={formData.brandBidon === brand ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
                     <Text style={[styles.chipText, formData.brandBidon === brand && styles.chipTextActive]}>{brand}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
+
+          {inventoryType === 'INSUMOS' && category === 'Potes' && (
+            <>
+              <Text style={styles.label}>Capacidad del Pote</Text>
+              <View style={styles.chipRow}>
+                {POTE_CAPACITIES.map(cap => {
+                  const isActive = (formData.capacityPote || '5KG') === cap;
+                  return (
+                    <TouchableOpacity 
+                      key={cap} 
+                      style={[styles.chip, isActive && styles.chipActive]}
+                      onPress={() => setFormData({...formData, capacityPote: cap})}
+                    >
+                      <Droplet color={isActive ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
+                      <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{cap}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <Text style={styles.label}>Marca / Tipo del Pote</Text>
+              <View style={styles.chipRow}>
+                {POTE_BRANDS.map(brand => (
+                  <TouchableOpacity 
+                    key={brand} 
+                    style={[styles.chip, (formData.brandPote || 'H2O') === brand && styles.chipActive]}
+                    onPress={() => setFormData({...formData, brandPote: brand})}
+                  >
+                    <Building2 color={(formData.brandPote || 'H2O') === brand ? '#fff' : '#64748b'} size={14} style={{marginRight: 4}}/>
+                    <Text style={[styles.chipText, (formData.brandPote || 'H2O') === brand && styles.chipTextActive]}>{brand}</Text>
                   </TouchableOpacity>
                 ))}
               </View>

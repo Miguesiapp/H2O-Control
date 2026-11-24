@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Keyboard, ScrollView } from "react-native";
 import { ChevronDown } from "lucide-react-native";
+import { formatDisplayName, splitSynonyms } from "../config/constants";
 
 const normalizeString = (str) => {
   if (!str) return "";
@@ -9,7 +10,7 @@ const normalizeString = (str) => {
 
 const getDisplayName = (str) => {
   if (!str) return "";
-  return str.split(" / ")[0];
+  return formatDisplayName(str);
 };
 
 const filterData = (dataList, input) => {
@@ -50,7 +51,10 @@ export default function AutocompleteInput({
 
   useEffect(() => {
     if (showSuggestions) {
-      const items = filterData(data || [], inputText);
+      // Si el texto actual coincide exactamente con el nombre del valor seleccionado, mostrar toda la lista al desplegar
+      const selectedDisplay = getDisplayName(value || "");
+      const effectiveSearch = (value && inputText === selectedDisplay) ? "" : inputText;
+      const items = filterData(data || [], effectiveSearch);
       const uniqueFiltered = [];
       const seenNames = new Set();
       items.forEach(item => {
@@ -64,7 +68,7 @@ export default function AutocompleteInput({
     } else {
       setFilteredData([]);
     }
-  }, [inputText, data, showSuggestions]);
+  }, [inputText, data, showSuggestions, value]);
 
   const handleSelect = (item) => {
     const displayName = getDisplayName(item);
@@ -137,11 +141,6 @@ export default function AutocompleteInput({
              >
                <View style={{ flex: 1 }}>
                  <Text style={styles.suggestionText}>{getDisplayName(item)}</Text>
-                 {typeof item === 'string' && item.includes(' / ') && (
-                   <Text style={styles.suggestionSubText} numberOfLines={1}>
-                     {item.split(' / ').slice(1).join(' / ')}
-                   </Text>
-                 )}
                </View>
              </TouchableOpacity>
           ))}

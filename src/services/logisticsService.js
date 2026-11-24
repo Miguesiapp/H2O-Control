@@ -2,46 +2,67 @@ import { db } from '../config/firebase';
 import { collection, addDoc, updateDoc, doc, increment, serverTimestamp, query, where, getDocs, getDoc, deleteDoc } from 'firebase/firestore';
 import { PRODUCT_SYNONYMS, getDistributorFromText } from '../config/constants';
 
+const normalizeNoAccent = (s) => {
+  if (!s) return '';
+  if (Array.isArray(s)) return s.map(i => Array.isArray(i) ? i[0] : i).filter(Boolean).join(' ').toUpperCase();
+  return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
+};
+
+const hasToken = (docName, tokens) => {
+  const name = normalizeNoAccent(docName);
+  const list = Array.isArray(tokens) ? tokens : [tokens];
+  return list.some(t => {
+    if (!t) return false;
+    const tClean = normalizeNoAccent(t);
+    if (!tClean) return false;
+    const escaped = tClean.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`(^|\\s)${escaped}(\\s|$)`, 'i');
+    return regex.test(name);
+  });
+};
+
+const extractLabelProductName = (docName) => {
+  return normalizeNoAccent(docName)
+    .replace(/^ETIQUETAS?\s+/i, '')
+    .replace(/^(20|10|5|1)\s*(LTS?|L|KGS?|KG|K)\b\s*/i, '')
+    .replace(/\s+(20|10|5|1)\s*(LTS?|L|KGS?|KG|K)$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
 // Helper para verificar coincidencia difusa precisa (especialmente etiquetas e insumos con marcas de clientes)
 export const matchesFuzzyItem = (docItemName, fuzzyFilter) => {
-  if (!docItemName || !fuzzyFilter) return false;
-  const name = String(docItemName).toUpperCase();
+  if (!docItemName || !fuzzyFilter || typeof docItemName !== 'string') return false;
+  const name = normalizeNoAccent(docItemName);
 
   // Si es búsqueda de etiquetas: ['ETIQUETA', capacityKeywords, labelKeywords]
-  const isLabelSearch = Array.isArray(fuzzyFilter) && fuzzyFilter.length > 0 && String(fuzzyFilter[0]).toUpperCase() === 'ETIQUETA';
+  const isLabelSearch = Array.isArray(fuzzyFilter) && fuzzyFilter.length > 0 && normalizeNoAccent(fuzzyFilter[0]) === 'ETIQUETA';
   if (isLabelSearch) {
     // 1. Debe ser una etiqueta
     if (!name.includes('ETIQUETA') && !name.includes('ETIQ')) return false;
 
-    // 2. Capacidad debe coincidir
+    // 2. Capacidad debe coincidir con límites de palabra (evita que 20L RESTART M1 coincida con 1L)
     const capKeywords = Array.isArray(fuzzyFilter[1]) ? fuzzyFilter[1] : [fuzzyFilter[1]];
-    const hasCap = capKeywords.some(c => c && name.includes(String(c).toUpperCase()));
-    if (!hasCap) return false;
+    if (!hasToken(name, capKeywords)) return false;
 
-    // 3. Marca distribuidora: si el producto busca una marca (ej: AGROFONTEZUELA), la etiqueta debe coincidir
+    // 3. El nombre del producto en la etiqueta debe coincidir exactamente con alguno de los alias válidos del producto
     const targetKeywords = Array.isArray(fuzzyFilter[2]) ? fuzzyFilter[2] : [fuzzyFilter[2]];
-    const targetDist = targetKeywords.map(k => getDistributorFromText(k)).find(Boolean) || null;
-    const docDist = getDistributorFromText(name);
-
-    if (targetDist && docDist !== targetDist) return false;
-    if (!targetDist && docDist) return false; // Producto genérico nunca debe consumir etiquetas de un cliente o distribuidor
-
-    // 4. Palabra clave del producto
+    const docProd = extractLabelProductName(name);
     return targetKeywords.some(subKw => {
       if (!subKw) return false;
-      const cleanSub = String(subKw).toUpperCase().replace(new RegExp(`\\b${targetDist || ''}\\b`, 'gi'), '').trim();
-      return name.includes(String(subKw).toUpperCase()) || (cleanSub && name.includes(cleanSub));
+      const kwNorm = extractLabelProductName(subKw);
+      return docProd === kwNorm;
     });
   }
 
-  // Comportamiento general para otros insumos (Bidones, Cajas) y productos
+  // Comportamiento general para otros insumos (Bidones, Potes, Cajas) y productos con límites de palabra
   return fuzzyFilter.filter(Boolean).every(kw => {
     if (Array.isArray(kw)) {
       const validSubs = kw.filter(Boolean);
       if (validSubs.length === 0) return true;
-      return validSubs.some(subKw => name.includes(String(subKw).toUpperCase()));
+      return hasToken(name, validSubs);
     }
-    return name.includes(String(kw).toUpperCase());
+    return hasToken(name, kw) || name.includes(normalizeNoAccent(kw));
   });
 };
 
@@ -117,9 +138,11 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
       data.stockType === 'ENVASES' ||
       (data.category || '').toUpperCase().includes('ETIQUET') || 
       (data.category || '').toUpperCase().includes('BIDON') || 
+      (data.category || '').toUpperCase().includes('POTE') || 
       (data.category || '').toUpperCase().includes('CAJA') ||
       itemNameStr.includes('ETIQUET') || 
       itemNameStr.includes('BIDON') || 
+      itemNameStr.includes('POTE') || 
       itemNameStr.includes('CAJA');
 
     let effectiveCompany = company;
@@ -141,6 +164,34 @@ export const registerMovement = async (userEmail, actionType, company, data) => 
       // ---------------------------------------------------
       // CASO A: INYECCIÓN DE STOCK (Suma)
       // ---------------------------------------------------
+      if (isFuzzyItem) {
+        // Si se devuelve un insumo con filtro difuso (ej. rechazo de OE/OED), buscar el documento existente que coincida y nunca guardar un Array como itemName
+        const qFuzzy = query(inventoryRef, where("company", "==", effectiveCompany));
+        const snapFuzzy = await getDocs(qFuzzy);
+        const matchedDoc = snapFuzzy.docs.find(d => matchesFuzzyItem(d.data().itemName, data.itemName));
+
+        if (matchedDoc) {
+          await updateDoc(doc(db, "Inventory", matchedDoc.id), {
+            quantity: increment(numericQty),
+            lastUpdated: serverTimestamp()
+          });
+        } else {
+          const fallbackStringName = (data.fallbackName || data.itemName.map(i => Array.isArray(i) ? i[0] : i).filter(Boolean).join(' ')).toUpperCase().trim();
+          await addDoc(inventoryRef, {
+            ...data,
+            itemName: fallbackStringName,
+            company: effectiveCompany,
+            quantity: numericQty,
+            stockType: effectiveStockType,
+            status: effectiveStatus || 'APTO',
+            minStock: data.minStock || 100,
+            createdAt: serverTimestamp(),
+            lastUpdated: serverTimestamp()
+          });
+        }
+        return;
+      }
+
       const q = query(
         inventoryRef, 
         where("company", "==", effectiveCompany), 
@@ -337,10 +388,12 @@ export const deductStockFIFO = async (company, itemName, quantityToDeduct) => {
       .filter(doc => {
         if ((doc.quantity || 0) <= 0) return false;
         if (doc.status === 'RECHAZADO') return false;
+        const docNameStr = typeof doc.itemName === 'string' ? doc.itemName.toUpperCase() : '';
         const isDocInsumo = doc.stockType === 'INSUMOS' || doc.stockType === 'ENVASES' ||
-          (doc.itemName || '').toUpperCase().startsWith('ETIQUETA') ||
-          (doc.itemName || '').toUpperCase().startsWith('BIDON') ||
-          (doc.itemName || '').toUpperCase().startsWith('CAJA');
+          docNameStr.startsWith('ETIQUETA') ||
+          docNameStr.startsWith('BIDON') ||
+          docNameStr.startsWith('POTE') ||
+          docNameStr.startsWith('CAJA');
         // CUARENTENA: Solo para MP y Granel, nunca para insumos
         const pendingStatuses = ['PENDIENTE', 'PENDIENTE_LABORATORIO'];
         if (!isDocInsumo && pendingStatuses.includes(doc.status)) return false;

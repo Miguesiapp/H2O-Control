@@ -11,8 +11,8 @@ import { ChevronLeft, Truck, Send, PackageMinus, MapPin, Hash, ClipboardType, Pl
 import { canCreateOrders } from '../config/permissions';
 import { printOrder } from '../services/printService';
 
-const BIDON_CAPACITIES = ['1000', '20', '10', '5', '1'];
-const BIDON_LABELS = { '1000': '1000L (Contenedor)', '20': '20L', '10': '10L', '5': '5L', '1': '1L' };
+const BIDON_CAPACITIES = ['1000', '20', '10', '5', '1', 'POTE 5KG', 'POTE 1KG'];
+const BIDON_LABELS = { '1000': '1000L (Contenedor)', '20': '20L', '10': '10L', '5': '5L', '1': '1L', 'POTE 5KG': 'Pote 5Kg', 'POTE 1KG': 'Pote 1Kg' };
 
 export default function OutgoingInventoryScreen({ route, navigation }) {
   const { companyName } = route.params;
@@ -40,17 +40,21 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
       setOrders(companyOrders);
       setLoadingOrders(false);
       
-      if (selectedOrder) {
-        const updated = companyOrders.find(o => o.id === selectedOrder.id);
-        if (updated) setSelectedOrder(updated);
-        else setOrderModalVisible(false);
-      }
+      setSelectedOrder(prev => {
+        if (!prev) return null;
+        const updated = companyOrders.find(o => o.id === prev.id);
+        if (!updated) {
+          setOrderModalVisible(false);
+          return null;
+        }
+        return updated;
+      });
     }, (error) => {
       console.error(error);
       setLoadingOrders(false);
     });
     return () => unsubscribe();
-  }, [companyName, selectedOrder]);
+  }, [companyName]);
 
   // ======================================================================
   // ESTADOS DE LA VISTA CREACIÓN
@@ -103,9 +107,10 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
       if (!item.itemName) return;
       const itemUpper = item.itemName.toUpperCase();
       if (!itemUpper.startsWith(productUpper + ' - ')) return;
-      const suffix = itemUpper.slice(productUpper.length + 3); // e.g. '20L' o 'CONTENEDOR 1000L'
+      const suffix = itemUpper.slice(productUpper.length + 3); // e.g. '20L', 'POTE 5KG' o 'CONTENEDOR 1000L'
       let pres = null;
       if (suffix === 'CONTENEDOR 1000L') pres = '1000';
+      else if (suffix === 'POTE 5KG' || suffix === 'POTE 1KG') pres = suffix;
       else {
         const match = suffix.match(/^(\d+)L$/);
         if (match) pres = match[1];
@@ -114,7 +119,7 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
     });
     setAvailablePresentations(presMap);
     // Auto-seleccionar la primera presentación con stock si la actual no tiene
-    const orderedPres = ['20', '10', '5', '1', '1000'];
+    const orderedPres = ['20', '10', '5', '1', 'POTE 5KG', 'POTE 1KG', '1000'];
     const currentHasStock = presMap[formData.presentation] > 0;
     if (!currentHasStock) {
       const firstWithStock = orderedPres.find(p => (presMap[p] || 0) > 0);
@@ -127,9 +132,12 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
   useEffect(() => {
     if (formData.productName && formData.presentation) {
       const isContainer = formData.presentation === '1000';
+      const isPotePres = formData.presentation.startsWith('POTE ');
       const targetItemName = isContainer
         ? `${formData.productName.toUpperCase()} - CONTENEDOR 1000L`
-        : `${formData.productName.toUpperCase()} - ${formData.presentation}L`;
+        : isPotePres
+          ? `${formData.productName.toUpperCase()} - ${formData.presentation}`
+          : `${formData.productName.toUpperCase()} - ${formData.presentation}L`;
       const batches = allFinalStock
         .filter(item => item.itemName && item.itemName.toUpperCase() === targetItemName)
         .map(item => ({
@@ -157,9 +165,12 @@ export default function OutgoingInventoryScreen({ route, navigation }) {
     try {
       setIsSubmitting(true);
       const isContainer = formData.presentation === '1000';
+      const isPotePres = formData.presentation.startsWith('POTE ');
       const itemName = isContainer
         ? `${formData.productName.trim().toUpperCase()} - CONTENEDOR 1000L`
-        : `${formData.productName.trim().toUpperCase()} - ${formData.presentation}L`;
+        : isPotePres
+          ? `${formData.productName.trim().toUpperCase()} - ${formData.presentation}`
+          : `${formData.productName.trim().toUpperCase()} - ${formData.presentation}L`;
       const batchId = formData.batchInternal.trim().toUpperCase();
       const currentUser = auth.currentUser?.email || 'Sistema';
       const dispatchUnit = isContainer ? 'Lts' : 'Uds';

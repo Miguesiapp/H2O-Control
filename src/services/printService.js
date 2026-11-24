@@ -1,6 +1,7 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { Alert, Platform } from 'react-native';
+import { formatDisplayName } from '../config/constants';
 
 const generateHTML = (order) => {
   const { type, data, id, _createdAt } = order;
@@ -15,7 +16,7 @@ const generateHTML = (order) => {
 
   if (type === 'OP') {
     title = 'ORDEN DE PRODUCCIÓN';
-    productName = data?.formulaName || data?.itemName || 'General';
+    productName = formatDisplayName(data?.formulaName || data?.itemName || 'General');
     batchInfo = data?.batch || data?.batchInternal || 'S/D';
     const lts = data?.quantity || data?.liters || data?.targetVolume || 0;
     const kgs = data?.kilos || data?.targetKilos || 0;
@@ -121,7 +122,7 @@ const generateHTML = (order) => {
 
       return `
               <tr>
-                <td style="font-weight:700">${ing.name}</td>
+                <td style="font-weight:700">${formatDisplayName(ing.name)}</td>
                 <td>${Number(ing.required || ing.amount || 0).toFixed(2)} ${ing.isGranel ? 'Lts' : 'Kg'}</td>
                 <td><span style="background:#f1f5f9; padding:2px 6px; border-radius:4px; font-size:10px;">${lotesAsignados}</span></td>
                 <td></td>

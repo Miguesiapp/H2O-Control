@@ -10,7 +10,7 @@ import { collection, query, where, getDocs, onSnapshot, serverTimestamp } from '
 import { registerMovement, createOrder, updateOrderStatus, checkTotalStock } from '../services/logisticsService';
 import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box, Droplet, Building2, Tag, Plus, ClipboardList, Play, CheckSquare, XCircle, ChevronDown, ChevronUp, Printer, Search, PackageOpen } from 'lucide-react-native';
 import AutocompleteInput from '../components/AutocompleteInput';
-import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS, POTE_BRANDS, POTE_CAPACITIES, RAW_MATERIALS_LIST, getCapacityKeywords, getLabelKeywords, splitSynonyms } from '../config/constants';
+import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS, POTE_BRANDS, POTE_CAPACITIES, RAW_MATERIALS_LIST, getCapacityKeywords, getLabelKeywords, splitSynonyms, formatDisplayName } from '../config/constants';
 import { canCreateOrders } from '../config/permissions';
 import { printOrder } from '../services/printService';
 
@@ -161,17 +161,21 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
       setOrders(companyOrders);
       setLoadingOrders(false);
 
-      if (selectedOrder) {
-        const updated = companyOrders.find(o => o.id === selectedOrder.id);
-        if (updated) setSelectedOrder(updated);
-        else setOrderModalVisible(false);
-      }
+      setSelectedOrder(prev => {
+        if (!prev) return null;
+        const updated = companyOrders.find(o => o.id === prev.id);
+        if (!updated) {
+          setOrderModalVisible(false);
+          return null;
+        }
+        return updated;
+      });
     }, (error) => {
       console.error(error);
       setLoadingOrders(false);
     });
     return () => unsubscribe();
-  }, [companyName, selectedOrder]);
+  }, [companyName]);
 
   // ======================================================================
   // ESTADOS DE LA VISTA CREACIÓN
@@ -233,7 +237,16 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
         );
 
         const [snapGranel, snapMP] = await Promise.all([getDocs(qGranel), getDocs(qMP)]);
-        const lots = [...snapGranel.docs, ...snapMP.docs].map(doc => ({ id: doc.id, ...doc.data() }));
+        const pendingStatuses = ['PENDIENTE', 'PENDIENTE_LABORATORIO', 'RECHAZADO'];
+        const lots = [...snapGranel.docs, ...snapMP.docs]
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter(doc => {
+            const qty = Number(doc.quantity) || 0;
+            if (qty <= 0) return false;
+            const st = (doc.status || '').toUpperCase().trim();
+            if (pendingStatuses.includes(st)) return false;
+            return true;
+          });
         setApprovedLots(lots);
       } catch (error) {
         console.error(error);
@@ -403,7 +416,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
       let envaseNameLabel = '';
 
       if (isPote) {
-        const poteKeywords = [`${presentation}KG`, `${presentation} KG`, `${presentation}`, `${presentation}K`];
+        const poteKeywords = [`${presentation}KG`, `${presentation} KG`, `${presentation}KGS`, `${presentation} KGS`, `${presentation}K`];
         fuzzyEnvase = ['POTE', poteKeywords, formData.brandPote || 'H2O'];
         envaseNameLabel = `Potes ${presentation}Kg`;
         envaseStock = await checkTotalStock('STOCK_CENTRAL_INSUMOS', fuzzyEnvase);
@@ -416,8 +429,8 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
 
       // CAJAS usan formato multiplicador y litros/kg como fallback
       const boxKeywords = presentation === 5
-        ? ['x5', 'X5', 'X 5', 'x4', 'X4', 'X 4', '5L', '5 L', '5KG', '5 KG']
-        : ['x1', 'X1', 'X 1', 'x12', 'X12', 'X 12', '1L', '1 L', '1KG', '1 KG'];
+        ? ['x5', 'X5', 'X 5', 'x4', 'X4', 'X 4', '5L', '5 L', '5KG', '5 KG', '4x5', '4X5', '4x5L', '4X5L', '4 X 5']
+        : ['x1', 'X1', 'X 1', 'x12', 'X12', 'X 12', '1L', '1 L', '1KG', '1 KG', '12x1', '12X1', '12x1L', '12X1L', '12 X 1'];
       const fuzzyCaja = appliesBox ? ['CAJA', boxKeywords, formData.brandCaja] : null;
 
       const baseLabelName = getBaseLabelName(commercialName);
@@ -531,6 +544,11 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
       // 4. CREA LA ORDEN EN MÁQUINA DE ESTADOS (Ticket ENVIADO)
       const orderData = {
         itemName: packagedItemName,
+        rawMaterialName: itemName,
+        commercialName: commercialName.trim().toUpperCase(),
+        sourceCompany: selectedLot.company || companyName,
+        sourceStockType: selectedLot.stockType || 'MP',
+        sourceUnit: selectedLot.unit || (isPote ? 'Kg' : 'Lts'),
         quantity: units,
         litersConsumed: litersToConsume,
         presentation: isContainer ? 1000 : presentation,
@@ -634,25 +652,31 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
         const batchId = orderData.batchInternal;
         const isContainer = orderData.presentation === 1000;
 
+        const isPoteOrder = orderData.containerType === 'POTE' || orderData.itemName?.includes('POTE');
+
         // 1. Devolver Líquido / Materia Prima
         await registerMovement(currentUser, 'DEVOLUCION_RECHAZO_OEM', orderData.sourceCompany || (orderData.sourceStockType === 'GRANEL' ? (orderData.company || companyName) : 'STOCK_CENTRAL_MP'), {
           itemName: orderData.rawMaterialName || orderData.commercialName || orderData.itemName.split(' - ')[0],
           quantity: Math.abs(orderData.litersConsumed || (orderData.quantity * (orderData.presentation || 20))),
           stockType: orderData.sourceStockType || 'MP',
           batchInternal: batchId,
-          unit: 'Kg',
+          batchProvider: orderData.batchProvider || 'S/D',
+          expiryDate: orderData.expiryDate || 'S/V',
+          status: 'APTO',
+          unit: orderData.sourceUnit || (isPoteOrder ? 'Kg' : 'Lts'),
           details: 'OEM Rechazada - Devolución de Materia Prima'
         });
 
         if (!isContainer) {
-          const presentation = orderData.presentation || (orderData.containerType === 'POTE' ? 5 : 20);
-          const isPoteOrder = orderData.containerType === 'POTE' || orderData.itemName?.includes('POTE');
+          const presentation = orderData.presentation || (isPoteOrder ? 5 : 20);
 
           if (isPoteOrder) {
-            const poteKeywords = [`${presentation}KG`, `${presentation} KG`, `${presentation}`, `${presentation}K`];
-            const fuzzyPote = ['POTE', poteKeywords, orderData.brandPote || orderData.brandBidon || 'H2O'];
+            const poteKeywords = [`${presentation}KG`, `${presentation} KG`, `${presentation}KGS`, `${presentation} KGS`, `${presentation}K`];
+            const brandPote = orderData.brandPote || orderData.brandBidon || 'H2O';
+            const fuzzyPote = ['POTE', poteKeywords, brandPote];
             await registerMovement(currentUser, 'DEVOLUCION_RECHAZO_OEM', 'STOCK_CENTRAL_INSUMOS', {
               itemName: fuzzyPote,
+              fallbackName: `POTE ${presentation}KG ${brandPote}`,
               quantity: Math.abs(orderData.quantity),
               stockType: 'INSUMOS',
               batchInternal: batchId,
@@ -660,10 +684,12 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
               details: 'OEM Rechazada - Devolución Potes'
             });
           } else {
-            const capacityKeywords = [`${presentation}L`, `${presentation} L`, `${presentation} LTS`, `${presentation}LTS`, `${presentation}-L`];
-            const fuzzyBidon = ['BIDON', capacityKeywords, orderData.brandBidon || 'H2O'];
+            const capacityKeywords = getCapacityKeywords(presentation);
+            const brandBidon = orderData.brandBidon || 'H2O';
+            const fuzzyBidon = ['BIDON', capacityKeywords, brandBidon];
             await registerMovement(currentUser, 'DEVOLUCION_RECHAZO_OEM', 'STOCK_CENTRAL_INSUMOS', {
               itemName: fuzzyBidon,
+              fallbackName: `BIDON ${presentation}L ${brandBidon}`,
               quantity: Math.abs(orderData.quantity),
               stockType: 'INSUMOS',
               batchInternal: batchId,
@@ -672,13 +698,14 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
             });
           }
 
+          const boxFormat = presentation === 5 ? 'x5' : 'x1';
           const boxKeywords = presentation === 5
             ? ['x5', 'X5', 'X 5', 'x4', 'X4', 'X 4', '5L', '5 L', '5KG', '5 KG']
             : ['x1', 'X1', 'X 1', 'x12', 'X12', 'X 12', '1L', '1 L', '1KG', '1 KG'];
           const fuzzyCaja = orderData.brandCaja && orderData.brandCaja !== 'SIN CAJAS' ? ['CAJA', boxKeywords, orderData.brandCaja] : null;
 
-          const baseLabelName = getBaseLabelName(orderData.commercialName || orderData.itemName.split(' - ')[0]);
-          const labelKeywords = [baseLabelName, orderData.commercialName || orderData.itemName.split(' - ')[0]];
+          const commName = (orderData.commercialName || orderData.itemName.split(' - ')[0] || '').trim().toUpperCase();
+          const labelKeywords = getLabelKeywords(commName);
           const capacityKeywordsForLabel = getCapacityKeywords(presentation);
           const fuzzyEtiqueta = ['ETIQUETA', capacityKeywordsForLabel, labelKeywords];
 
@@ -686,6 +713,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
           if (orderData.requiredBoxes > 0 && fuzzyCaja) {
             await registerMovement(currentUser, 'DEVOLUCION_RECHAZO_OEM', 'STOCK_CENTRAL_INSUMOS', {
               itemName: fuzzyCaja,
+              fallbackName: `CAJA ${boxFormat} ${orderData.brandCaja}`,
               quantity: Math.abs(orderData.requiredBoxes),
               stockType: 'INSUMOS',
               batchInternal: batchId,
@@ -697,6 +725,7 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
           // 4. Devolver Etiquetas
           await registerMovement(currentUser, 'DEVOLUCION_RECHAZO_OEM', 'STOCK_CENTRAL_INSUMOS', {
             itemName: fuzzyEtiqueta,
+            fallbackName: `ETIQUETA ${presentation}${isPoteOrder ? 'KG' : 'L'} ${commName}`,
             quantity: Math.abs(orderData.quantity),
             stockType: 'INSUMOS',
             batchInternal: batchId,
@@ -882,13 +911,8 @@ export default function DirectPackagingOrderScreen({ route, navigation }) {
                         <View style={styles.lotHeader}>
                           <View style={{ flex: 1 }}>
                             <Text style={[styles.lotName, selectedLot?.id === lot.id && styles.lotNameSelected]}>
-                              {lot.itemName.split(' / ')[0]}
+                              {formatDisplayName(lot.itemName)}
                             </Text>
-                            {lot.itemName.includes(' / ') && (
-                              <Text style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
-                                {lot.itemName.split(' / ').slice(1).join(' / ')}
-                              </Text>
-                            )}
                           </View>
                           {selectedLot?.id === lot.id && <CheckCircle2 color="#3b82f6" size={20} />}
                         </View>

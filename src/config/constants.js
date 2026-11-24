@@ -6,7 +6,7 @@ export const ALLOWED_ATTENDANCE_EMAILS = [
   'jmalvasio@h2ocontrol.com.ar',
   'miguesilva.1985@outlook.es',
   'miguesilva.1985@gmail.com',
-  'tester@h2ocontrol.com'
+
 ];
 export const RAW_MATERIALS_LIST = [
   'ATMP / ACIDO AMINOTRIS / METILENFOSFONICO',
@@ -206,15 +206,12 @@ export const PRODUCTS_MADRE_LIST = [
   'GRANEL POWER / POWER FULL / POWER BLUE',
   'GRANEL MOMENTUM NF / MOMENTUM NF',
   'GRANEL ZURICH NUEVA FORMULA 11/26 / ZURICH NUEVA FORMULA 11/26',
-  'GRANEL ZURICH NUEVA FORMULA 11/26',
-  'GRANEL ZURICH NUEVA FORMULA',
   'GRANEL ZURICH BBS-SQ01 (FERARGEN-MONO) / ZURICH BBS-SQ01 (FERARGEN-MONO)',
   'GRANEL ZURICH NF (BBS-SQ01) / ZURICH NF',
   'GRANEL ZURICH NF (BBS-SQ01) LIGNO ACIDO / ZURICH NF LIGNO ACIDO',
   'GRANEL IXIBIO BBS-FI02 / IXIBIO BBSFI-01',
   'GRANEL COMPATIBILIZANTE / COMPATIBILIZANTE',
   'GRANEL BASEL NF / BASEL NF',
-  'GRANEL BASEL / (BBS-FM00)',
   'GRANEL BASEL / (BBS-FM00) / BASEL',
   'GRANEL SYNER / SYNERGYCIDE',
   'GRANEL AMINO / AQUANUTRIL AMINO FOIL / AQUANUTRIL AMINO RAIZ / AMINO FOIL / AMINO RAIZ',
@@ -239,15 +236,11 @@ export const PRODUCTS_MADRE_LIST = [
 
 export const PRODUCTS_FINAL_LIST = [
   'ZURICH NUEVA FORMULA 11/26',
-  'ZURICH NUEVA FORMULA',
   'ZURICH BBS-SQ01 (FERARGEN-MONO)',
   'ZURICH NF',
   'ZURICH',
   'BASEL NF',
   'BASEL',
-  'GRANEL BASEL / (BBS-FM00)',
-  'BASEL / (BBS-FM00)',
-  'BBS-FM00',
   'BERN',
   'BERN SEED',
   'IXIBIO',
@@ -502,18 +495,22 @@ export const generateBatchId = () => {
 // Utilidad para limpiar visualmente los nombres largos y mostrar solo el principal
 export const formatDisplayName = (str) => {
   if (!str) return '';
-  return str.split(' / ')[0].trim();
+  if (Array.isArray(str)) {
+    return str.map(i => Array.isArray(i) ? i[0] : i).filter(Boolean).join(' ');
+  }
+  const parts = splitSynonyms(String(str));
+  return (parts[0] || String(str)).trim();
 };
 
-// Normalizar capacidad de etiqueta (20L, 10L, 5L, 5KG, 1L)
+// Normalizar capacidad de etiqueta (20L, 10L, 5L, 5KG, 1L, 1KG)
 export const normalizeCapacity = (cap) => {
   if (!cap) return '20L';
   const c = String(cap).trim().toUpperCase();
   if (c === '20' || c === '20L' || c === '20 L' || c === '20 LTS' || c === '20LTS') return '20L';
   if (c === '10' || c === '10L' || c === '10 L' || c === '10 LTS' || c === '10LTS') return '10L';
-  if (c === '5KG' || c === '5 KG' || c === '5KGS' || c === '5 KGS') return '5KG';
+  if (c === '5KG' || c === '5 KG' || c === '5KGS' || c === '5 KGS' || c === '5K') return '5KG';
   if (c === '5' || c === '5L' || c === '5 L' || c === '5 LTS' || c === '5LTS') return '5L';
-  if (c === '1KG' || c === '1 KG') return '1KG';
+  if (c === '1KG' || c === '1 KG' || c === '1KGS' || c === '1 KGS' || c === '1K') return '1KG';
   if (c === '1' || c === '1L' || c === '1 L' || c === '1 LTS' || c === '1LTS') return '1L';
   return (c.endsWith('L') || c.endsWith('KG')) ? c : `${c}L`;
 };
@@ -521,50 +518,49 @@ export const normalizeCapacity = (cap) => {
 // Helper universal para formatear y estandarizar el nombre de una etiqueta al guardarla o buscarla
 export const normalizeEtiquetaName = (capacity, rawItemName) => {
   const normCap = normalizeCapacity(capacity);
-  let cleanName = String(rawItemName || '').trim().toUpperCase();
-  // Quitar prefijo "ETIQUETA" o "ETIQUETAS"
-  cleanName = cleanName.replace(/^ETIQUETAS?\s*/i, '');
-  // Quitar capacidad repetida si el usuario ya la había escrito al inicio
-  cleanName = cleanName.replace(new RegExp(`^${normCap}\\s*`, 'i'), '');
-  cleanName = cleanName.replace(new RegExp(`^${normCap.replace(/[L|KG]/g, '')}\\s*`, 'i'), '');
-  cleanName = cleanName.trim();
+  let cleanName = formatDisplayName(String(rawItemName || '')).toUpperCase();
+  // Quitar prefijo "ETIQUETA", "ETIQUETAS" o "GRANEL"
+  cleanName = cleanName.replace(/^ETIQUETAS?\s*/i, '').replace(/^GRANEL\s+/i, '');
+  // Quitar capacidad repetida si el usuario ya la había escrito al inicio o al final
+  cleanName = cleanName.replace(/^(20|10|5|1)\s*(LTS?|L|KGS?|KG|K)\b\s*/i, '');
+  cleanName = cleanName.replace(/\s+(20|10|5|1)\s*(LTS?|L|KGS?|KG|K)$/i, '');
+  cleanName = cleanName.replace(/\s+/g, ' ').trim();
   return `ETIQUETA ${normCap} ${cleanName}`.trim();
 };
 
-// Generador de palabras clave de capacidad para búsqueda difusa (Fuzzy)
+// Generador de palabras clave de capacidad con unidad obligatoria (evita falsos positivos con números sueltos como M1, FM01, M5, 11/26)
 export const getCapacityKeywords = (presentation) => {
-  const numOnly = String(presentation).replace(/[^0-9]/g, '');
+  const raw = String(presentation || '').trim().toUpperCase();
+  const numOnly = raw.replace(/[^0-9]/g, '');
   const p = Number(numOnly);
-  const keywords = [
-    `${presentation}L`,
-    `${presentation} L`,
-    `${presentation} LTS`,
-    `${presentation}LTS`,
-    `${presentation}-L`,
-    `${presentation}KG`,
-    `${presentation} KG`,
-    `${presentation} KGS`
+
+  if (p === 20) {
+    return ['20L', '20 L', '20 LTS', '20LTS', '20LT', '20 LT', '20-L'];
+  }
+  if (p === 10) {
+    return ['10L', '10 L', '10 LTS', '10LTS', '10LT', '10 LT', '10-L'];
+  }
+  if (p === 5) {
+    return ['5L', '5 L', '5 LTS', '5LTS', '5LT', '5 LT', '5-L', '5KG', '5 KG', '5KGS', '5 KGS', '5K'];
+  }
+  if (p === 1) {
+    return ['1L', '1 L', '1 LTS', '1LTS', '1LT', '1 LT', '1-L', '1KG', '1 KG', '1KGS', '1 KGS', '1K', '1000CC', '1000 CC'];
+  }
+
+  return [
+    `${numOnly}L`,
+    `${numOnly} L`,
+    `${numOnly} LTS`,
+    `${numOnly}LTS`,
+    `${numOnly}-L`,
+    `${numOnly}KG`,
+    `${numOnly} KG`,
+    `${numOnly} KGS`
   ];
-
-  if (Number.isInteger(p)) {
-    keywords.push(` ${p} `, ` ${p}L `, ` ${p}L`, `${p} `, ` ${p}KG `, ` ${p}KG`);
-  }
-
-  if (p === 1 || String(presentation).includes('1')) {
-    keywords.push('1L', '1 L', '1KG', '1 KG', ' 1 ');
-  } else if (p === 20 || String(presentation).includes('20')) {
-    keywords.push('20L', '20 L', '20 LTS', ' 20 ');
-  } else if (p === 10 || String(presentation).includes('10')) {
-    keywords.push('10L', '10 L', '10 LTS', ' 10 ');
-  } else if (p === 5 || String(presentation).includes('5')) {
-    keywords.push('5L', '5 L', '5 LTS', '5KG', '5 KG', '5KGS', ' 5 ');
-  }
-
-  return [...new Set(keywords)];
 };
 
 export const KNOWN_DISTRIBUTOR_BRANDS = [
-  'AGROFONTEZUELA', 'AGROFONTEZUELAS', 'AGF', 'INDRASA', 'AGROCUBE', 'BIOACKER', 'ALIANZA', 'MARISCAL', 'BERN SEED', 'WATERDAY', 'NF'
+  'AGROFONTEZUELA', 'AGROFONTEZUELAS', 'AGF', 'INDRASA', 'AGROCUBE', 'BIOACKER', 'ALIANZA', 'WATERDAY'
 ];
 
 export const getDistributorFromText = (str) => {
@@ -577,47 +573,54 @@ export const getDistributorFromText = (str) => {
   return null;
 };
 
-// Generador de palabras clave de nombre para búsqueda difusa de etiquetas considerando sinónimos y equivalencias
+// Alias legítimos donde un mismo diseño físico de etiqueta se usa para variantes del mismo producto
+export const LABEL_ALIASES = {
+  'ZURICH NUEVA FORMULA 11/26': ['ZURICH NUEVA FORMULA 11/26', 'ZURICH NUEVA FORMULA', 'ZURICH'],
+  'ZURICH NUEVA FORMULA': ['ZURICH NUEVA FORMULA 11/26', 'ZURICH NUEVA FORMULA', 'ZURICH'],
+  'ZURICH BBS-SQ01 (FERARGEN-MONO)': ['ZURICH BBS-SQ01 (FERARGEN-MONO)', 'ZURICH'],
+  'ZURICH': ['ZURICH', 'ZURICH NUEVA FORMULA 11/26', 'ZURICH NUEVA FORMULA'],
+  'BASEL': ['BASEL', 'GRANEL BASEL / (BBS-FM00)', 'BASEL / (BBS-FM00)', 'BBS-FM00'],
+  'GRANEL BASEL / (BBS-FM00)': ['BASEL', 'GRANEL BASEL / (BBS-FM00)', 'BASEL / (BBS-FM00)', 'BBS-FM00'],
+  'BASEL / (BBS-FM00)': ['BASEL', 'GRANEL BASEL / (BBS-FM00)', 'BASEL / (BBS-FM00)', 'BBS-FM00'],
+  'BBS-FM00': ['BASEL', 'GRANEL BASEL / (BBS-FM00)', 'BASEL / (BBS-FM00)', 'BBS-FM00'],
+  'IXIBIO': ['IXIBIO', 'IXIBIO BBS-FI02', 'IXIBIO BBSFI-01'],
+  'ACTION AGROFONTEZUELA': ['ACTION AGROFONTEZUELA', 'ACTION AGF'],
+  'ACTION AGF': ['ACTION AGROFONTEZUELA', 'ACTION AGF'],
+  'OXOFERT +': ['OXOFERT +', 'OXOFERT PLUS'],
+  'OXOFERT PLUS': ['OXOFERT +', 'OXOFERT PLUS'],
+  'DRY CONTROL': ['DRY CONTROL', 'CLORITO DE SODIO', 'SERCLOR'],
+  'PERCYDE': ['PERCYDE', 'ACIDO PERACETICO'],
+  'SYNERGYCIDE AB': ['SYNERGYCIDE AB', 'GLICERINA'],
+  'PH CONTROL': ['PH CONTROL', 'ACIDO CLORHIDRICO'],
+  'CLORO 60%': ['CLORO 60%', 'DICLOROISOCIANURATO DE SODIO', 'CLORO INSTANTANEO'],
+  'CLORO INSTANTANEO': ['CLORO INSTANTANEO', 'CLORO 60%', 'DICLOROISOCIANURATO DE SODIO'],
+  'SHOCK': ['SHOCK', 'CLORO 60%', 'DICLOROISOCIANURATO DE SODIO'],
+  'CLORO 90%': ['CLORO 90%', 'ACIDO TRICLOROISOCIANURICO', 'CLORO GRANULADO'],
+  'CLORO GRANULADO': ['CLORO GRANULADO', 'CLORO 90%', 'ACIDO TRICLOROISOCIANURICO'],
+  'SLOW': ['SLOW', 'CLORO 90%', 'ACIDO TRICLOROISOCIANURICO'],
+  'CLORO 87%': ['CLORO 87%', 'ACIDO TRICLOROISOCIANURICO PASTILLAS', 'CLORO PASTILLAS'],
+  'CLORO PASTILLAS': ['CLORO PASTILLAS', 'CLORO 87%', 'ACIDO TRICLOROISOCIANURICO PASTILLAS'],
+  'TRIPLE ACCION': ['TRIPLE ACCION', 'CLORO 87%', 'ACIDO TRICLOROISOCIANURICO PASTILLAS']
+};
+
+// Generador de palabras clave exactas para búsqueda de etiquetas (sin mezclar marcas comerciales distintas del mismo granel)
 export const getLabelKeywords = (commercialName) => {
   if (!commercialName) return [];
-  const upper = commercialName.trim().toUpperCase();
+  const upper = formatDisplayName(commercialName).toUpperCase().replace(/^GRANEL\s+/i, '').trim();
+  const rawUpper = String(commercialName).trim().toUpperCase();
   const baseLabel = getBaseLabelName(upper);
-  const keywords = new Set([upper, baseLabel]);
+  const keywords = new Set([upper, rawUpper, baseLabel]);
 
-  // Si el producto no tiene una marca distribuidora, solo buscar el nombre base
-  const dist = getDistributorFromText(upper);
-  if (!dist) {
-    const words = upper.split(/\s+/);
-    if (words.length > 1) {
-      keywords.add(words[0]);
-    }
+  if (LABEL_ALIASES[upper]) {
+    LABEL_ALIASES[upper].forEach(a => keywords.add(a));
+  }
+  if (LABEL_ALIASES[rawUpper]) {
+    LABEL_ALIASES[rawUpper].forEach(a => keywords.add(a));
+  }
+  if (LABEL_ALIASES[baseLabel]) {
+    LABEL_ALIASES[baseLabel].forEach(a => keywords.add(a));
   }
 
-  // Equivalencias registradas en el mapa técnico
-  const checkEquiv = (key) => {
-    if (EQUIVALENCIES_MAP[key]) {
-      const parts = splitSynonyms(EQUIVALENCIES_MAP[key]).map(p => p.replace(/GRANEL/gi, '').trim().toUpperCase()).filter(Boolean);
-      parts.forEach(part => keywords.add(part));
-    }
-  };
-
-  checkEquiv(upper);
-  checkEquiv(baseLabel);
-
-  // Casos específicos conocidos
-  if (upper.includes('DRY CONTROL') || upper.includes('SERCLOR') || upper.includes('CLORITO')) {
-    keywords.add('DRY CONTROL');
-    keywords.add('CLORITO DE SODIO');
-    keywords.add('SERCLOR');
-  }
-  if (upper.includes('OXOFERT') || upper.includes('PH CONTROL') || upper.includes('ACIDO CLORHIDRICO') || upper.includes('HCL')) {
-    keywords.add('OXOFERT +');
-    keywords.add('OXOFERT PLUS');
-    keywords.add('OXOFERT');
-    keywords.add('PH CONTROL');
-    keywords.add('ACIDO CLORHIDRICO');
-  }
-
-  return [...keywords].filter(k => k.length > 0);
+  return [...keywords].filter(k => k && k.length > 0);
 };
 

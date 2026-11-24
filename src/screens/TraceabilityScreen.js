@@ -8,7 +8,7 @@ import { Search, ChevronLeft, GitMerge, FileText, Package, Droplet, Clock } from
 import { db } from '../config/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import AutocompleteInput from '../components/AutocompleteInput';
-import { PRODUCTS_FINAL_LIST, PRODUCTS_MADRE_LIST } from '../config/constants';
+import { PRODUCTS_FINAL_LIST, PRODUCTS_MADRE_LIST, formatDisplayName } from '../config/constants';
 
 export default function TraceabilityScreen({ navigation }) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -169,7 +169,7 @@ export default function TraceabilityScreen({ navigation }) {
                 <Package color="#fff" size={28} />
               </View>
               <View style={styles.mainNodeInfo}>
-                <Text style={styles.mainNodeTitle}>{traceData.productName}</Text>
+                <Text style={styles.mainNodeTitle}>{formatDisplayName(traceData.productName)}</Text>
                 <View style={styles.badgeRow}>
                   <View style={styles.badge}>
                     <Text style={styles.badgeText}>Lote: {traceData.batchId}</Text>
@@ -203,7 +203,7 @@ export default function TraceabilityScreen({ navigation }) {
                     <Droplet color="#3b82f6" size={20} />
                   </View>
                   <View style={styles.materialDetails}>
-                    <Text style={styles.materialName}>{mat.name}</Text>
+                    <Text style={styles.materialName}>{formatDisplayName(mat.name)}</Text>
                     <View style={styles.materialLoteRow}>
                       <Text style={styles.materialLoteLabel}>Lote Interno:</Text>
                       <Text style={styles.materialLoteValue}>{mat.batchInternal}</Text>

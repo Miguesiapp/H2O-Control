@@ -8,7 +8,7 @@ import { db, auth } from '../config/firebase';
 import { collection, query, where, getDocs, onSnapshot, getDoc, doc } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
 import { canAccessQualityControl } from '../config/permissions';
-import { ALLOWED_ATTENDANCE_EMAILS } from '../config/constants';
+import { ALLOWED_ATTENDANCE_EMAILS, formatDisplayName } from '../config/constants';
 import { LogOut, FlaskConical, ClipboardCheck, ChevronRight, Clock, Sparkles, Calculator, UserCheck, Database, Keyboard, Package, Truck, Beaker, Container, Box, MonitorPlay, ShoppingCart, Search, ShieldAlert, Book, CheckCircle2, AlertTriangle, BrainCircuit } from 'lucide-react-native';
 
 export default function HomeScreen({ navigation }) {
@@ -58,16 +58,19 @@ export default function HomeScreen({ navigation }) {
       
       const aggregated = {};
       items.forEach(item => {
-        if (item.status === 'PENDIENTE' || item.status === 'PENDIENTE_LABORATORIO') return;
+        if (item.status === 'PENDIENTE' || item.status === 'PENDIENTE_LABORATORIO' || item.status === 'RECHAZADO') return;
+        const qty = Number(item.quantity) || 0;
+        if (qty <= 0) return;
 
-        const name = item.itemName;
+        const name = formatDisplayName(item.itemName);
+        if (!name) return;
         if (!aggregated[name]) {
           aggregated[name] = {
             totalQuantity: 0,
             minStock: item.minStock !== undefined ? item.minStock : null
           };
         }
-        aggregated[name].totalQuantity += item.quantity || 0;
+        aggregated[name].totalQuantity += qty;
         
         if (aggregated[name].minStock === null && item.minStock !== undefined) {
            aggregated[name].minStock = item.minStock;

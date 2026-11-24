@@ -8,6 +8,7 @@ import { db } from '../config/firebase';
 import { collection, onSnapshot, query, orderBy, where, doc, deleteDoc } from 'firebase/firestore';
 import { ChevronLeft, Plus, Search, Beaker, CheckCircle2, FlaskConical, AlertCircle, AlertTriangle, Edit3, Trash2, ShieldAlert, ExternalLink, X, FileText } from 'lucide-react-native';
 import Toast from 'react-native-toast-message';
+import { formatDisplayName } from '../config/constants';
 
 const normalizeString = (str) => {
   if (!str) return '';
@@ -15,8 +16,7 @@ const normalizeString = (str) => {
 };
 
 const getDisplayName = (str) => {
-  if (!str) return '';
-  return str.split(' / ')[0].trim();
+  return formatDisplayName(str);
 };
 
 export default function FormulationScreen({ navigation }) {
@@ -81,10 +81,10 @@ export default function FormulationScreen({ navigation }) {
     return () => unsubEig();
   }, []);
 
-  // Filtrado de búsqueda
-  const filteredFormulas = formulas.filter(f => 
-    normalizeString(f.productName).includes(normalizeString(searchText))
-  );
+  // Filtrado de búsqueda y orden alfabético por nombre limpio
+  const filteredFormulas = formulas
+    .filter(f => normalizeString(f.productName).includes(normalizeString(searchText)))
+    .sort((a, b) => getDisplayName(a.productName).localeCompare(getDisplayName(b.productName)));
 
   const renderFormula = ({ item }) => {
     // Lógica para determinar colorimetría según el pH (Ácido vs Alcalino)
@@ -107,7 +107,7 @@ export default function FormulationScreen({ navigation }) {
                 <Beaker size={20} color={themeColor} />
               </View>
               <View style={{ flex: 1, paddingRight: 10 }}>
-                <Text style={styles.productTitle}>{item.productName}</Text>
+                <Text style={styles.productTitle}>{getDisplayName(item.productName)}</Text>
                 <Text style={styles.companySub}>{item.companyTarget}</Text>
               </View>
             </View>
@@ -297,7 +297,7 @@ export default function FormulationScreen({ navigation }) {
             </View>
             <Text style={{ fontSize: 14, color: '#475569', marginBottom: 20 }}>
               ¿Estás seguro que deseas eliminar la receta de{' '}
-              <Text style={{ fontWeight: '800', color: '#0f172a' }}>{deletePending?.name}</Text>?{'\n'}Esta acción no se puede deshacer.
+              <Text style={{ fontWeight: '800', color: '#0f172a' }}>{getDisplayName(deletePending?.name)}</Text>?{'\n'}Esta acción no se puede deshacer.
             </Text>
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <TouchableOpacity

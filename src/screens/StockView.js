@@ -256,8 +256,9 @@ export default function StockView({ route, navigation }) {
 
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        const itemName = (data.itemName || data.productName || '').toUpperCase();
-        const cat = (data.category || '').toUpperCase();
+        const rawItemField = data.itemName || data.productName || '';
+        const itemName = (typeof rawItemField === 'string' ? rawItemField : formatDisplayName(rawItemField)).toUpperCase();
+        const cat = (typeof data.category === 'string' ? data.category : '').toUpperCase();
         const isDocInsumo = 
           data.stockType === 'INSUMOS' || 
           data.stockType === 'ENVASES' || 
@@ -687,7 +688,7 @@ export default function StockView({ route, navigation }) {
             
             <View>
               <Text style={{fontSize: 14, color: '#475569', marginBottom: 15}}>
-                {selectedMinStockItem?.itemName}
+                {formatDisplayName(selectedMinStockItem?.itemName)}
               </Text>
               
               <Text style={{fontWeight: '600', marginBottom: 5}}>Mínimo Requerido ({selectedMinStockItem?.unit}):</Text>

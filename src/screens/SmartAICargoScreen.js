@@ -105,6 +105,7 @@ export default function SmartAICargoScreen({ navigation }) {
           targetStock === 'INSUMOS' ||
           rawItemName.startsWith('ETIQUETA') || 
           rawItemName.startsWith('BIDON') || 
+          rawItemName.startsWith('POTE') || 
           rawItemName.startsWith('CAJA');
 
         let itemStockType = isItemInsumo ? 'INSUMOS' : targetStock;

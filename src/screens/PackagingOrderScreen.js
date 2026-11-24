@@ -9,7 +9,7 @@ import { collection, query, where, getDocs, onSnapshot, serverTimestamp, doc, up
 import { registerMovement, createOrder, updateOrderStatus, checkTotalStock, matchesFuzzyItem } from '../services/logisticsService'; 
 import { ChevronLeft, Container, Save, CheckCircle2, FlaskConical, AlertCircle, Box, Droplet, Building2, Tag, Plus, ClipboardList, Play, CheckSquare, XCircle, ChevronDown, ChevronUp, Printer, ShieldAlert, FileText, X } from 'lucide-react-native';
 import AutocompleteInput from '../components/AutocompleteInput';
-import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS, getCommercialNamesForGranel, getCapacityKeywords, getLabelKeywords, splitSynonyms } from '../config/constants';
+import { EQUIVALENCIES_MAP, getBaseLabelName, PRODUCTS_FINAL_LIST, CAJA_BRANDS, BIDON_BRANDS, getCommercialNamesForGranel, getCapacityKeywords, getLabelKeywords, splitSynonyms, formatDisplayName } from '../config/constants';
 import { canCreateOrders, canChangeStatus } from '../config/permissions';
 import { printOrder } from '../services/printService';
 import Toast from 'react-native-toast-message';
@@ -240,8 +240,8 @@ export default function PackagingOrderScreen({ route, navigation }) {
       
       // CAJAS usan formato multiplicador y litros como fallback
       const boxKeywords = presentation === 5
-        ? ['x5', 'X5', 'X 5', 'x4', 'X4', 'X 4', '5L', '5 L']
-        : ['x1', 'X1', 'X 1', 'x12', 'X12', 'X 12', '1L', '1 L'];
+        ? ['x5', 'X5', 'X 5', 'x4', 'X4', 'X 4', '5L', '5 L', '4x5', '4X5', '4x5L', '4X5L', '4 X 5']
+        : ['x1', 'X1', 'X 1', 'x12', 'X12', 'X 12', '1L', '1 L', '12x1', '12X1', '12x1L', '12X1L', '12 X 1'];
       const actuallyUsesBox = appliesBox;
       const fuzzyCaja = actuallyUsesBox ? ['CAJA', boxKeywords, formData.brandCaja] : null;
 
@@ -637,7 +637,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
           const rawCommName = (orderData.itemName || '').split(' - ')[0].trim().toUpperCase();
 
           // A) DEVOLVER BIDONES
-          const capacityKeywords = [`${presentation}L`, `${presentation} L`, `${presentation} LTS`, `${presentation}LTS`, `${presentation}-L`];
+          const capacityKeywords = getCapacityKeywords(presentation);
           const fuzzyBidon = ['BIDON', capacityKeywords, orderData.brandBidon || 'H2O'];
           const fallbackBidonName = `BIDON ${presentation}L ${orderData.brandBidon || 'H2O'}`;
 
@@ -650,7 +650,9 @@ export default function PackagingOrderScreen({ route, navigation }) {
             const boxesToReturn = totalQty > 0 ? Math.ceil((unitsToReturn / totalQty) * totalBoxes) : 0;
             if (boxesToReturn > 0) {
               const boxFormat = presentation === 5 ? 'x5' : 'x1';
-              const boxKeywords = [boxFormat, `X${presentation}`, `X ${presentation}`];
+              const boxKeywords = presentation === 5
+                ? ['x5', 'X5', 'X 5', 'x4', 'X4', 'X 4', '5L', '5 L']
+                : ['x1', 'X1', 'X 1', 'x12', 'X12', 'X 12', '1L', '1 L'];
               const fuzzyCaja = ['CAJA', boxKeywords, orderData.brandCaja];
               const fallbackCajaName = `CAJA ${boxFormat} ${orderData.brandCaja}`;
 
@@ -659,8 +661,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
           }
 
           // C) DEVOLVER ETIQUETAS
-          const baseLabelName = getBaseLabelName(rawCommName);
-          const labelKeywords = [baseLabelName, rawCommName];
+          const labelKeywords = getLabelKeywords(rawCommName);
           const fuzzyEtiqueta = ['ETIQUETA', capacityKeywords, labelKeywords];
           const fallbackEtiquetaName = `ETIQUETA ${presentation}L ${rawCommName}`;
 
@@ -853,7 +854,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
                         onPress={() => toggleGroup(group.itemName)}
                       >
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.groupTitle}>{group.itemName}</Text>
+                          <Text style={styles.groupTitle}>{formatDisplayName(group.itemName)}</Text>
                           <Text style={styles.groupSub}>Disponible: {group.totalQuantity.toFixed(2)} Lts ({group.lots.length} Lote/s)</Text>
                         </View>
                         {isExpanded ? <ChevronUp color="#64748b" size={20} /> : <ChevronDown color="#64748b" size={20} />}
@@ -869,7 +870,7 @@ export default function PackagingOrderScreen({ route, navigation }) {
                             >
                               <View style={styles.lotHeader}>
                                 <Text style={[styles.lotName, selectedLot?.id === lot.id && styles.lotNameSelected]}>
-                                  {lot.itemName}
+                                  {formatDisplayName(lot.itemName)}
                                 </Text>
                                 {selectedLot?.id === lot.id && <CheckCircle2 color="#3b82f6" size={20} />}
                               </View>

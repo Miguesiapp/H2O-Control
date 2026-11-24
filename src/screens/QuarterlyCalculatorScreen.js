@@ -9,7 +9,7 @@ import { collection, getDocs, query, where, addDoc, serverTimestamp, doc, delete
 import { ChevronLeft, Calculator, AlertCircle, CheckCircle2, ShoppingCart, Target, Beaker, Factory, ChevronDown, X, ClipboardList, Download, Plus, Trash2, Printer } from 'lucide-react-native';
 
 import { EQUIVALENCIES } from '../services/formulaService';
-import { PRODUCTS_MADRE_LIST, RAW_MATERIALS_LIST } from '../config/constants';
+import { PRODUCTS_MADRE_LIST, RAW_MATERIALS_LIST, formatDisplayName } from '../config/constants';
 import AutocompleteInput from '../components/AutocompleteInput';
 
 const normalizeString = (str) => {
@@ -30,7 +30,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
         const q = query(collection(db, "Formulas_Maestras"), where("status", "==", "ACTIVA"));
         const snap = await getDocs(q);
         const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        data.sort((a, b) => (a.productName || '').localeCompare(b.productName || ''));
+        data.sort((a, b) => formatDisplayName(a.productName || '').localeCompare(formatDisplayName(b.productName || '')));
         setFormulas(data);
         if (data.length > 0) {
           setTargets([{ key: Date.now().toString(), selectedFormula: data[0], productName: data[0].productName, goal: '' }]);
@@ -60,9 +60,17 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
       
       if (field === 'productName') {
         const valUpper = value.toUpperCase();
-        let found = formulas.find(f => (f.productName || '').replace(' / ', ' - ').toUpperCase() === valUpper);
+        let found = formulas.find(f => {
+          const fName = (f.productName || '').toUpperCase();
+          const fClean = (f.productName || '').replace(' / ', ' - ').toUpperCase();
+          const fDisp = formatDisplayName(f.productName).toUpperCase();
+          return fClean === valUpper || fName === valUpper || fDisp === valUpper;
+        });
         if (!found) {
-          found = formulas.find(f => valUpper.includes((f.productName || '').replace(' / ', ' - ').toUpperCase()) || (f.productName || '').replace(' / ', ' - ').toUpperCase().includes(valUpper));
+          found = formulas.find(f => {
+            const fDisp = formatDisplayName(f.productName).toUpperCase();
+            return fDisp && (valUpper.includes(fDisp) || fDisp.includes(valUpper));
+          });
         }
         updated.selectedFormula = found || null;
       }
@@ -285,11 +293,12 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
             try {
               for (const item of missingItems) {
                 const missingQty = Math.abs(item.balance).toFixed(1);
-                // Construir descripción de uso
-                const usedInDesc = item.usedIn.map(u => u.formulaName).join(', ');
+                // Construir descripción de uso con nombres limpios
+                const usedInDesc = item.usedIn.map(u => formatDisplayName(u.formulaName)).join(', ');
                 
                 await addDoc(collection(db, 'PurchaseRequests'), {
-                  title: `COMPRAR: ${missingQty} L/Kg de ${item.name} (Faltante para proyección multi-granel)`,
+                  text: `COMPRAR: ${missingQty} L/Kg de ${formatDisplayName(item.name)} (Requerido para: ${usedInDesc})`,
+                  title: `COMPRAR: ${missingQty} L/Kg de ${formatDisplayName(item.name)} (Faltante para proyección multi-granel)`,
                   description: `Requerido para: ${usedInDesc}`,
                   status: 'PENDING',
                   requestedBy: auth.currentUser?.email || 'Calculadora',
@@ -354,7 +363,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
           <table>
             <tr><th>Producto (Granel)</th><th style="width: 120px; text-align:right;">Volumen (Lts)</th></tr>
             ${targets.filter(t => t.selectedFormula && t.goal).map(t => `
-              <tr><td>${t.selectedFormula.productName}</td><td style="text-align:right;"><b>${t.goal}</b></td></tr>
+              <tr><td>${formatDisplayName(t.selectedFormula.productName)}</td><td style="text-align:right;"><b>${t.goal}</b></td></tr>
             `).join('')}
           </table>
     `;
@@ -365,7 +374,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
           <div class="missing-box">
             <h3>⚠️ Alerta de Quiebre de Stock (A Comprar)</h3>
             <ul>
-              ${missingItems.map(i => `<li><b>${i.name}</b>: Faltan ${Math.abs(i.balance).toFixed(1)} L/Kg</li>`).join('')}
+              ${missingItems.map(i => `<li><b>${formatDisplayName(i.name)}</b>: Faltan ${Math.abs(i.balance).toFixed(1)} L/Kg</li>`).join('')}
             </ul>
           </div>
       `;
@@ -383,8 +392,8 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
             ${results.map(i => `
               <tr>
                 <td>
-                  <b>${i.name}</b><br/>
-                  <span class="sub-text">Uso: ${i.usedIn.map(u => `${u.formulaName} (${u.amount.toFixed(1)}L)`).join(', ')}</span>
+                  <b>${formatDisplayName(i.name)}</b><br/>
+                  <span class="sub-text">Uso: ${i.usedIn.map(u => `${formatDisplayName(u.formulaName)} (${u.amount.toFixed(1)}L)`).join(', ')}</span>
                 </td>
                 <td style="text-align:right;">${i.needed.toFixed(1)}</td>
                 <td style="text-align:right;">${i.stock.toFixed(1)}</td>
@@ -468,7 +477,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
             <View key={target.key} style={styles.targetCard}>
               <View style={{ zIndex: 3000 - index, position: 'relative' }}>
                 <AutocompleteInput 
-                  data={[...new Set([...formulas.map(f => (f.productName || '').replace(' / ', ' - ')), ...PRODUCTS_MADRE_LIST])].sort()}
+                  data={[...new Set(formulas.map(f => f.productName).filter(Boolean))]}
                   value={target.productName}
                   onChangeText={(text) => updateTarget(target.key, 'productName', text)}
                   placeholder="Seleccionar producto..."
@@ -529,7 +538,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
             {results.map((item, index) => (
               <View key={index} style={[styles.resultRow, item.balance < 0 ? styles.borderError : styles.borderSuccess]}>
                 <View style={styles.resultHeader}>
-                  <Text style={styles.itemName}>{item.name}</Text>
+                  <Text style={styles.itemName}>{formatDisplayName(item.name)}</Text>
                   {item.balance < 0 ? <AlertCircle color="#ef4444" size={18} /> : <CheckCircle2 color="#10b981" size={18} />}
                 </View>
                 
@@ -544,7 +553,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
                 {item.usedIn.length > 0 && (
                   <View style={styles.usedInBox}>
                     <Text style={styles.usedInText}>
-                      Uso en proyecciones: {item.usedIn.map(u => `${u.formulaName} (${u.amount.toFixed(1)}L)`).join(', ')}
+                      Uso en proyecciones: {item.usedIn.map(u => `${formatDisplayName(u.formulaName)} (${u.amount.toFixed(1)}L)`).join(', ')}
                     </Text>
                   </View>
                 )}
@@ -553,7 +562,7 @@ export default function QuarterlyCalculatorScreen({ navigation }) {
                   <View style={styles.warningBox}>
                     <AlertCircle color="#ea580c" size={14} />
                     <Text style={styles.warningText}>
-                      Ojo, también es requerida por fórmulas no proyectadas aquí: <Text style={{ fontWeight: 'bold' }}>{item.sharedWithOthers.join(', ')}</Text>
+                      Ojo, también es requerida por fórmulas no proyectadas aquí: <Text style={{ fontWeight: 'bold' }}>{[...new Set(item.sharedWithOthers.map(formatDisplayName))].join(', ')}</Text>
                     </Text>
                   </View>
                 )}
