@@ -1,6 +1,6 @@
 import { db } from '../config/firebase';
 import { collection, addDoc, updateDoc, doc, increment, serverTimestamp, query, where, getDocs, getDoc, deleteDoc } from 'firebase/firestore';
-import { PRODUCT_SYNONYMS, getDistributorFromText } from '../config/constants';
+import { PRODUCT_SYNONYMS, getDistributorFromText, KNOWN_DISTRIBUTOR_BRANDS } from '../config/constants';
 
 const normalizeNoAccent = (s) => {
   if (!s) return '';
@@ -16,18 +16,24 @@ const hasToken = (docName, tokens) => {
     const tClean = normalizeNoAccent(t);
     if (!tClean) return false;
     const escaped = tClean.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`(^|\\s)${escaped}(\\s|$)`, 'i');
+    const regex = new RegExp(`(^|[^A-Z0-9])${escaped}([^A-Z0-9]|$)`, 'i');
     return regex.test(name);
   });
 };
 
 const extractLabelProductName = (docName) => {
-  return normalizeNoAccent(docName)
-    .replace(/^ETIQUETAS?\s+/i, '')
-    .replace(/^(20|10|5|1)\s*(LTS?|L|KGS?|KG|K)\b\s*/i, '')
-    .replace(/\s+(20|10|5|1)\s*(LTS?|L|KGS?|KG|K)$/i, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  let s = normalizeNoAccent(docName);
+  // Quitar prefijo de etiqueta
+  s = s.replace(/^ETIQUETAS?\s*[:\-]?\s*/i, '');
+  // Quitar tipo de envase si está mencionado
+  s = s.replace(/\b(BIDON|BIDONES|POTE|POTES|BOTELLA|BOTELLAS|TAMBOR|TAMBORES|IBC|CONTENEDOR)\b/gi, ' ');
+  // Quitar capacidades (20L, 20 L, 20 LTS, 20-L, 5KG, 1L, etc.) en cualquier parte
+  s = s.replace(/(^|[^A-Z0-9])(20|10|5|1)\s*(LTS?|L|KGS?|KG|K|LITROS?)\b\.?/gi, ' ');
+  // Quitar sufijos o marcas corporativas como H2O, H2O CONTROL, (H2O), - H2O
+  s = s.replace(/\b(H2O(\s*CONTROL)?)\b/gi, ' ');
+  // Limpiar signos de puntuación iniciales o finales (guiones, paréntesis, etc.)
+  s = s.replace(/^[^A-Z0-9]+|[^A-Z0-9]+$/gi, '');
+  return s.replace(/\s+/g, ' ').trim();
 };
 
 // Helper para verificar coincidencia difusa precisa (especialmente etiquetas e insumos con marcas de clientes)
@@ -51,7 +57,15 @@ export const matchesFuzzyItem = (docItemName, fuzzyFilter) => {
     return targetKeywords.some(subKw => {
       if (!subKw) return false;
       const kwNorm = extractLabelProductName(subKw);
-      return docProd === kwNorm;
+
+      // Si el objetivo es un producto general (sin distribuidor), no debe coincidir con etiquetas de distribuidores
+      const kwHasDistributor = (KNOWN_DISTRIBUTOR_BRANDS || []).some(d => kwNorm.includes(d));
+      const docHasDistributor = (KNOWN_DISTRIBUTOR_BRANDS || []).some(d => docProd.includes(d));
+
+      if (!kwHasDistributor && docHasDistributor) return false;
+      if (kwHasDistributor && !docHasDistributor) return false;
+
+      return docProd === kwNorm || docProd.replace(/\b(OIL)\b/g, '').trim() === kwNorm;
     });
   }
 

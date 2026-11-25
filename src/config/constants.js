@@ -452,6 +452,11 @@ export const getBaseLabelName = (commercialName) => {
   if (!commercialName) return '';
   const upperName = commercialName.trim().toUpperCase();
 
+  // Casos especiales de distribuidores conocidos para no degradar a nombre base genérico
+  if (upperName === 'ACTION AGF' || upperName === 'ACTION AGROFONTEZUELA') {
+    return 'ACTION AGROFONTEZUELA';
+  }
+
   // (Removido: MOMENTUM NF e INDRASA ahora usan etiquetas separadas)
 
   // El usuario pidió que PH CONTROL aparezca en las etiquetas, así que no lo forzamos a ACIDO CLORHIDRICO
@@ -584,6 +589,7 @@ export const LABEL_ALIASES = {
   'BASEL / (BBS-FM00)': ['BASEL', 'GRANEL BASEL / (BBS-FM00)', 'BASEL / (BBS-FM00)', 'BBS-FM00'],
   'BBS-FM00': ['BASEL', 'GRANEL BASEL / (BBS-FM00)', 'BASEL / (BBS-FM00)', 'BBS-FM00'],
   'IXIBIO': ['IXIBIO', 'IXIBIO BBS-FI02', 'IXIBIO BBSFI-01'],
+  'ACTION': ['ACTION', 'ACTION H2O', 'ACTION OIL'],
   'ACTION AGROFONTEZUELA': ['ACTION AGROFONTEZUELA', 'ACTION AGF'],
   'ACTION AGF': ['ACTION AGROFONTEZUELA', 'ACTION AGF'],
   'OXOFERT +': ['OXOFERT +', 'OXOFERT PLUS'],
