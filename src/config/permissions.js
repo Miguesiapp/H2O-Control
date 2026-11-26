@@ -2,7 +2,7 @@
 // Archivo centralizado para manejo de roles y permisos en la aplicación.
 
 // 1. Lista de todos los usuarios autorizados
-const ALL_AUTHORIZED = [
+export const ALL_AUTHORIZED = [
   'miguesilva.1985@outlook.es',
   'miguesilva.1985@gmail.com',
   'produccion@h2ocontrol.com.ar',
@@ -20,49 +20,38 @@ const ALL_AUTHORIZED = [
   'tester@h2ocontrol.com',
 ];
 
-// 2. Roles Definidos
-export const ROLES = {
-  // BBS Calidad: Pueden firmar análisis de calidad
-  QUALITY_CONTROL: [
-    'juanpae.mdp@gmail.com',
-    'francovanuccilemmi@gmail.com',
-    'g.haritchet@gmail.com',
-    'miguesilva.1985@gmail.com',
-    'miguesilva.1985@outlook.es',
-    'bduville@h2ocontrol.com.ar',
-    'tester@h2ocontrol.com',
-  ],
-  
-  // Creadores de Órdenes (OP, OE, OD) — todos los autorizados por ahora
-  ORDER_CREATORS: ALL_AUTHORIZED,
-
-  // Administradores Globales
-  ADMINS: [
-    'miguesilva.1985@outlook.es',
-    'miguesilva.1985@gmail.com',
-    'francovanuccilemmi@gmail.com',
-    'tester@h2ocontrol.com',
-  ]
+// Helper para verificar autorización sin exclusiones
+export const isUserAuthorized = (email) => {
+  if (!email || typeof email !== 'string') return false;
+  return ALL_AUTHORIZED.includes(email.trim().toLowerCase());
 };
 
-// 3. Funciones de Verificación
+// 2. Roles Definidos - Todos los autorizados tienen acceso a todas las funciones
+export const ROLES = {
+  // BBS Calidad: Todos los usuarios autorizados
+  QUALITY_CONTROL: ALL_AUTHORIZED,
+  
+  // Creadores de Órdenes (OP, OE, OD) — Todos los autorizados
+  ORDER_CREATORS: ALL_AUTHORIZED,
+
+  // Administradores Globales — Todos los autorizados
+  ADMINS: ALL_AUTHORIZED,
+};
+
+// 3. Funciones de Verificación sin reglas excluyentes
 export const canAccessQualityControl = (email) => {
-  if (!email) return false;
-  return ROLES.QUALITY_CONTROL.includes(email.toLowerCase());
+  return isUserAuthorized(email);
 };
 
 export const canCreateOrders = (email) => {
-  if (!email) return false;
-  return ROLES.ORDER_CREATORS.includes(email.toLowerCase());
+  return isUserAuthorized(email);
 };
 
 export const isAdmin = (email) => {
-  if (!email) return false;
-  return ROLES.ADMINS.includes(email.toLowerCase());
+  return isUserAuthorized(email);
 };
 
-// Para compatibilidad con PackagingOrderScreen
+// Para compatibilidad con PackagingOrderScreen y cambios de estado
 export const canChangeStatus = (email) => {
-  if (!email) return false;
-  return ALL_AUTHORIZED.includes(email.toLowerCase());
+  return isUserAuthorized(email);
 };
