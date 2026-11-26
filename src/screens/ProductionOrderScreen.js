@@ -856,19 +856,45 @@ export default function ProductionOrderScreen({ route, navigation }) {
       // 1. Finalizar Ticket
       await updateOrderStatus(selectedOrder.id, 'FINALIZADO', currentUser);
 
-      // 2. Inyectar Granel en Laboratorio
-      await registerMovement(currentUser, 'INGRESO_OP', orderData.company, {
-        itemName: orderData.itemName,
-        quantity: orderData.quantity, 
-        originalQuantity: orderData.quantity,
-        stockType: 'GRANEL', 
-        batchInternal: orderData.batchInternal,
-        batchProvider: 'PROPIA',
-        expiryDate: orderData.expiryDate,
-        unit: orderData.unit,
-        company: orderData.company,
-        status: 'PENDIENTE_LABORATORIO'
-      });
+      // 2. Inyectar Granel en Laboratorio (con fallbacks robustos para asegurar presencia en BBS Calidad e Inventario)
+      const targetCompany = orderData.company || companyName || 'H2O';
+      const granelName = (orderData.itemName || 'GRANEL').trim().toUpperCase();
+      const granelQty = Number(orderData.quantity) || 0;
+      const granelBatch = (orderData.batchInternal || batchId || generateBatchId()).trim();
+      const granelExpiry = (orderData.expiryDate || getDefaultExpiryDate()).trim();
+      const granelUnit = orderData.unit || 'Lts';
+
+      try {
+        await registerMovement(currentUser, 'INGRESO_OP', targetCompany, {
+          itemName: granelName,
+          quantity: granelQty, 
+          originalQuantity: granelQty,
+          stockType: 'GRANEL', 
+          batchInternal: granelBatch,
+          batchProvider: 'PROPIA',
+          expiryDate: granelExpiry,
+          unit: granelUnit,
+          company: targetCompany,
+          status: 'PENDIENTE_LABORATORIO'
+        });
+      } catch (ingresoErr) {
+        console.warn("Fallo en registerMovement para INGRESO_OP, inyectando directamente en Inventory:", ingresoErr);
+        await addDoc(collection(db, "Inventory"), {
+          itemName: granelName,
+          company: targetCompany,
+          quantity: granelQty,
+          originalQuantity: granelQty,
+          stockType: 'GRANEL',
+          batchInternal: granelBatch,
+          batchProvider: 'PROPIA',
+          expiryDate: granelExpiry,
+          unit: granelUnit,
+          status: 'PENDIENTE_LABORATORIO',
+          minStock: 100,
+          createdAt: serverTimestamp(),
+          lastUpdated: serverTimestamp()
+        });
+      }
 
       Alert.alert(
         "Orden Finalizada",

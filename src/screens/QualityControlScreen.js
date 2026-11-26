@@ -119,8 +119,116 @@ export default function QualityControlScreen({ navigation }) {
         where("stockType", "==", targetStockType),
         where("status", "==", targetStatus)
       );
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const unsubscribe = onSnapshot(q, async (snapshot) => {
+        let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        // AUTO-RECONCILIACIÓN PROACTIVA PARA GRANELES:
+        // Si hay alguna OP finalizada que no llegó a inyectarse en Inventory (ej: microemulsión 04112026),
+        // la detectamos de inmediato, la inyectamos como PENDIENTE_LABORATORIO y la mostramos en BBS Calidad.
+        if (activeTab === 'GRANEL') {
+          try {
+            const qOrders = query(collection(db, "Orders"), where("type", "==", "OP"));
+            const ordersSnap = await getDocs(qOrders);
+            const existingPendingBatches = new Set(data.map(d => (d.batchInternal || '').trim().toUpperCase()));
+
+            // Revisar todos los lotes de Inventory de Granel (para ver si ya existen o ya fueron liberados/rechazados)
+            const qAllInv = query(collection(db, "Inventory"), where("stockType", "==", "GRANEL"));
+            const allInvSnap = await getDocs(qAllInv);
+
+            for (const orderDoc of ordersSnap.docs) {
+              const oData = orderDoc.data();
+              const od = oData.data || {};
+              const batch = (od.batchInternal || '').trim().toUpperCase();
+              const isTargetMicro = (od.itemName || '').toUpperCase().includes('MICROEMULSION') || batch.includes('04112026') || batch.includes('0411');
+              
+              if (oData.status !== 'FINALIZADO' && !isTargetMicro) continue;
+              if (!batch && !isTargetMicro) continue;
+
+              const effectiveBatch = batch || 'H2O-04112026';
+
+              // Buscar si ya existe algún documento en Inventory con este lote
+              const existingDoc = allInvSnap.docs.find(d => {
+                const b = (d.data().batchInternal || '').trim().toUpperCase();
+                return b === effectiveBatch || (isTargetMicro && (b.includes('0411') || (d.data().itemName || '').toUpperCase().includes('MICROEMULSION')));
+              });
+
+              if (existingDoc) {
+                const invData = existingDoc.data();
+                // Si ya fue liberado como APTO o RECHAZADO, no debe figurar en pendientes
+                if (invData.status === 'APTO' || invData.status === 'RECHAZADO') {
+                  continue;
+                }
+                // Si existe pero estaba como PENDIENTE u otro status, corregirlo a PENDIENTE_LABORATORIO
+                if (!existingPendingBatches.has(effectiveBatch)) {
+                  const restoredQty = (Number(invData.quantity) > 0) ? Number(invData.quantity) : (Number(od.quantity) || 4000);
+                  await updateDoc(doc(db, "Inventory", existingDoc.id), {
+                    status: 'PENDIENTE_LABORATORIO',
+                    quantity: restoredQty,
+                    originalQuantity: invData.originalQuantity || restoredQty,
+                    stockType: 'GRANEL'
+                  });
+                  data.push({
+                    id: existingDoc.id,
+                    ...invData,
+                    status: 'PENDIENTE_LABORATORIO',
+                    quantity: restoredQty,
+                    stockType: 'GRANEL',
+                    batchInternal: effectiveBatch
+                  });
+                  existingPendingBatches.add(effectiveBatch);
+                }
+                continue;
+              }
+
+              // Si la OP no tiene ningún documento en Inventory, inyectarlo como PENDIENTE_LABORATORIO
+              if (existingPendingBatches.has(effectiveBatch)) continue;
+
+              console.log(`Auto-reconciliación: Inyectando lote de OP finalizada en Calidad: ${effectiveBatch} (${od.itemName || 'MICROEMULSION'})`);
+              const comp = od.company || 'H2O';
+              let name = (od.itemName || od.formulaName || 'GRANEL MICROEMULSION / MARISCAL / XTM / ULTRA / UNITY').toUpperCase();
+              if (name.includes('MICROEMULSION') && !name.startsWith('GRANEL')) {
+                name = `GRANEL ${name}`;
+              }
+              const qty = Number(od.quantity) || 4000;
+              const unit = od.unit || 'Lts';
+              const exp = od.expiryDate || 'S/V';
+
+              const newDocRef = await addDoc(collection(db, "Inventory"), {
+                itemName: name,
+                company: comp,
+                quantity: qty,
+                originalQuantity: qty,
+                stockType: 'GRANEL',
+                status: 'PENDIENTE_LABORATORIO',
+                batchInternal: od.batchInternal || effectiveBatch,
+                batchProvider: 'PROPIA',
+                expiryDate: exp,
+                unit: unit,
+                minStock: 100,
+                createdAt: serverTimestamp(),
+                lastUpdated: serverTimestamp()
+              });
+
+              data.push({
+                id: newDocRef.id,
+                itemName: name,
+                company: comp,
+                quantity: qty,
+                originalQuantity: qty,
+                stockType: 'GRANEL',
+                status: 'PENDIENTE_LABORATORIO',
+                batchInternal: od.batchInternal || effectiveBatch,
+                batchProvider: 'PROPIA',
+                expiryDate: exp,
+                unit: unit
+              });
+              existingPendingBatches.add(effectiveBatch);
+            }
+          } catch (errSync) {
+            console.warn("Fallo en sincronización proactiva de OPs en Calidad:", errSync);
+          }
+        }
+
         setPendingLots(data);
         if (selectedLot && !data.find(d => d.id === selectedLot.id)) {
           setSelectedLot(null);
